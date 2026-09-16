@@ -116,6 +116,27 @@ Atari and toy-text games reach teacher level from text alone; Freeway, never tra
 7x7 view rendered as text is a poor state description and needs a map-based rendering before it
 measures the model. Blackjack with three seeded hands is uninformative.
 
+### RL on the gym games
+
+`decider/games_rl.py` runs the same PPO loop over the common game interface (text-state or
+pixels-only policy): 16 environment copies per game, batched sampling, per-game per-step
+baselines, a success bonus for goal-reaching games, clipped updates with a KL early stop.
+Starting from the v4 model, 30 iterations on Pong, Breakout and CliffWalking (about 90 s each),
+greedy evaluation every 5; the saved checkpoint is the best one (iteration 25):
+
+| game | SFT start | after RL |
+|---|---|---|
+| Breakout (train) | 22 | 71 |
+| CliffWalking (train) | -13 | -13 (optimal; a mid-run detour to -60 until a success bonus was added) |
+| Pong (train) | 8 | 8 |
+| Freeway (held-out) | 6 | 7 |
+| MiniGrid Empty (held-out here) | 0 | 0 |
+
+Breakout, the game with dense reward, tripled over the scripted teacher it had imitated; the
+others held. Without the success bonus the CliffWalking policy learned to avoid the cliff by
+never finishing, a standard failure of sparse-goal RL. The first version also produced NaN
+gradients from an entropy term over masked options (0 times -inf); masked entropy fixed it.
+
 ## Demo: Super Mario Bros from typed decisions
 
 `decider/mario.py` drives the NES emulator (`gym-super-mario-bros`) with the model: every 4 frames the

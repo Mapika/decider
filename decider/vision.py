@@ -49,9 +49,9 @@ class VisionDecisionModel(nn.Module):
     def slot_logits(self, inp):
         dev = self.letters.device
         kw = {k: v.to(dev) for k, v in inp.items() if k in ("input_ids", "attention_mask", "pixel_values", "image_grid_thw", "mm_token_type_ids")}
-        out = self.lm(**kw, output_hidden_states=False, use_cache=False)
-        logits = out.logits[inp["slot_batch"].to(dev), inp["slot_idx"].to(dev)]            # [N, V]
-        lg = logits[:, self.letters].float()
+        h = self.lm.model(**kw, use_cache=False).last_hidden_state                        # [B, T, H]
+        hs = h[inp["slot_batch"].to(dev), inp["slot_idx"].to(dev)]                         # [N, H]
+        lg = F.linear(hs, self.lm.lm_head.weight[self.letters]).float()                    # [N, K] letter logits only
         ar = torch.arange(MAX_OPTIONS, device=dev)[None, :]
         return lg.masked_fill(ar >= inp["nopts"].to(dev)[:, None], float("-inf"))
 

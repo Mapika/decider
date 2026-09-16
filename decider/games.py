@@ -15,6 +15,7 @@ def game(name, train=True):
 
 
 class Game:
+    def success(self): return False        # episode ended by reaching the goal (used as an RL bonus)
     def frame(self):
         try: return self.env.render()
         except Exception: return None
@@ -117,6 +118,7 @@ class FrozenLake(Game):
         r, c = divmod(int(self.s), 4)
         rows = "\n".join("".join(("[" + ch + "]") if (i == r and j == c) else " " + ch + " " for j, ch in enumerate(row)) for i, row in enumerate(self.desc))
         return f"Grid (your position in brackets):\n{rows}\nYou are at row {r}, column {c}."
+    def success(self): return self.total > 0
     def teacher(self):
         # BFS to goal avoiding holes
         from collections import deque
@@ -145,6 +147,7 @@ class CliffWalking(Game):
     def text(self):
         r, c = divmod(int(self.s), 12)
         return f"You are at row {r} (0 = top, 3 = bottom), column {c} (0 = left, 11 = right). The goal is at row 3, column 11. The cliff occupies row 3, columns 1 to 10."
+    def success(self): return int(self.s) == 47
     def teacher(self):
         r, c = divmod(int(self.s), 12)
         if r == 3 and c == 0: return "move up"
@@ -208,6 +211,7 @@ class MiniGridGame(Game):
         carrying = getattr(self.env.unwrapped, "carrying", None)
         return (f"Mission: {self.obs['mission']}. You face {DIRS[d]}. Carrying: {carrying.type + ' (' + carrying.color + ')' if carrying else 'nothing'}. "
                 f"In view (cells ahead / to the side): " + ("; ".join(items) if items else "nothing notable") + ".")
+    def success(self): return self.total > 0
     def _front(self):
         return self.obs["image"][3, 5]
     def teacher(self):

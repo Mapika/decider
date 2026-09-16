@@ -43,6 +43,9 @@ class Policy:
         self.m.lm.save_pretrained(path); (self.m.proc if self.vision else self.tok).save_pretrained(path)
 
 
+a_success = 5.0
+
+
 def rollout(pol, game_names, n_per_game, rng, max_t, greedy=False, seed0=0):
     envs = []
     for gi, name in enumerate(game_names):
@@ -66,6 +69,7 @@ def rollout(pol, game_names, n_per_game, rng, max_t, greedy=False, seed0=0):
             if e["done"]: continue
             _, done = e["g"].step(e["opt"]); e["k"] += 1
             sc = e["g"].score(); e["rews"][-1] += (sc - e["last"]) / REWARD_SCALE.get(e["name"], 1.0); e["last"] = sc
+            if done and e["g"].success(): e["rews"][-1] += a_success
             if done or e["k"] >= max_t: e["done"] = True
     out = [dict(name=e["name"], items=e["items"], acts=e["acts"], rews=e["rews"], logps=e["logps"], score=e["g"].score(), nopt=e["nopt"]) for e in envs]
     for e in envs: e["g"].close()
