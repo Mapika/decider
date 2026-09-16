@@ -4,7 +4,7 @@ Right padding + causal layers => pad positions never influence earlier slots, so
 mask is needed and every (B, T) bucket can be captured once and replayed.  The graph outputs
 option-letter logits for all positions [B, T, K]; slots are gathered outside.
 """
-import time, torch, torch.nn.functional as F
+import time, torch, torch._dynamo, torch.nn.functional as F
 from .model import DecisionModel, collate
 from .prompt import build, MAX_OPTIONS
 
@@ -58,7 +58,6 @@ class Engine:
             from .fp8 import convert_to_fp8
             self.cfg["fp8_layers"] = convert_to_fp8(self.core)
         if compile:
-            import torch._dynamo
             torch._dynamo.config.cache_size_limit = 128
             self._fwd_impl = torch.compile(self._fwd_eager, dynamic=False)
         else:

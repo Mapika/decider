@@ -61,8 +61,9 @@ if __name__ == "__main__":
     ap.add_argument("--tasks", default="")
     ap.add_argument("--temperature", type=float, default=1.0)
     ap.add_argument("--limit", type=int, default=0)
-    ap.add_argument("--engine", default="", help="'' (eager) | graph | compile | fp8")
+    ap.add_argument("--engine", default="eager", help="eager | graph | compile | fp8")
     a = ap.parse_args()
+    if a.engine == "eager": a.engine = ""
     _, evals = D.load_cache(a.data)
     if a.tasks:
         evals = {k: v for k, v in evals.items() if k in a.tasks.split(",")}

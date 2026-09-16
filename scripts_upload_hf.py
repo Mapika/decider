@@ -5,5 +5,6 @@ from huggingface_hub import HfApi
 src, repo = sys.argv[1], sys.argv[2]          # src = a staged release folder, e.g. runs/release/decider-2b
 api = HfApi(token=os.environ["HF_TOKEN"])
 api.create_repo(repo, exist_ok=True, repo_type="model")
-api.upload_folder(folder_path=src, repo_id=repo, repo_type="model")
+api.upload_folder(folder_path=src, repo_id=repo, repo_type="model", ignore_patterns=["**/__pycache__/**", "*.pyc"],
+                  delete_patterns=["decider/__pycache__/**", "decider/*.py", "README.md", "eval_results.json"])  # replace helper/card, drop pycache
 print("uploaded to https://huggingface.co/" + repo)
