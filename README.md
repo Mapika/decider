@@ -100,7 +100,10 @@ Zero-shot, the classifier has no game sense: with a goomba one tile ahead it sti
 "run right" at 0.85. After the short fine-tune (`decider/mario_data.py` labels states with
 the scripted policy plus random-action noise for coverage, mixed with a replay of the general
 data so the model keeps its other abilities) it reproduces the teacher exactly, reading only the
-text, at 4.4 ms per decision. Videos: `media/mario_zeroshot.gif`, `media/mario_finetuned.gif`
+text, at 4.4 ms per decision. On seven levels never used for training (1-4, 2-2, 2-3, 3-2, 4-2, 7-1,
+8-1) it matches the teacher's distance within a few pixels on six and beats it on 2-2, so it learned
+the state-to-action mapping rather than a trajectory; its ceiling is the teacher's rules
+(`--level`, `--noop_start` to desync the deterministic emulator). Videos: `media/mario_zeroshot.gif`, `media/mario_finetuned.gif`
 (`media/mario_finetuned.mp4`).
 
 ![zero-shot](media/mario_zeroshot.gif) ![fine-tuned](media/mario_finetuned.gif)

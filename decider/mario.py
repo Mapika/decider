@@ -110,8 +110,11 @@ def main():
     ap.add_argument("--every", type=int, default=4, help="frames per decision")
     ap.add_argument("--max_steps", type=int, default=3000)
     ap.add_argument("--trace", type=int, default=-1, help="print every decision once x_pos exceeds this")
+    ap.add_argument("--level", default="1-1", help="world-stage, e.g. 1-1, 2-2, 8-1")
+    ap.add_argument("--noop_start", type=int, default=0, help="random no-op frames at episode start (desyncs the deterministic emulator)")
     a = ap.parse_args()
-    env = JoypadSpace(gym_super_mario_bros.make("SuperMarioBros-1-1-v0"), SIMPLE_MOVEMENT)
+    env = JoypadSpace(gym_super_mario_bros.make(f"SuperMarioBros-{a.level}-v0"), SIMPLE_MOVEMENT)
+    import random as _r; _rng = _r.Random(0)
     dec = None
     if a.policy == "model":
         from .infer import Decider
@@ -121,6 +124,9 @@ def main():
     frames = []; results = []
     for ep in range(a.episodes):
         obs = env.reset(); ram = env.unwrapped.ram; info = {"x_pos": 40}
+        for _ in range(_rng.randint(0, a.noop_start)):
+            obs, _, _, info = env.step(0)
+        ram = env.unwrapped.ram
         done = False; steps = 0; t_dec = []; last_text = ""; last_out = None; action_name = "run right"; hold_until = 0; release_until = 0
         while not done and steps < a.max_steps:
             if steps % a.every == 0 and steps >= release_until:
@@ -148,7 +154,7 @@ def main():
         results.append(info["x_pos"])
         print(f"episode {ep}: x_pos={info['x_pos']} steps={steps} flag={info.get('flag_get')} life={info.get('life')}" +
               (f"  decision p50 {np.median(t_dec)*1000:.1f} ms" if t_dec else ""), flush=True)
-    print(f"policy={a.policy}: mean distance {np.mean(results):.0f} px over {a.episodes} episodes (level 1-1 is ~3200 px)")
+    print(f"policy={a.policy} level={a.level}: mean distance {np.mean(results):.0f} px over {a.episodes} episodes")
     if a.video and frames:
         import imageio
         imageio.mimwrite(a.video, frames, fps=30, quality=7); print("video:", a.video, len(frames), "frames")
