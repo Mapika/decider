@@ -204,18 +204,18 @@ the 80% most confident decisions.
 
 ## Speed
 
-One NVIDIA GH200, bf16, plain PyTorch eager mode (no CUDA graphs, no
-`causal_conv1d` kernel). Support-ticket contexts averaging 226 tokens with 3
-typed questions each:
+One NVIDIA GH200, bf16. `decider.infer.Decider` uses shape-bucketed CUDA
+graphs (`decider/engine.py`); the micro-batching server is `decider/serve.py`
+in the GitHub repo. Support-ticket contexts of ~230 tokens with 3 to 5 typed
+questions each:
 
-| batch | p50 latency | decisions / s |
+| setting | p50 latency | throughput |
 |---|---|---|
-| 1 | 49 ms | 61 |
-| 8 | 49 ms | 486 |
-| 32 | 115 ms | 837 |
-
-Single-request latency is launch-bound (an 83-token context takes the same
-50 ms), so CUDA graphs or a compiled runtime would cut it substantially.
+| single request, eager PyTorch | 49 ms | |
+| single request, CUDA-graph engine | 6.6 ms | |
+| batch of 32, in-process | 115 ms | ~840 decisions/s |
+| HTTP server, 1 client | 10 ms | 97 req/s |
+| HTTP server, 64 clients | 231 ms | 263 req/s, 1314 decisions/s |
 
 ## Limitations
 

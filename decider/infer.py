@@ -24,8 +24,16 @@ class Example:
 
 
 class Decider:
-    def __init__(self, path, device="cuda", dtype=torch.bfloat16, temperature=1.0, abstain_below=0.0):
-        self.m = DecisionModel(path, dtype=dtype, grad_ckpt=False).to(device).eval()
+    """use_graphs=True (default on CUDA) routes scoring through decider.engine.Engine: shape-bucketed
+    CUDA graphs, ~7x lower single-request latency than eager. Set False for CPU or debugging."""
+    def __init__(self, path, device="cuda", dtype=torch.bfloat16, temperature=1.0, abstain_below=0.0, use_graphs=None):
+        if use_graphs is None:
+            use_graphs = str(device).startswith("cuda")
+        if use_graphs:
+            from .engine import Engine
+            self.eng = Engine(path, device=device, dtype=dtype); self.m = self.eng.m
+        else:
+            self.eng = None; self.m = DecisionModel(path, dtype=dtype, grad_ckpt=False).to(device).eval()
         self.dev = device; self.T = temperature; self.abstain_below = abstain_below
 
     @torch.no_grad()
@@ -40,10 +48,13 @@ class Decider:
             def shuffle(self, x): pass
             def sample(self, xs, k): return xs[:k]
         items = [build(e, self.m.tok, _NoShuffle(), max_ctx_tokens=max_ctx_tokens) for e in exs]
-        b = collate(items, self.m.tok.pad_token_id)
-        logits = self.m.slot_logits(b["input_ids"].to(self.dev), b["attention_mask"].to(self.dev), b["slot_idx"].to(self.dev),
-                                    b["slot_batch"].to(self.dev), b["nopts"].to(self.dev))
-        probs = torch.softmax(logits / self.T, -1).cpu()
+        if self.eng is not None:
+            probs = torch.cat(self.eng.score_items(items, temperature=self.T))
+        else:
+            b = collate(items, self.m.tok.pad_token_id)
+            logits = self.m.slot_logits(b["input_ids"].to(self.dev), b["attention_mask"].to(self.dev), b["slot_idx"].to(self.dev),
+                                        b["slot_batch"].to(self.dev), b["nopts"].to(self.dev))
+            probs = torch.softmax(logits / self.T, -1).cpu()
         out, k = [], 0
         for context, qs in requests:
             res = []

@@ -21,6 +21,32 @@ single GH200, starting from a modern small open base model.
   The held-out set is the important one: does calibration transfer to tasks
   the model never saw?
 
+## Serving
+
+```bash
+DECIDER_MODEL=runs/r3_v2/model .venv312/bin/uvicorn decider.serve:app --host 0.0.0.0 --port 8000
+curl -s localhost:8000/decide -H 'content-type: application/json' -d '{"context": "My card was charged twice.",
+  "schema": {"Which department?": {"type": "choice", "options": ["billing", "technical", "sales"]},
+             "Refund needed?": {"type": "bool"},
+             "Urgency?": {"type": "scale", "legend": {"0": "low", "1": "medium", "2": "high"}}}}'
+```
+Requests arriving within a few milliseconds are scored in one forward pass. `decider.infer.Decider`
+uses the same CUDA-graph engine in-process.
+
+Measured on one GH200 (support-ticket contexts, ~230 tokens, 5 typed fields per request):
+
+| | latency p50 | throughput |
+|---|---|---|
+| in-process `Decider.decide`, eager PyTorch | 49 ms | |
+| in-process `Decider.decide`, CUDA-graph engine | 6.6 ms | |
+| HTTP, 1 client | 10 ms | 97 req/s |
+| HTTP, 4 clients | 25 ms | 150 req/s |
+| HTTP, 64 clients | 231 ms | 263 req/s = 1314 decisions/s |
+
+The single-request cost was launch overhead (1742 kernels per forward, GPU busy 5 ms of 44);
+CUDA graphs remove it. Batched throughput (~90k tokens/s) is compute-bound; torch.compile
+did not help (graph breaks inside transformers).
+
 ## Layout
 ```
 decider/data.py        task registry -> Example(context, [Q(text, options, gold)])
@@ -29,7 +55,11 @@ decider/model.py       DecisionModel: hidden state at slots -> letter logits
 decider/train.py       finetune (bucketed shapes, bf16, grad-ckpt)
 decider/evaluate.py    per-task metrics, saves probs
 decider/report.py      side-by-side comparison + temperature scaling
-decider/bench_latency.py  decisions/s and latency of the one-pass interface
+decider/engine.py      Engine: shape-bucketed CUDA graphs (7x lower single-request latency than eager)
+decider/serve.py       micro-batching HTTP server (POST /decide {context, schema})
+decider/loadtest.py    closed-loop load test against the server
+decider/bench_engine.py  eager vs CUDA graph vs torch.compile on fixed shapes
+decider/bench_latency.py  decisions/s and latency of the one-pass interface (eager)
 data/tasks.pkl    cached examples (python -m decider.data)
 runs/             zs_2b, zs_4b (zero-shot baselines), r1_200k, ...
 ```

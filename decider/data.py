@@ -651,6 +651,8 @@ def _bib():
 def load_cache(path="data/tasks.pkl"):
     import pickle, sys, __main__
     __main__.Example = Example; __main__.Q = Q      # tolerate caches pickled from `python -m decider.data`
+    pkg = sys.modules[__name__.rsplit(".", 1)[0]]
+    sys.modules.setdefault("s1", pkg); sys.modules.setdefault("s1.data", sys.modules[__name__])   # caches from the old package name
     return pickle.load(open(path, "rb"))
 
 
