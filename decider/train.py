@@ -19,18 +19,33 @@ NONE_GOLD_RATE = 0.25
 from .prompt import is_abstain_option
 
 
-def none_augment(e, rng, p):
-    """With prob p, for a question with >=3 options and no abstain-style option, add one with a random wording;
-    with NONE_GOLD_RATE the gold option is removed and the abstain option becomes the answer, otherwise the gold
-    stays. Varied wording + low gold rate: the presence of such an option must not predict the answer."""
-    if p <= 0:
+_LABEL_POOL = None
+
+
+def _label_pool(rng):
+    """Option strings from many tasks, used to build clearly off-topic option lists."""
+    global _LABEL_POOL
+    if _LABEL_POOL is None:
+        _LABEL_POOL = {}
+    return _LABEL_POOL
+
+
+def none_augment(e, rng, p, pool=None):
+    """With prob p, for a question with >=3 options and no abstain-style option:
+       75%: add an abstain option (random wording), gold unchanged  -> "an abstain option present does not mean abstain"
+       25%: replace ALL options by labels drawn from other tasks + an abstain option, gold = abstain
+            -> abstain when nothing on offer fits, not when the exact label is merely missing."""
+    if p <= 0 or pool is None:
         return e
     qs = []
     for q in e.qs:
         if len(q.options) >= 3 and rng.random() < p and not any(is_abstain_option(o) for o in q.options):
             w = rng.choice(ABSTAIN_WORDINGS)
             if rng.random() < NONE_GOLD_RATE:
-                opts = [o for i, o in enumerate(q.options) if i != q.gold] + [w]; qs.append(D.Q(q.text, opts, len(opts) - 1))
+                others = [t for t in pool if t != e.task]
+                src = pool[rng.choice(others)]
+                k = min(len(q.options), len(src)); opts = rng.sample(src, k) + [w]
+                qs.append(D.Q(q.text, opts, len(opts) - 1))
             else:
                 qs.append(D.Q(q.text, list(q.options) + [w], q.gold))
         else:
@@ -38,10 +53,20 @@ def none_augment(e, rng, p):
     return D.Example(e.context, qs, e.task)
 
 
+def build_label_pool(train):
+    """task -> sorted distinct option strings (only tasks with a fixed label set of 3..60 options)."""
+    pool = {}
+    for e in train:
+        for q in e.qs:
+            if 3 <= len(q.options) <= 60:
+                pool.setdefault(e.task, set()).update(q.options)
+    return {t: sorted(v) for t, v in pool.items() if 3 <= len(v) <= 200}
+
+
 def make_items(train, tok, rng, max_ctx, none_prob=0.0):
-    items = []
+    items = []; pool = build_label_pool(train) if none_prob > 0 else None
     for i, e in enumerate(train):
-        it = build(none_augment(e, rng, none_prob), tok, rng, max_ctx_tokens=max_ctx); it["task"] = e.task; it["ex_id"] = i
+        it = build(none_augment(e, rng, none_prob, pool), tok, rng, max_ctx_tokens=max_ctx); it["task"] = e.task; it["ex_id"] = i
         items.append(it)
     return items
 
