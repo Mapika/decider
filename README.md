@@ -137,6 +137,47 @@ others held. Without the success bonus the CliffWalking policy learned to avoid 
 never finishing, a standard failure of sparse-goal RL. The first version also produced NaN
 gradients from an entropy term over masked options (0 times -inf); masked entropy fixed it.
 
+## Vision: decisions from pixels
+
+Qwen3.5-2B is a vision-language model; `decider/vision.py` uses the full model with the same
+lettered prompt and slot logits, so an image (or a game frame) goes in front of the text and all
+answers still come from one forward pass. A 256x240 game frame costs 64 visual tokens.
+Training (`decider/train_vision.py`): frames from the games and Mario labelled by the scripted
+teachers (`decider/frames_data.py`, rare actions oversampled), DAgger frames from the model's own
+play (`decider/frames_dagger.py`), multiple-choice image tasks from The Cauldron
+(`decider/data_vision.py`: A-OKVQA, AI2D, ScienceQA, IconQA, TQA, Raven, Hateful Memes; Visual7W
+and VSR held out), and a text replay. v1 started from the base VLM; v2 from the v4 text weights
+transplanted into the VLM (`decider/transplant.py`), which keeps the text skills (abstention probe
+84% vs 54% in v1).
+
+Image tasks (v2, 300 items each): A-OKVQA 85%, AI2D 93%, ScienceQA 95%, IconQA 94%, Raven 80%,
+Hateful Memes 80%; held-out Visual7W 87% and VSR 75%, ECE 0.03 to 0.05. Frame-level agreement
+with the teachers: Pong 96%, Breakout 96%, CliffWalking 100%, MiniGrid Empty 100%, Mario 77%.
+
+Playing from pixels only (no text state; `decider/games_pixels.py`, 3 episodes):
+
+| game | split | teacher (text state) | base VLM zero-shot | vision v1 | vision v2 |
+|---|---|---|---|---|---|
+| pong | train | 8.00 | -21.00 | -21.00 | 3.00 |
+| breakout | train | 22.00 | 0.00 | 0.00 | 1.00 |
+| cliffwalking | train | -13.00 | -6000.00 | -60.00 | -13.00 |
+| minigrid_empty | train | 0.96 | 0.00 | 0.96 | 0.96 |
+| freeway | held-out | 5.00 | 8.00 | 5.00 | 6.00 |
+| frozenlake | held-out | 1.00 | nan | 0.00 | 0.00 |
+| blackjack | held-out | -1.00 | nan | -0.33 | -1.00 |
+| minigrid_lavagap | held-out | 0.00 | nan | 0.00 | 0.00 |
+| minigrid_doorkey | held-out | 0.00 | nan | 0.00 | 0.00 |
+| babyai_goto | held-out | 0.25 | nan | 0.00 | 0.30 |
+| mario 1-1 (px) | train | 2023 | 898 | 315 | 315 |
+
+Frame accuracy does not equal play: v1 never launched the ball in Breakout (a rare action in the
+training frames) and lost every Pong point; oversampling and DAgger fixed CliffWalking and got Pong
+to +3 and MiniGrid Empty to teacher level from the image (the text rendering of that game never
+worked). v2 still launches the ball only once per game (after a lost life it answers "stay"),
+because the DAgger frames came from a policy that never launched. Mario from pixels dies at the
+first goomba; the frame gives less warning than the RAM-derived text. Pixel RL on Breakout and Pong
+is the next step and runs the same `games_rl.py --vision`.
+
 ## Demo: Super Mario Bros from typed decisions
 
 `decider/mario.py` drives the NES emulator (`gym-super-mario-bros`) with the model: every 4 frames the
