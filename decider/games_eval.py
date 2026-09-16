@@ -6,13 +6,13 @@ from . import games as G
 
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("model", nargs="?", default="runs/r3_v2/model"); ap.add_argument("--games", default=""); ap.add_argument("--episodes", type=int, default=5)
-    ap.add_argument("--out", default=""); ap.add_argument("--no_model", action="store_true")
+    ap.add_argument("--out", default=""); ap.add_argument("--no_model", action="store_true"); ap.add_argument("--eager", action="store_true")
     a = ap.parse_args()
     names = a.games.split(",") if a.games else list(G.GAMES)
     dec = None
     if not a.no_model:
         from .infer import Decider
-        dec = Decider(a.model)
+        dec = Decider(a.model, use_graphs=not a.eager)
     res = {}
     for n in names:
         g = G.GAMES[n](); rng = random.Random(0)

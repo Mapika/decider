@@ -26,7 +26,15 @@ class Example:
 class Decider:
     """use_graphs=True (default on CUDA) routes scoring through decider.engine.Engine: shape-bucketed
     CUDA graphs, ~7x lower single-request latency than eager. Set False for CPU or debugging."""
-    def __init__(self, path, device="cuda", dtype=torch.bfloat16, temperature=1.0, abstain_below=0.0, use_graphs=None):
+    def __init__(self, path, device="cuda", dtype=torch.bfloat16, temperature=None, abstain_below=0.0, use_graphs=None):
+        if temperature is None:                      # model folder may carry a fitted temperature (decider_config.json)
+            import json, os
+            try:
+                from huggingface_hub import hf_hub_download
+                cfg_path = os.path.join(path, "decider_config.json") if os.path.isdir(path) else hf_hub_download(path, "decider_config.json")
+                temperature = float(json.load(open(cfg_path)).get("temperature", 1.0))
+            except Exception:
+                temperature = 1.0
         if use_graphs is None:
             use_graphs = str(device).startswith("cuda")
         if use_graphs:

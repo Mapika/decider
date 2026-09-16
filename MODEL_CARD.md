@@ -17,7 +17,9 @@ schema violations. It is meant to be called from software, not chatted with.
 Base model: [Qwen/Qwen3.5-2B-Base](https://huggingface.co/Qwen/Qwen3.5-2B-Base) (1.9B parameters),
 fully fine-tuned for one epoch (942k examples, 183M tokens, 2.5 hours on one
 NVIDIA GH200) with cross-entropy, a proper scoring rule, on a mixture of 64
-public decision datasets.
+public decision datasets, then continued for one epoch on 45k situation-to-action
+examples (agent trajectories, web element choice, synthetic situations, game states)
+with a replay of the general mixture (v4).
 
 ## Usage
 
@@ -76,13 +78,16 @@ the supplied candidates rather than a fixed head.
 
 ## Training data
 
-64 public datasets, up to 20k examples each (`decider/data.py`, `decider/data2.py`):
+69 public datasets plus synthetic situations, up to 20k examples each (`decider/data.py`, `decider/data2.py`, `decider/data3.py`):
 intent detection, ticket routing, topic classification, sentiment, emotion,
 moderation (toxicity, hate, spam, jailbreak, safety), NLI, paraphrase, fact
 verification, passage relevance, reading comprehension, multiple-choice QA,
 ordinal rating scales (HelpSteer2 attributes, STS-B, hate-speech intensity,
 LIAR2 truthfulness), pairwise response preference (HelpSteer3, UltraFeedback,
 SHP, HH-RLHF) and tool selection (Glaive, ToolACE).
+v4 adds next-action choice from agent trajectories (AgentGym AgentTraj-L), web element
+choice (Mind2Web), 1.5k synthetic situations written by Qwen3.5-27B, and teacher-labelled
+states from Pong, Breakout, CliffWalking, MiniGrid and Super Mario Bros.
 Abstention augmentation: in 10% of questions with three or more options the
 gold option is removed and "none of the above" becomes the answer.
 
@@ -94,8 +99,8 @@ gold option is removed and "none of the above" becomes the answer.
 | Qwen3.5-2B-Base, zero-shot | held-out (23) | 0.642 | 0.853 | 0.460 | 0.105 | 0.242 | 0.685 |
 | Qwen3.5-4B-Base, zero-shot | in-task (64) | 0.695 | 0.768 | 0.405 | 0.090 | 0.206 | 0.742 |
 | Qwen3.5-4B-Base, zero-shot | held-out (23) | 0.711 | 0.734 | 0.390 | 0.089 | 0.169 | 0.761 |
-| **this model** | in-task (64) | 0.807 | 0.460 | 0.257 | 0.029 | 0.097 | 0.859 |
-| **this model** | held-out (23) | 0.745 | 0.634 | 0.343 | 0.075 | 0.138 | 0.802 |
+| **this model (v4)** | in-task (69) | 0.813 | 0.450 | 0.250 | 0.033 | 0.093 | 0.864 |
+| **this model (v4)** | held-out (23) | 0.748 | 0.634 | 0.345 | 0.076 | 0.137 | 0.803 |
 
 
 Per-task accuracy / ECE on the held-out datasets:
@@ -191,7 +196,8 @@ Per-task accuracy / ECE on the held-out datasets:
 | tweet_irony | 0.511 / 0.158 | 0.676 / 0.073 | 0.769 / 0.048 |
 
 
-*In-task* = test splits of the 64 training datasets. *Held-out* = 23 datasets never
+Probabilities use a temperature of 1.15 fitted on in-task data (stored in `decider_config.json`, applied by the helper).
+*In-task* = test splits of the training datasets (in-task rows for the zero-shot baselines cover the original 64). *Held-out* = 23 datasets never
 seen in training: TREC, BBC news, PAWS, SciQ, Social IQa, StrategyQA, PubMedQA,
 TruthfulQA, tweet irony, financial sentiment, ADE, MASSIVE scenario, student
 question categories, Dolly categories, CR reviews, Financial PhraseBank,

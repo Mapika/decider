@@ -73,6 +73,45 @@ HTTP server with the FP8 engine (default), same request mix, closed-loop clients
 Startup captures 72 (batch, length) shapes, about 8 minutes with compile + FP8; set
 `DECIDER_COMPILE=0` for a 30 s start at eager speed.
 
+## v4: situation-to-action data and multiple games
+
+The v3 model had no "read a situation, pick the safe action" data, which is why it ran into the first
+goomba zero-shot. v4 continues training from v3 on 45k such examples plus a 2x replay of the general
+mixture (`decider/data3.py`, `decider/build_v4.py`; one epoch, 35 min):
+
+* **AgentTraj-L** (AgentGym): ALFWorld, BabyAI, WebShop, ScienceWorld trajectories -> next action among candidates (20k)
+* **Mind2Web**: which page element the next operation targets, among candidates (5.9k)
+* **synthetic situations** from a local Qwen3.5-27B teacher (`decider/synth_gen.py`): 32 domains, 3-6 options, best action, danger flag (1.5k)
+* **teacher-labelled game states** from the four training games below (12k) and Mario (6k)
+
+On the 92-task set (T=1.15 fitted on in-task data, applied by default via `decider_config.json`):
+in-task acc 0.813 / ECE 0.033 (69 tasks), held-out acc 0.748 / ECE 0.076 (23 tasks),
+i.e. the same as v3 on the shared tasks, plus AgentTraj next-action 92%, Mind2Web 81%, synthetic 76%.
+
+### Ten games behind one interface
+
+`decider/games.py` renders each game's state as text and provides a scripted teacher; `decider/games_eval.py`
+plays every game with the model, the teacher, and random. Four games contribute training data
+(Pong, Breakout, CliffWalking, MiniGrid Empty); six are never trained on. Three episodes each:
+
+| game | split | random | teacher | zero-shot-r3 | v4-r7 |
+|---|---|---|---|---|---|
+| pong | train | -20.00 | 8.00 | -21.00 | 8.00 |
+| freeway | held-out | 0.00 | 5.00 | 2.00 | 6.00 |
+| breakout | train | 1.33 | 22.00 | 7.00 | 22.00 |
+| frozenlake | held-out | 0.00 | 1.00 | 0.00 | 0.00 |
+| cliffwalking | train | -720.00 | -13.00 | -60.00 | -13.00 |
+| blackjack | held-out | -1.00 | -1.00 | -1.00 | -1.00 |
+| minigrid_empty | train | 0.00 | 0.96 | 0.00 | 0.00 |
+| minigrid_lavagap | held-out | 0.00 | 0.00 | 0.00 | 0.00 |
+| minigrid_doorkey | held-out | 0.00 | 0.00 | 0.00 | 0.00 |
+| babyai_goto | held-out | 0.20 | 0.25 | 0.00 | 0.00 |
+
+Atari and toy-text games reach teacher level from text alone; Freeway, never trained on, transfers
+(and beats its teacher). The grid worlds fail for everyone including the teachers: the egocentric
+7x7 view rendered as text is a poor state description and needs a map-based rendering before it
+measures the model. Blackjack with three seeded hands is uninformative.
+
 ## Demo: Super Mario Bros from typed decisions
 
 `decider/mario.py` drives the NES emulator (`gym-super-mario-bros`) with the model: every 4 frames the
