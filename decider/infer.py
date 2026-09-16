@@ -20,7 +20,7 @@ class Q:
 
 @dataclass
 class Example:
-    context: str; qs: list; task: str = "infer"
+    context: str; qs: list; task: str = "infer"; image: bytes = None
 
 
 class Decider:

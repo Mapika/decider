@@ -27,6 +27,7 @@ class Example:
     context: str
     qs: list               # list[Q]
     task: str
+    image: bytes = None    # optional PNG bytes (vision tasks); use getattr(e, "image", None) for old caches
 
 
 TASKS = {}     # name -> dict(loader=fn, heldout=bool)
