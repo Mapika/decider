@@ -95,7 +95,7 @@ def main():
     log("[args]", json.dumps(vars(a)))
     torch.manual_seed(a.seed); rng = random.Random(a.seed)
 
-    train, evals = pickle.load(open(a.data, "rb"))
+    train, evals = D.load_cache(a.data)
     if a.train_cap:
         rng.shuffle(train); train = train[:a.train_cap]
     evals_small = {k: v[:a.eval_limit] for k, v in evals.items()}

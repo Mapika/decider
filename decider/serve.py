@@ -12,6 +12,8 @@ from .infer import Decider, Example, Q
 MODEL = os.environ.get("DECIDER_MODEL", "runs/r3_v2/model")
 MAX_BATCH = int(os.environ.get("DECIDER_MAX_BATCH", "32"))
 MAX_WAIT_MS = float(os.environ.get("DECIDER_MAX_WAIT_MS", "8"))
+COMPILE = os.environ.get("DECIDER_COMPILE", "1") == "1"
+FP8 = os.environ.get("DECIDER_FP8", "0") == "1"
 app = FastAPI(title="decider")
 eng = None; queue = None; stats = dict(requests=0, batches=0, decisions=0, batch_hist={})
 
@@ -89,7 +91,7 @@ async def batcher():
 @app.on_event("startup")
 async def _start():
     global eng, queue
-    eng = Engine(MODEL)
+    eng = Engine(MODEL, compile=COMPILE, fp8=FP8, conv_patch=COMPILE); print("[serve] engine", eng.cfg, flush=True)
     shapes = [(B, T) for B in (1, 2, 4, 8, 16, 32) for T in T_BUCKETS if T <= eng.max_ctx + 256]
     if MAX_BATCH > 32: shapes += [(64, T) for T in T_BUCKETS if T <= 512]
     t = eng.warmup(shapes); print(f"[serve] captured {len(shapes)} graphs in {t:.0f}s", flush=True)

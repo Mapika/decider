@@ -9,7 +9,8 @@ from . import data2  # noqa: F401  (registers v2 tasks)
 
 
 @torch.no_grad()
-def run_eval(model, evals, bs=32, max_ctx=1536, temperature=1.0, log=print):
+def run_eval(model, evals, bs=32, max_ctx=1536, temperature=1.0, log=print, engine=None):
+    """engine: optional decider.engine.Engine; if given, scoring goes through it instead of the eager path."""
     model.eval()
     dev = next(model.parameters()).device
     results, dump = {}, {}
@@ -23,8 +24,11 @@ def run_eval(model, evals, bs=32, max_ctx=1536, temperature=1.0, log=print):
         t0 = time.time()
         for i in range(0, len(items), bs):
             b = collate(items[i:i + bs], model.tok.pad_token_id)
-            logits = model.slot_logits(b["input_ids"].to(dev), b["attention_mask"].to(dev), b["slot_idx"].to(dev), b["slot_batch"].to(dev), b["nopts"].to(dev))
-            p = torch.softmax(logits / temperature, -1).cpu().numpy()
+            if engine is not None:
+                p = torch.cat(engine.score_items(items[i:i + bs], temperature=temperature)).numpy()
+            else:
+                logits = model.slot_logits(b["input_ids"].to(dev), b["attention_mask"].to(dev), b["slot_idx"].to(dev), b["slot_batch"].to(dev), b["nopts"].to(dev))
+                p = torch.softmax(logits / temperature, -1).cpu().numpy()
             P.append(np.nan_to_num(p)); G.append(b["golds"].numpy()); NO.append(b["nopts"].numpy()); QI.extend(b["qidx"])
         P = np.concatenate(P); G = np.concatenate(G); NO = np.concatenate(NO); QI = np.asarray(QI)
         ok = G >= 0
@@ -57,16 +61,23 @@ if __name__ == "__main__":
     ap.add_argument("--tasks", default="")
     ap.add_argument("--temperature", type=float, default=1.0)
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--engine", default="", help="'' (eager) | graph | compile | fp8")
     a = ap.parse_args()
-    _, evals = pickle.load(open(a.data, "rb"))
+    _, evals = D.load_cache(a.data)
     if a.tasks:
         evals = {k: v for k, v in evals.items() if k in a.tasks.split(",")}
     if a.limit:
         evals = {k: v[:a.limit] for k, v in evals.items()}
-    m = DecisionModel(a.model, grad_ckpt=False).cuda()
+    eng = None
+    if a.engine:
+        from .engine import Engine
+        eng = Engine(a.model, compile=a.engine in ("compile", "fp8"), fp8=a.engine == "fp8", conv_patch=a.engine in ("compile", "fp8"))
+        m = eng.m
+    else:
+        m = DecisionModel(a.model, grad_ckpt=False).cuda()
     os.makedirs(a.out, exist_ok=True)
-    res, dump = run_eval(m, evals, bs=a.bs, temperature=a.temperature)
+    res, dump = run_eval(m, evals, bs=a.bs, temperature=a.temperature, engine=eng)
     agg = aggregate(res)
     print("[agg]", json.dumps(agg, indent=1))
-    json.dump(dict(results=res, agg=agg, model=a.model), open(f"{a.out}/eval.json", "w"), indent=1)
+    json.dump(dict(results=res, agg=agg, model=a.model, engine=a.engine), open(f"{a.out}/eval.json", "w"), indent=1)
     pickle.dump(dump, open(f"{a.out}/preds.pkl", "wb"))

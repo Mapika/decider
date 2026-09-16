@@ -64,4 +64,4 @@ data/tasks.pkl    cached examples (python -m decider.data)
 runs/             zs_2b, zs_4b (zero-shot baselines), r1_200k, ...
 ```
 Model weights: https://huggingface.co/Mapika/decider-2b (after upload).
-Setup: `uv venv --python 3.12 .venv312 && uv pip install -p .venv312/bin/python torch transformers peft accelerate datasets pillow "numpy<2" scikit-learn flash-linear-attention`.
+Setup: `uv venv --python 3.12 .venv312 && uv pip install -p .venv312/bin/python torch transformers peft accelerate datasets pillow "numpy<2" scikit-learn flash-linear-attention fastapi "uvicorn[standard]" httpx`.

@@ -19,25 +19,67 @@ def _bucket(x, buckets):
     return None
 
 
+def fused_causal_conv1d_fn(hidden_states, weight, bias=None, activation=None, **kwargs):
+    """Depthwise causal conv (kernel k) as k shifted multiply-adds: fuses under torch.compile,
+    unlike the cuDNN grouped conv fallback (which was ~11% of batched GPU time)."""
+    B, C, T = hidden_states.shape; k = weight.shape[-1]
+    x = F.pad(hidden_states.to(weight.dtype), (k - 1, 0))
+    out = x[:, :, k - 1:k - 1 + T] * weight[:, k - 1][None, :, None]
+    for j in range(k - 1):
+        out = out + x[:, :, j:j + T] * weight[:, j][None, :, None]
+    if bias is not None:
+        out = out + bias[None, :, None]
+    if activation == "silu":
+        out = F.silu(out)
+    elif activation is not None:
+        from transformers.activations import ACT2FN
+        out = ACT2FN[activation](out)
+    return out.to(hidden_states.dtype)
+
+
+def patch_conv():
+    from transformers.models.qwen3_5 import modeling_qwen3_5 as mq
+    mq.causal_conv1d_fn = fused_causal_conv1d_fn
+
+
 class Engine:
-    def __init__(self, path, device="cuda", dtype=torch.bfloat16, use_graphs=True, max_ctx_tokens=1536):
+    """compile: torch.compile the forward (needs use_cache=False; ~1.4x batched, fuses elementwise work).
+    fp8: e4m3 weights + per-token activation scaling on the big linears (Hopper tensor cores).
+    conv_patch: fusable depthwise causal conv instead of the cuDNN fallback."""
+    def __init__(self, path, device="cuda", dtype=torch.bfloat16, use_graphs=True, max_ctx_tokens=1536,
+                 compile=True, fp8=False, conv_patch=True):
+        if conv_patch:
+            patch_conv()
         self.m = DecisionModel(path, dtype=dtype, grad_ckpt=False).to(device).eval()
         self.tok = self.m.tok; self.dev = device; self.use_graphs = use_graphs; self.max_ctx = max_ctx_tokens
         self.core, self.W = self.m.lm.model, self.m.lm.lm_head.weight[self.m.letters].detach().clone()
+        self.cfg = dict(compile=compile, fp8=fp8, conv_patch=conv_patch, graphs=use_graphs)
+        if fp8:
+            from .fp8 import convert_to_fp8
+            self.cfg["fp8_layers"] = convert_to_fp8(self.core)
+        if compile:
+            import torch._dynamo
+            torch._dynamo.config.cache_size_limit = 128
+            self._fwd_impl = torch.compile(self._fwd_eager, dynamic=False)
+        else:
+            self._fwd_impl = self._fwd_eager
         self.graphs = {}                       # (B, T) -> (static_ids, static_out, graph)
         self.pool = torch.cuda.graph_pool_handle() if use_graphs else None
         self.stats = dict(graph_captures=0, forwards=0)
 
+    def _fwd_eager(self, ids):
+        h = self.core(input_ids=ids, use_cache=False).last_hidden_state
+        return F.linear(h, self.W).float()                          # [B, T, K]
+
     @torch.no_grad()
     def _fwd(self, ids):
-        h = self.core(input_ids=ids).last_hidden_state
-        return F.linear(h, self.W).float()                          # [B, T, K]
+        return self._fwd_impl(ids)
 
     def _capture(self, B, T):
         s_ids = torch.full((B, T), self.tok.pad_token_id, dtype=torch.long, device=self.dev)
         st = torch.cuda.Stream(); st.wait_stream(torch.cuda.current_stream())
         with torch.cuda.stream(st):
-            for _ in range(2): self._fwd(s_ids)                     # warm-up: triton autotune etc.
+            for _ in range(3): self._fwd(s_ids)                     # warm-up: compile / triton autotune
         torch.cuda.current_stream().wait_stream(st)
         g = torch.cuda.CUDAGraph()
         with torch.cuda.graph(g, pool=self.pool):
@@ -89,8 +131,9 @@ if __name__ == "__main__":
     from . import data as D
     from .infer import Decider
     path = sys.argv[1] if len(sys.argv) > 1 else "runs/r3_v2/model"
+    cfg = dict(compile="nocompile" not in sys.argv[2:], fp8="fp8" in sys.argv[2:], conv_patch="noconv" not in sys.argv[2:])
     _, evals = D.load_cache("data/tasks.pkl")
-    eng = Engine(path)
+    eng = Engine(path, **cfg); print("engine cfg", eng.cfg)
     rng = random.Random(0)
     exs = evals["support_tickets"][:64] + evals["clinc_oos"][:64] + evals["race"][:32]
     items = [build(e, eng.tok, rng, max_ctx_tokens=1536) for e in exs]
