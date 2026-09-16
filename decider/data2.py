@@ -429,6 +429,11 @@ def _xsc():
                     lambda r: int(r["answer_right_ending"]) - 1, "Which sentence is the right ending of the story?", "xstory_cloze", EVAL_CAP)
 
 
+@task("mario", heldout=False)
+def _mario():
+    return [], []       # built by decider.mario_data
+
+
 @task("abstain_probe", heldout=True)
 def _abstain():
     return [], []       # filled by build_v2 from held-out eval sets

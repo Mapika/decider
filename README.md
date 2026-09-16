@@ -44,8 +44,66 @@ Measured on one GH200 (support-ticket contexts, ~230 tokens, 5 typed fields per 
 | HTTP, 64 clients | 231 ms | 263 req/s = 1314 decisions/s |
 
 The single-request cost was launch overhead (1742 kernels per forward, GPU busy 5 ms of 44);
-CUDA graphs remove it. Batched throughput (~90k tokens/s) is compute-bound; torch.compile
-did not help (graph breaks inside transformers).
+CUDA graphs remove it. Batched time was half elementwise kernels, a third matmul and 11% a
+cuDNN depthwise-conv fallback; `torch.compile` (with `use_cache=False`, which avoids the
+graph breaks) plus a fusable conv fixes the first and last, FP8 (`decider/fp8.py`,
+e4m3 weights with per-token activation scales on the Hopper tensor cores) the matmuls.
+
+Engine configurations, same GH200, in-process (`decider/engine.py`):
+
+| engine | single request (228 tok, 3 q) | batch 32 | decisions/s at batch 32 |
+|---|---|---|---|
+| eager | 49 ms | 117 ms | 837 |
+| CUDA graphs | 7.3 ms | 117 ms | 817 |
+| + compile + fused conv (default) | 4.0 ms | 70 ms | 1367 |
+| + FP8 linears (server default) | 4.1 ms | 58 ms | 1666 |
+
+Accuracy is unchanged across all four (18-task check, 400 examples each: in-task accuracy
+0.833 to 0.836, held-out ECE 0.070 to 0.072; see `runs/engcmp`).
+
+HTTP server with the FP8 engine (default), same request mix, closed-loop clients:
+
+| clients | req/s | decisions/s | p50 | p99 |
+|---|---|---|---|---|
+| 1 | 134 | 669 | 6.8 ms | 7.9 ms |
+| 4 | 259 | 1293 | 15.5 ms | 17.5 ms |
+| 16 | 334 | 1672 | 47.5 ms | 70.9 ms |
+| 64 | 431 | 2152 | 126 ms | 267 ms |
+
+Startup captures 72 (batch, length) shapes, about 8 minutes with compile + FP8; set
+`DECIDER_COMPILE=0` for a 30 s start at eager speed.
+
+## Demo: Super Mario Bros from typed decisions
+
+`decider/mario.py` drives the NES emulator (`gym-super-mario-bros`) with the model: every 4 frames the
+emulator RAM is rendered as a short text state (ground, gaps, pipes, enemies ahead), the model answers
+one choice field ("What should Mario do right now?": run right / jump right / long jump / jump up /
+step left / wait) plus a bool ("Is Mario in immediate danger?"), and the action is held for the next
+frames. Decisions take ~4 ms, far below the 67 ms of 4 frames.
+
+```bash
+uv pip install -p .venv312/bin/python gym-super-mario-bros==7.4.0 nes-py "gym==0.23.1" imageio imageio-ffmpeg
+.venv312/bin/python -m decider.mario runs/r3_v2/model --episodes 3 --video mario.mp4
+.venv312/bin/python -m decider.mario --policy heuristic     # scripted baseline on the same state text
+```
+
+Results on World 1-1 (3200 px long, deterministic emulator, 3 episodes each):
+
+| policy | distance |
+|---|---|
+| button spam (right + jump) | 698 px |
+| decider-2b zero-shot | 315 px (runs into the first goomba; danger field 0.07) |
+| scripted teacher on the same state text | 2023 px |
+| decider-2b fine-tuned on 6k teacher-labelled states (2 epochs, 5 min) | 2023 px |
+
+Zero-shot, the classifier has no game sense: with a goomba one tile ahead it still says
+"run right" at 0.85. After the short fine-tune (`decider/mario_data.py` labels states with
+the scripted policy plus random-action noise for coverage, mixed with a replay of the general
+data so the model keeps its other abilities) it reproduces the teacher exactly, reading only the
+text, at 4.4 ms per decision. Videos: `media/mario_zeroshot.gif`, `media/mario_finetuned.gif`
+(`media/mario_finetuned.mp4`).
+
+![zero-shot](media/mario_zeroshot.gif) ![fine-tuned](media/mario_finetuned.gif)
 
 ## Layout
 ```

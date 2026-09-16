@@ -13,7 +13,7 @@ MODEL = os.environ.get("DECIDER_MODEL", "runs/r3_v2/model")
 MAX_BATCH = int(os.environ.get("DECIDER_MAX_BATCH", "32"))
 MAX_WAIT_MS = float(os.environ.get("DECIDER_MAX_WAIT_MS", "8"))
 COMPILE = os.environ.get("DECIDER_COMPILE", "1") == "1"
-FP8 = os.environ.get("DECIDER_FP8", "0") == "1"
+FP8 = os.environ.get("DECIDER_FP8", "1") == "1"
 app = FastAPI(title="decider")
 eng = None; queue = None; stats = dict(requests=0, batches=0, decisions=0, batch_hist={})
 

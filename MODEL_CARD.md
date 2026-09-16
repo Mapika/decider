@@ -212,10 +212,14 @@ questions each:
 | setting | p50 latency | throughput |
 |---|---|---|
 | single request, eager PyTorch | 49 ms | |
-| single request, CUDA-graph engine | 6.6 ms | |
-| batch of 32, in-process | 115 ms | ~840 decisions/s |
-| HTTP server, 1 client | 10 ms | 97 req/s |
-| HTTP server, 64 clients | 231 ms | 263 req/s, 1314 decisions/s |
+| single request, CUDA graphs + torch.compile (helper default) | 4.0 ms | |
+| batch of 32, in-process, bf16 | 70 ms | ~1370 decisions/s |
+| batch of 32, in-process, FP8 linears | 58 ms | ~1670 decisions/s |
+| HTTP server (FP8), 1 client | 6.8 ms | 134 req/s |
+| HTTP server (FP8), 64 clients | 126 ms | 431 req/s, 2152 decisions/s |
+
+FP8 (e4m3 weights, per-token activation scales) changes accuracy and calibration by
+less than the evaluation noise (18-task check: accuracy 0.833 vs 0.835, ECE equal).
 
 ## Limitations
 
