@@ -1,5 +1,9 @@
 # decider — one-pass typed decisions with calibrated probabilities
 
+![the v4 model playing ten games from text state descriptions, plus Mario with the RL checkpoint](media/montage.gif)
+
+*The v4 model playing every game in `decider/games.py` from text state descriptions (one typed decision per step, ~4 ms each), plus Super Mario Bros with the RL checkpoint. Built by `decider/montage.py`.*
+
 Goal: reproduce the shape of TypeSafe AI's *Jev* (typed decisions with calibrated
 probabilities, all fields from one forward pass, no token generation) on a
 single GH200, starting from a modern small open base model.

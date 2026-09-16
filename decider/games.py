@@ -5,6 +5,7 @@ import random, numpy as np
 import gymnasium as gym
 
 GAMES = {}
+RENDER = False          # set True to create envs with render_mode="rgb_array" (frames via .frame())
 
 
 def game(name, train=True):
@@ -14,6 +15,9 @@ def game(name, train=True):
 
 
 class Game:
+    def frame(self):
+        try: return self.env.render()
+        except Exception: return None
     """Subclass contract: reset(seed) -> None; text() -> str; options: list[str]; teacher() -> str;
     step(option) -> (reward, done); score() -> float (higher is better); intro: str; decide_every: int."""
     decide_every = 1
@@ -25,7 +29,7 @@ class Atari(Game):
     env_id = None; hold = 1
     def __init__(self):
         import ale_py; gym.register_envs(ale_py)
-        self.env = gym.make(self.env_id, obs_type="ram", frameskip=4, repeat_action_probability=0.0)
+        self.env = gym.make(self.env_id, obs_type="ram", frameskip=4, repeat_action_probability=0.0, **({"render_mode": "rgb_array"} if RENDER else {}))
     def reset(self, seed=0):
         self.ram, _ = self.env.reset(seed=seed); self.total = 0.0; self.t = 0; return None
     def _step(self, a):
@@ -106,7 +110,7 @@ class Breakout(Atari):
 class FrozenLake(Game):
     intro = "You are on a frozen lake grid (4x4). S = start, F = frozen (safe), H = hole (falling in ends the game), G = goal. The ice is not slippery here. Reach G."
     options = ["move left", "move down", "move right", "move up"]
-    def __init__(self): self.env = gym.make("FrozenLake-v1", is_slippery=False); self.max_t = 40
+    def __init__(self): self.env = gym.make("FrozenLake-v1", is_slippery=False, **({"render_mode": "rgb_array"} if RENDER else {})); self.max_t = 40
     def reset(self, seed=0):
         self.s, _ = self.env.reset(seed=seed); self.desc = ["".join(ch.decode() for ch in row) for row in self.env.unwrapped.desc]; self.total = 0; self.t = 0
     def text(self):
@@ -136,7 +140,7 @@ class FrozenLake(Game):
 class CliffWalking(Game):
     intro = "You walk on a 4x12 grid from the bottom-left start to the bottom-right goal. The bottom row between them is a cliff: stepping on it sends you back to the start with a big penalty. Every step costs 1."
     options = ["move up", "move right", "move down", "move left"]
-    def __init__(self): self.env = gym.make("CliffWalking-v1"); self.max_t = 60
+    def __init__(self): self.env = gym.make("CliffWalking-v1", **({"render_mode": "rgb_array"} if RENDER else {})); self.max_t = 60
     def reset(self, seed=0): self.s, _ = self.env.reset(seed=seed); self.total = 0; self.t = 0
     def text(self):
         r, c = divmod(int(self.s), 12)
@@ -156,7 +160,7 @@ class CliffWalking(Game):
 class Blackjack(Game):
     intro = "You play blackjack against a dealer. Get as close to 21 as possible without going over. An ace can count as 11 (usable) or 1. The dealer hits until reaching 17."
     options = ["hit (take another card)", "stick (stop)"]
-    def __init__(self): self.env = gym.make("Blackjack-v1"); self.max_t = 10
+    def __init__(self): self.env = gym.make("Blackjack-v1", **({"render_mode": "rgb_array"} if RENDER else {})); self.max_t = 10
     def reset(self, seed=0): self.s, _ = self.env.reset(seed=seed); self.total = 0; self.t = 0
     def text(self):
         p, d, ace = self.s
@@ -185,7 +189,7 @@ class MiniGridGame(Game):
     options = ["turn left", "turn right", "move forward", "pick up", "drop", "toggle (open door / use)"]
     def __init__(self):
         import minigrid  # noqa: registers the envs
-        self.env = gym.make(self.env_id); self.decide_every = 1
+        self.env = gym.make(self.env_id, **({"render_mode": "rgb_array"} if RENDER else {})); self.decide_every = 1
     def reset(self, seed=0):
         self.obs, _ = self.env.reset(seed=seed); self.total = 0; self.t = 0; self.done_flag = False
     def text(self):
