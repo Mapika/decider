@@ -108,6 +108,26 @@ the state-to-action mapping rather than a trajectory; its ceiling is the teacher
 
 ![zero-shot](media/mario_zeroshot.gif) ![fine-tuned](media/mario_finetuned.gif)
 
+### RL on top of imitation
+
+The softmax over action options is a policy, so `decider/mario_rl.py` trains it with PPO-clip
+directly against the emulator: 48 emulators in parallel, one batched forward per decision, reward =
+tiles gained per decision, a death penalty and a flag bonus, per-level per-step baselines, 4
+minibatch steps per iteration with a KL early stop. Warm-started from the imitation checkpoint,
+40 iterations (~100 s each) on 8 training levels; greedy evaluation on those 8 and on 7 unseen levels:
+
+| | train levels (mean px) | unseen levels (mean px) |
+|---|---|---|
+| imitation start | 766 | 774 |
+| RL, best checkpoint (iter 20) | 1017 | 1080 |
+| RL, final (iter 40) | 1072 | 780 |
+
+Individual levels moved a lot (6-1: 502 to 2812 at one checkpoint; 1-1 past the teacher's 2023 to
+2226; 3-2: 1125 to 2013), and sampled rollouts finished level 1-1, which the teacher never did.
+Plain REINFORCE at a higher learning rate collapsed the policy within 10 iterations and at a lower one
+did not move it; the clipped update with per-level baselines was what made it learn.
+GIFs: `media/mario_rl_1-1.gif`, `media/mario_rl_6-1.gif`.
+
 ## Layout
 ```
 decider/data.py        task registry -> Example(context, [Q(text, options, gold)])

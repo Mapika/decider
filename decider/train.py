@@ -6,6 +6,7 @@ from .prompt import build
 from .evaluate import run_eval, aggregate
 from . import data as D
 from . import data2  # noqa: F401  (registers v2 tasks)
+from . import data3  # noqa: F401  (registers v4 tasks)
 
 
 NONE_OPT = "none of the above"
@@ -140,6 +141,8 @@ def main():
                     el = time.time() - t0; now = time.time(); tps = tok_acc / (now - t_last)
                     log(f"[train] step {step}/{total} ep {ep} ce {ce_acc/n_acc:.4f} gn {gn:.2f} lr {lr_at(step):.2e} {el/60:.1f}min eta {(total-step)*(now-t_last)/20/60:.0f}min {tps:.0f}tok/s mem {torch.cuda.max_memory_allocated()/1e9:.0f}GB")
                     ce_acc, n_acc = 0.0, 0; t_last = now; tok_acc = 0
+                if step == total:                       # save before the final eval so an eval crash cannot lose the run
+                    model.lm.save_pretrained(f"{a.out}/model"); tok.save_pretrained(f"{a.out}/model"); log("[save]", f"{a.out}/model")
                 if step % a.eval_every == 0 or step == total:
                     res, _ = run_eval(model, evals_small, log=log); agg = aggregate(res)
                     log(f"[eval-agg] step {step} " + json.dumps(agg))

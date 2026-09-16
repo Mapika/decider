@@ -54,7 +54,7 @@ def rollout(model, levels, n_envs, rng, max_frames=1500, greedy=False, noop_max=
             probs = policy_probs(model, items)
             for s, it, p in zip(due, items, probs):
                 a = int(p.argmax()) if greedy else int(torch.multinomial(p, 1))
-                s["items"].append(it); s["actions"].append(a); s["act"] = a
+                s["items"].append(it); s["actions"].append(a); s["act"] = a; s.setdefault("logps", []).append(float(torch.log(p[a] + 1e-12)))
                 s["rewards"].append(0.0)
                 if "jump" in OPTS[a]:
                     s["hold"] = s["frames"] + 16; s["release"] = s["hold"] + 4
@@ -72,7 +72,7 @@ def rollout(model, levels, n_envs, rng, max_frames=1500, greedy=False, noop_max=
                 s["rewards"][-1] -= 8.0                                 # died
             if s["frames"] >= max_frames or s["stall"] > 240: done = True
             if done: s["done"] = True; s["env"].close()
-    return [dict(level=s["level"], items=s["items"], actions=s["actions"], rewards=s["rewards"], x=s["x"], flag=s["flag"]) for s in states]
+    return [dict(level=s["level"], items=s["items"], actions=s["actions"], rewards=s["rewards"], x=s["x"], flag=s["flag"], logps=s.get("logps", [])) for s in states]
 
 
 def returns(rews, gamma):
@@ -88,7 +88,11 @@ def main():
     ap.add_argument("--out", default="runs/rl_mario")
     ap.add_argument("--iters", type=int, default=30)
     ap.add_argument("--envs", type=int, default=32)
-    ap.add_argument("--lr", type=float, default=1e-6)
+    ap.add_argument("--lr", type=float, default=2e-6)
+    ap.add_argument("--ppo_steps", type=int, default=4, help="optimizer steps per iteration (minibatches of the rollout)")
+    ap.add_argument("--clip", type=float, default=0.2)
+    ap.add_argument("--kl_stop", type=float, default=0.03)
+    ap.add_argument("--levels_per_iter", type=int, default=4)
     ap.add_argument("--gamma", type=float, default=0.97)
     ap.add_argument("--entropy", type=float, default=0.01)
     ap.add_argument("--max_tokens", type=int, default=16384)
@@ -103,40 +107,54 @@ def main():
     baseline = None; best = -1
     for it in range(1, a.iters + 1):
         t0 = time.time()
-        trajs = rollout(model, TRAIN_LEVELS, a.envs, rng)
+        lv_iter = rng.sample(TRAIN_LEVELS, a.levels_per_iter)
+        trajs = rollout(model, lv_iter, a.envs, rng)
         t_roll = time.time() - t0
-        # advantages
+        # advantages: per-level, per-step baseline (mean discounted return of the same level's rollouts at that step)
         items, acts, advs = [], [], []
-        allG = []
+        Gs = {lv: [] for lv in lv_iter}
         for tr in trajs:
-            G = returns(tr["rewards"], a.gamma); allG.extend(G)
-            for it_, ac, g in zip(tr["items"], tr["actions"], G):
-                items.append(it_); acts.append(ac); advs.append(g)
-        meanG = float(np.mean(allG)); stdG = float(np.std(allG)) + 1e-6
-        baseline = meanG if baseline is None else 0.8 * baseline + 0.2 * meanG
-        advs = [(g - baseline) / stdG for g in advs]
-        # update: REINFORCE with entropy bonus, one pass over the rollout
+            tr["G"] = returns(tr["rewards"], a.gamma); Gs[tr["level"]].append(tr["G"])
+        base = {}
+        for lv, gl in Gs.items():
+            T = max(len(g) for g in gl)
+            base[lv] = [float(np.mean([g[t] for g in gl if t < len(g)])) for t in range(T)]
+        allA = []; oldlp = []
+        for tr in trajs:
+            b = base[tr["level"]]
+            for it_, ac, g, t, lp in zip(tr["items"], tr["actions"], tr["G"], range(len(tr["G"])), tr["logps"]):
+                items.append(it_); acts.append(ac); allA.append(g - b[t]); oldlp.append(lp)
+        stdA = float(np.std(allA)) + 1e-6; advs = [x / stdA for x in allA]; meanG = float(np.mean([np.mean(tr["G"]) for tr in trajs]))
+        # update: PPO-clip over `ppo_steps` minibatches of the rollout, early stop on KL
         model.train(); order = list(range(len(items))); rng.shuffle(order)
-        tot_loss, nb, cur, cur_tok = 0.0, 0, [], 0
-        def flush(idx):
-            nonlocal tot_loss, nb
-            b = collate([items[i] for i in idx], tok.pad_token_id)
-            lg = model.slot_logits(b["input_ids"].cuda(), b["attention_mask"].cuda(), b["slot_idx"].cuda(), b["slot_batch"].cuda(), b["nopts"].cuda())[:, :NA]
-            logp = F.log_softmax(lg, -1); A = torch.tensor([advs[i] for i in idx], device="cuda"); act = torch.tensor([acts[i] for i in idx], device="cuda")
-            pg = -(A * logp.gather(1, act[:, None]).squeeze(1)).mean()
-            ent = -(logp.exp() * logp).sum(1).mean()
-            loss = (pg - a.entropy * ent) * len(idx) / len(items)
-            loss.backward(); tot_loss += pg.item() * len(idx); nb += len(idx)
-        for i in order:
-            L = len(items[i]["ids"])
-            if cur and (max(cur_tok, L) * (len(cur) + 1) > a.max_tokens):
-                flush(cur); cur, cur_tok = [], 0
-            cur.append(i); cur_tok = max(cur_tok, L)
-        if cur: flush(cur)
-        gn = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0); opt.step(); opt.zero_grad(set_to_none=True)
+        chunks = [order[i::a.ppo_steps] for i in range(a.ppo_steps)]
+        tot_loss, nb, kl_last, gn = 0.0, 0, 0.0, 0.0
+        for chunk in chunks:
+            cur, cur_tok, kls = [], 0, []
+            def flush(idx):
+                nonlocal tot_loss, nb
+                b = collate([items[i] for i in idx], tok.pad_token_id)
+                lg = model.slot_logits(b["input_ids"].cuda(), b["attention_mask"].cuda(), b["slot_idx"].cuda(), b["slot_batch"].cuda(), b["nopts"].cuda())[:, :NA]
+                logp = F.log_softmax(lg, -1); A = torch.tensor([advs[i] for i in idx], device="cuda"); act = torch.tensor([acts[i] for i in idx], device="cuda")
+                lp = logp.gather(1, act[:, None]).squeeze(1); olp = torch.tensor([oldlp[i] for i in idx], device="cuda")
+                ratio = torch.exp(lp - olp)
+                pg = -torch.min(ratio * A, ratio.clamp(1 - a.clip, 1 + a.clip) * A).mean()
+                ent = -(logp.exp() * logp).sum(1).mean()
+                loss = (pg - a.entropy * ent) * len(idx) / len(chunk)
+                loss.backward(); tot_loss += pg.item() * len(idx); nb += len(idx); kls.append(float((olp - lp).mean()))
+            for i in chunk:
+                L = len(items[i]["ids"])
+                if cur and (max(cur_tok, L) * (len(cur) + 1) > a.max_tokens):
+                    flush(cur); cur, cur_tok = [], 0
+                cur.append(i); cur_tok = max(cur_tok, L)
+            if cur: flush(cur)
+            gn = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0); opt.step(); opt.zero_grad(set_to_none=True)
+            kl_last = float(np.mean(kls)) if kls else 0.0
+            if kl_last > a.kl_stop:
+                break
         xs = [tr["x"] for tr in trajs]; flags = sum(tr["flag"] for tr in trajs)
-        per_level = {lv: int(np.mean([tr["x"] for tr in trajs if tr["level"] == lv])) for lv in TRAIN_LEVELS}
-        log(f"[rl] iter {it}: mean x {np.mean(xs):.0f} (max {max(xs)}) flags {flags}/{len(trajs)} decisions {len(items)} return {meanG:.2f} pg_loss {tot_loss/max(1,nb):.3f} gn {gn:.2f} rollout {t_roll:.0f}s total {time.time()-t0:.0f}s | {per_level}")
+        per_level = {lv: int(np.mean([tr["x"] for tr in trajs if tr["level"] == lv])) for lv in lv_iter}
+        log(f"[rl] iter {it}: mean x {np.mean(xs):.0f} (max {max(xs)}) flags {flags}/{len(trajs)} decisions {len(items)} return {meanG:.2f} pg_loss {tot_loss/max(1,nb):.3f} kl {kl_last:.4f} gn {gn:.2f} rollout {t_roll:.0f}s total {time.time()-t0:.0f}s | {per_level}")
         if it % a.eval_every == 0 or it == a.iters:
             ev = rollout(model, TRAIN_LEVELS + TEST_LEVELS, len(TRAIN_LEVELS) + len(TEST_LEVELS), random.Random(1), greedy=True, noop_max=0)
             res = {tr["level"]: int(tr["x"]) for tr in ev}; tr_mean = np.mean([res[l] for l in TRAIN_LEVELS]); te_mean = np.mean([res[l] for l in TEST_LEVELS])

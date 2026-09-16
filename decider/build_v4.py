@@ -21,3 +21,9 @@ except Exception as e:
     print("[v4] mario skipped:", e)
 print(f"[v4] total train {len(train)} (+{len(train)-n0})  eval tasks {len(evals)}")
 pickle.dump((train, evals), open("data/tasks_v4.pkl", "wb"))
+# delta set for continued training from r3: the new situation->action data + a 2x replay of general data
+import random
+new = train[n0:]; rng = random.Random(0); gen = train[:n0]; rng.shuffle(gen); replay = gen[:2 * len(new)]
+delta_evals = {k: v for k, v in evals.items() if k in data3.NEW_TASKS + ["mario", "clinc_oos", "support_tickets", "abstain_probe", "trec", "sciq", "reward_bench", "hermes_tools", "helpsteer2", "paws"]}
+pickle.dump((new + replay, delta_evals), open("data/tasks_v4_delta.pkl", "wb"))
+print(f"[v4] delta set: {len(new)} new + {len(replay)} replay = {len(new)+len(replay)}; eval tasks {len(delta_evals)}")

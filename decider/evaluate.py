@@ -6,6 +6,7 @@ from .prompt import build
 from .metrics import summarize
 from . import data as D
 from . import data2  # noqa: F401  (registers v2 tasks)
+from . import data3  # noqa: F401  (registers v4 tasks)
 
 
 @torch.no_grad()
@@ -32,7 +33,7 @@ def run_eval(model, evals, bs=32, max_ctx=1536, temperature=1.0, log=print, engi
             P.append(np.nan_to_num(p)); G.append(b["golds"].numpy()); NO.append(b["nopts"].numpy()); QI.extend(b["qidx"])
         P = np.concatenate(P); G = np.concatenate(G); NO = np.concatenate(NO); QI = np.asarray(QI)
         ok = G >= 0
-        s = summarize(P[ok], G[ok], NO[ok]); s["sec"] = round(time.time() - t0, 1); s["heldout"] = D.TASKS[tname]["heldout"]
+        s = summarize(P[ok], G[ok], NO[ok]); s["sec"] = round(time.time() - t0, 1); s["heldout"] = D.TASKS.get(tname, {}).get("heldout", False)
         # per-question breakdown for multi-question tasks
         if QI.max() > 0:
             s["per_q"] = [summarize(P[ok & (QI == k)], G[ok & (QI == k)], NO[ok & (QI == k)])["acc"] for k in range(QI.max() + 1)]
