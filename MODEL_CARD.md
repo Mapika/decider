@@ -240,6 +240,11 @@ less than the evaluation noise (18-task check: accuracy 0.833 vs 0.835, ECE equa
   raised held-out accuracy but lowered two held-out tasks: Hermes tool selection
   (0.80 to 0.74) and TruthfulQA (0.54 to 0.50).
 * Scale fields are the least trained type; expect wider distributions there.
+* The abstention augmentation used the literal option text "none of the above", and the
+  model learned that exact string as an abstain signal: offered verbatim, it abstains even on
+  clear cases. The bundled helper rewrites such an option to a neutral phrasing internally
+  ("not listed here") and maps it back, which restores correct behaviour (8/8 on a routing
+  battery). If you call the model without the helper, avoid the literal phrase.
 * One in-task dataset, `tweet_hate` (SemEval-2019 HatEval), stays near chance on its
   test split. That split is known to differ from its training split in collection
   and label definition; the number is reported as measured.

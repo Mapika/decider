@@ -23,6 +23,23 @@ class Example:
     context: str; qs: list; task: str = "infer"; image: bytes = None
 
 
+NEUTRAL_NONE = "not listed here"
+
+
+def neutralize_options(options):
+    """The training augmentation used the literal 'none of the above', and the model learned that exact string as an
+    abstain signal (it abstains even on clear cases when the string is offered). Any option that reads like it is
+    rewritten to a neutral phrasing for the model and mapped back in the output."""
+    out, back = [], {}
+    for o in options:
+        key = o.strip().lower()
+        if key.startswith("none of the above") or key in ("none of the above", "none", "n/a", "none of these"):
+            out.append(NEUTRAL_NONE); back[NEUTRAL_NONE] = o
+        else:
+            out.append(o)
+    return out, back
+
+
 class Decider:
     """use_graphs=True (default on CUDA) routes scoring through decider.engine.Engine: shape-bucketed
     CUDA graphs, ~7x lower single-request latency than eager. Set False for CPU or debugging."""
@@ -48,6 +65,7 @@ class Decider:
     def decide_batch(self, requests, max_ctx_tokens=1536):
         """requests: list of (context:str, questions:list[dict(question, options)]). One forward pass for everything."""
         exs, meta = [], []
+        requests = [(context, [dict(q, options=neutralize_options(q["options"])[0], _back=neutralize_options(q["options"])[1]) for q in qs]) for context, qs in requests]
         for context, qs in requests:
             for q in qs:
                 assert 2 <= len(q["options"]) <= MAX_OPTIONS, f"2..{MAX_OPTIONS} options required"
@@ -68,9 +86,10 @@ class Decider:
             res = []
             for q in qs:
                 p = probs[k, :len(q["options"])].tolist(); k += 1
-                j = max(range(len(p)), key=p.__getitem__)
-                res.append(dict(choice=q["options"][j] if p[j] >= self.abstain_below else None, confidence=p[j],
-                                probs={o: pi for o, pi in zip(q["options"], p)}))
+                j = max(range(len(p)), key=p.__getitem__); back = q.get("_back", {})
+                names = [back.get(o, o) for o in q["options"]]
+                res.append(dict(choice=names[j] if p[j] >= self.abstain_below else None, confidence=p[j],
+                                probs={o: pi for o, pi in zip(names, p)}))
             out.append(res)
         return out
 

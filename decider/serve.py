@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from .engine import Engine, T_BUCKETS, _bucket
 from .prompt import build
-from .infer import Decider, Example, Q
+from .infer import Decider, Example, Q, neutralize_options
 
 MODEL = os.environ.get("DECIDER_MODEL", "runs/r3_v2/model")
 MAX_BATCH = int(os.environ.get("DECIDER_MAX_BATCH", "32"))
@@ -34,6 +34,8 @@ class _NoShuffle:
 
 def _prepare(context, schema):
     qs = Decider._schema_to_questions(schema)
+    for q in qs:
+        q["options"], q["_back"] = neutralize_options(q["options"])
     ex = Example(context, [Q(q["question"], list(q["options"]), 0) for q in qs])
     it = build(ex, eng.tok, _NoShuffle(), max_ctx_tokens=eng.max_ctx)
     return qs, it
@@ -43,11 +45,12 @@ def _format(schema, qs, probs):
     o = {}
     for (qtext, spec), q, p in zip(schema.items(), qs, probs):
         p = p[:len(q["options"])].tolist(); t = spec.get("type", "choice"); j = max(range(len(p)), key=p.__getitem__)
+        back = q.get("_back", {}); names = [back.get(x, x) for x in q["options"]]
         if t == "bool":
             o[qtext] = {"noul": round(p[1], 4), "type": "noul"}
         elif t == "choice":
-            o[qtext] = {"choice": q["options"][j], "confidence": round(p[j], 4), "type": "choice",
-                        "probabilities": {k: round(v, 4) for k, v in zip(q["options"], p)}}
+            o[qtext] = {"choice": names[j], "confidence": round(p[j], 4), "type": "choice",
+                        "probabilities": {k: round(v, 4) for k, v in zip(names, p)}}
         else:
             keys = q["_keys"]; score = sum(float(k) * pi for k, pi in zip(keys, p))
             o[qtext] = {"score": round(score, 2), "confidence": round(p[j], 4), "type": "scale", "legend": q["_legend"],
