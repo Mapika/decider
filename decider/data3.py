@@ -125,4 +125,9 @@ def _games():
     return out[n_ev:], out[:n_ev]
 
 
+@task("offtopic_probe", heldout=True)
+def _offtopic():
+    return [], []       # built into data/tasks_v4.pkl: held-out tasks with an abstain option; half have off-topic option lists (abstain correct)
+
+
 NEW_TASKS = ["agenttraj", "mind2web", "synth", "games"]
