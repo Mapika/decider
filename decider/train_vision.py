@@ -1,6 +1,8 @@
 """Fine-tune the vision decision model (image + lettered prompt -> slot logits). Mixed image and text-only examples.
    python -m decider.train_vision --data data/vision_mix.pkl --out runs/v1_vision"""
-import argparse, json, math, os, pickle, random, time, numpy as np, torch, torch.nn.functional as F
+import argparse, json, math, os, pickle, random, time
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+import numpy as np, torch, torch.nn.functional as F
 from .vision import VisionDecisionModel
 from .metrics import summarize
 from . import data as D
@@ -36,6 +38,7 @@ def main():
     ap.add_argument("--epochs", type=float, default=1.0); ap.add_argument("--lr", type=float, default=1e-5); ap.add_argument("--warmup", type=int, default=100)
     ap.add_argument("--bs_img", type=int, default=16); ap.add_argument("--bs_txt", type=int, default=48); ap.add_argument("--accum", type=int, default=1)
     ap.add_argument("--eval_every", type=int, default=100000); ap.add_argument("--eval_limit", type=int, default=300); ap.add_argument("--freeze_vision", action="store_true")
+    ap.add_argument("--save_every", type=int, default=500)
     a = ap.parse_args(); os.makedirs(a.out, exist_ok=True); logf = open(f"{a.out}/train.log", "a")
     def log(*s):
         m = " ".join(str(x) for x in s); print(m, flush=True); logf.write(m + "\n"); logf.flush()
@@ -64,8 +67,8 @@ def main():
                 gn = torch.nn.utils.clip_grad_norm_(params, 1.0); opt.step(); opt.zero_grad(set_to_none=True); step += 1
                 if step % 20 == 0:
                     el = time.time() - t0; log(f"[train] step {step}/{total} ce {ce_acc/n_acc:.4f} gn {gn:.2f} lr {lr_at(step):.2e} {el/60:.1f}min eta {(total-step)*el/step/60:.0f}min mem {torch.cuda.max_memory_allocated()/1e9:.0f}GB"); ce_acc = n_acc = 0
-                if step == total:
-                    model.lm.save_pretrained(f"{a.out}/model"); model.proc.save_pretrained(f"{a.out}/model"); log("[save]", f"{a.out}/model")
+                if step == total or step % a.save_every == 0:
+                    model.lm.save_pretrained(f"{a.out}/model"); model.proc.save_pretrained(f"{a.out}/model"); log("[save]", f"{a.out}/model", f"(step {step})")
                 if step % a.eval_every == 0 or step == total:
                     res = evaluate(model, evals, limit=a.eval_limit, log=log); json.dump(res, open(f"{a.out}/eval_{step}.json", "w"), indent=1)
     log("[done]")
