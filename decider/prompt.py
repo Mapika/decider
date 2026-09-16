@@ -9,6 +9,13 @@ import random
 
 LETTERS = "ABCDEFGHIJ"
 MAX_OPTIONS = len(LETTERS)
+ABSTAIN_PREFIXES = ("none of the above", "none of these", "not listed", "no suitable", "does not apply", "cannot tell")
+ABSTAIN_EXACT = ("other", "unsure", "something else", "neither of these", "other / not covered")
+
+
+def is_abstain_option(o):
+    o = o.strip().lower()
+    return o.startswith(ABSTAIN_PREFIXES) or o in ABSTAIN_EXACT
 
 
 def build(example, tok, rng=None, max_options=MAX_OPTIONS, max_ctx_tokens=1536):
@@ -21,8 +28,10 @@ def build(example, tok, rng=None, max_options=MAX_OPTIONS, max_ctx_tokens=1536):
     for k, q in enumerate(example.qs):
         opts = list(range(len(q.options)))
         if len(opts) > max_options:
-            others = [i for i in opts if i != q.gold]
-            keep = rng.sample(others, max_options - 1) + [q.gold]
+            # always keep the gold and any abstain-style option (its mere presence must not carry information)
+            forced = {q.gold} | {i for i, o in enumerate(q.options) if is_abstain_option(o)}
+            others = [i for i in opts if i not in forced]
+            keep = rng.sample(others, max_options - len(forced)) + list(forced)
             opts = keep
         rng.shuffle(opts)
         lines = [f"\n\nQuestion{' ' + str(k + 1) if multi else ''}: {q.text}\nOptions:"]

@@ -10,20 +10,29 @@ from . import data3  # noqa: F401  (registers v4 tasks)
 
 
 NONE_OPT = "none of the above"
+ABSTAIN_WORDINGS = ["none of the above", "none of these", "not listed here", "other", "something else", "unsure",
+                    "does not apply", "no suitable option", "neither of these", "cannot tell from the text",
+                    "none of the above (out of scope)", "other / not covered"]
+NONE_GOLD_RATE = 0.25
+
+
+from .prompt import is_abstain_option
 
 
 def none_augment(e, rng, p):
-    """With prob p, for a question with >=3 options and no existing 'none' option, remove the gold
-    option and make 'none of the above' the answer (teaches abstention on absent candidates)."""
+    """With prob p, for a question with >=3 options and no abstain-style option, add one with a random wording;
+    with NONE_GOLD_RATE the gold option is removed and the abstain option becomes the answer, otherwise the gold
+    stays. Varied wording + low gold rate: the presence of such an option must not predict the answer."""
     if p <= 0:
         return e
     qs = []
     for q in e.qs:
-        if len(q.options) >= 3 and rng.random() < p and not any("none of the above" in o for o in q.options):
-            if rng.random() < 0.5:
-                opts = [o for i, o in enumerate(q.options) if i != q.gold] + [NONE_OPT]; qs.append(D.Q(q.text, opts, len(opts) - 1))
+        if len(q.options) >= 3 and rng.random() < p and not any(is_abstain_option(o) for o in q.options):
+            w = rng.choice(ABSTAIN_WORDINGS)
+            if rng.random() < NONE_GOLD_RATE:
+                opts = [o for i, o in enumerate(q.options) if i != q.gold] + [w]; qs.append(D.Q(q.text, opts, len(opts) - 1))
             else:
-                qs.append(D.Q(q.text, list(q.options) + [NONE_OPT], q.gold))
+                qs.append(D.Q(q.text, list(q.options) + [w], q.gold))
         else:
             qs.append(q)
     return D.Example(e.context, qs, e.task)
