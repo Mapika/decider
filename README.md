@@ -170,6 +170,25 @@ Playing from pixels only (no text state; `decider/games_pixels.py`, 3 episodes):
 | babyai_goto | held-out | 0.25 | nan | 0.00 | 0.30 |
 | mario 1-1 (px) | train | 2023 | 898 | 315 | 315 |
 
+### RL from pixels
+
+`games_rl.py --vision` runs the same PPO loop with the vision model as the policy (frames only).
+From the v2 model, 16 iterations on Breakout and Pong (16 environments each, 300-step rollouts,
+about 3.5 minutes per iteration), greedy evaluation every 4:
+
+| iteration | Breakout | Pong | Freeway (held-out) | MiniGrid Empty |
+|---|---|---|---|---|
+| 0 (v2 supervised) | 1 | 3 | 6 | 0.96 |
+| 4 | 19 | -9 | 7 | 0.96 |
+| 8 | 11 | 8 | 9 | 0.96 |
+| 12 | 16 | 8 | 8 | 0.96 |
+| 16 | 26 | -5 | 8 | 0.96 |
+
+Reward fixed what imitation could not: the relaunch after a lost life (the DAgger frames came
+from a policy that never launched), and by iteration 16 Breakout from pixels exceeds the
+RAM-state teacher (22). Pong moves with the same updates and is not stable across checkpoints.
+The published vision model uses the iteration-12 checkpoint (the balanced one).
+
 Frame accuracy does not equal play: v1 never launched the ball in Breakout (a rare action in the
 training frames) and lost every Pong point; oversampling and DAgger fixed CliffWalking and got Pong
 to +3 and MiniGrid Empty to teacher level from the image (the text rendering of that game never
