@@ -5,7 +5,7 @@ from . import data as D
 from . import data2, data3  # noqa
 rng = random.Random(0)
 ftr, fev = D.load_cache("data/frames.pkl"); dtr, _ = D.load_cache("data/frames_dagger.pkl"); ctr, cev = D.load_cache("data/cauldron.pkl")
-v5, v5ev = D.load_cache("data/tasks_v5_delta.pkl"); rng.shuffle(v5); replay = v5[:30000]
+v5, v5ev = D.load_cache("data/tasks_v4.pkl"); rng.shuffle(v5); replay = v5[:30000]   # clean replay (no literal-none corrective set)
 # balance rare actions in the original frames the same way
 bal = []
 for task in {e.task for e in ftr}:

@@ -88,8 +88,9 @@ SHP, HH-RLHF) and tool selection (Glaive, ToolACE).
 v4 adds next-action choice from agent trajectories (AgentGym AgentTraj-L), web element
 choice (Mind2Web), 1.5k synthetic situations written by Qwen3.5-27B, and teacher-labelled
 states from Pong, Breakout, CliffWalking, MiniGrid and Super Mario Bros.
-Abstention augmentation: in 10% of questions with three or more options the
-gold option is removed and "none of the above" becomes the answer.
+Abstention augmentation: in 10% of questions with three or more options an abstain
+option with one of twelve wordings is added; in a quarter of those the whole option list is
+replaced by labels from an unrelated task, making the abstain option correct.
 
 ## Evaluation
 
@@ -99,8 +100,8 @@ gold option is removed and "none of the above" becomes the answer.
 | Qwen3.5-2B-Base, zero-shot | held-out (23) | 0.642 | 0.853 | 0.460 | 0.105 | 0.242 | 0.685 |
 | Qwen3.5-4B-Base, zero-shot | in-task (64) | 0.695 | 0.768 | 0.405 | 0.090 | 0.206 | 0.742 |
 | Qwen3.5-4B-Base, zero-shot | held-out (23) | 0.711 | 0.734 | 0.390 | 0.089 | 0.169 | 0.761 |
-| **this model (v4)** | in-task (69) | 0.813 | 0.450 | 0.250 | 0.033 | 0.093 | 0.864 |
-| **this model (v4)** | held-out (23) | 0.748 | 0.634 | 0.345 | 0.076 | 0.137 | 0.803 |
+| **this model (v5)** | in-task (69) | 0.815 | 0.445 | 0.248 | 0.028 | 0.093 | 0.866 |
+| **this model (v5)** | held-out (24) | 0.738 | 0.678 | 0.360 | 0.084 | 0.145 | 0.793 |
 
 
 Per-task accuracy / ECE on the held-out datasets:
@@ -196,7 +197,7 @@ Per-task accuracy / ECE on the held-out datasets:
 | tweet_irony | 0.511 / 0.158 | 0.676 / 0.073 | 0.769 / 0.048 |
 
 
-Probabilities use a temperature of 1.15 fitted on in-task data (stored in `decider_config.json`, applied by the helper).
+Probabilities use a temperature of 1.05 fitted on in-task data (stored in `decider_config.json`, applied by the helper).
 *In-task* = test splits of the training datasets (in-task rows for the zero-shot baselines cover the original 64). *Held-out* = 23 datasets never
 seen in training: TREC, BBC news, PAWS, SciQ, Social IQa, StrategyQA, PubMedQA,
 TruthfulQA, tweet irony, financial sentiment, ADE, MASSIVE scenario, student
@@ -240,11 +241,12 @@ less than the evaluation noise (18-task check: accuracy 0.833 vs 0.835, ECE equa
   raised held-out accuracy but lowered two held-out tasks: Hermes tool selection
   (0.80 to 0.74) and TruthfulQA (0.54 to 0.50).
 * Scale fields are the least trained type; expect wider distributions there.
-* The abstention augmentation used the literal option text "none of the above", and the
-  model learned that exact string as an abstain signal: offered verbatim, it abstains even on
-  clear cases. The bundled helper rewrites such an option to a neutral phrasing internally
-  ("not listed here") and maps it back, which restores correct behaviour (8/8 on a routing
-  battery). If you call the model without the helper, avoid the literal phrase.
+* Abstention (v5): an option such as "none of the above", "other" or "unsure" is chosen when
+  nothing on offer fits the situation, not when the exact fine-grained label is merely absent
+  (it then takes the best available option). Trained with twelve abstain wordings and
+  off-topic option lists; on a held-out probe with off-topic option lists it scores 0.83
+  (v4: 0.68). Earlier versions (v4 and before) had learned the literal phrase as an abstain
+  signal; the bundled helper's rewrite for that is disabled for v5 via `decider_config.json`.
 * One in-task dataset, `tweet_hate` (SemEval-2019 HatEval), stays near chance on its
   test split. That split is known to differ from its training split in collection
   and label definition; the number is reported as measured.
