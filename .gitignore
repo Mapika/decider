@@ -1,7 +1,7 @@
 .venv*/
-data
-runs
-logs
+/data
+/runs
+/logs
 __pycache__/
 *.pkl
 *.egg-info/
