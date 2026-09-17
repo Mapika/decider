@@ -1,4 +1,6 @@
-"""Closed-loop load test: N concurrent clients hitting POST /decide.  python -m decider.loadtest [url] [conc,...]"""
+"""Closed-loop load test: N concurrent clients hitting POST /decide.  python -m decider.loadtest [url] [conc,...] [systemone] [packed] [state_first]
+systemone: POST /v1/systemone with the same five questions in the Jev shape (independent per-question scoring unless `packed`;
+`state_first` forces the uncached layout on a schema-first model)."""
 import asyncio, json, random, sys, time, httpx, numpy as np
 from . import data as D
 URL = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000"
@@ -8,13 +10,18 @@ SCHEMA = {"Revenue currently impacted?": {"type": "bool"}, "What business impact
           "Which queue?": {"type": "choice", "options": ["billing", "technical", "sales", "hr", "none of the above"]},
           "Priority level?": {"type": "scale", "legend": {"0": "low", "1": "medium", "2": "high"}}, "Human attention needed?": {"type": "bool"}}
 ctxs = [e.context for e in evals["support_tickets"][:400]]
+S1 = "systemone" in sys.argv; PACKED = "packed" in sys.argv; LAYOUT = "state_first" if "state_first" in sys.argv else None
+QUESTIONS = {"revenue": {"type": "noul", "instructions": "Revenue currently impacted?"}, "impact": {"type": "choice", "instructions": "What business impact?", "criteria": ["none", "degraded", "outage"]},
+             "queue": {"type": "choice", "instructions": "Which queue?", "criteria": ["billing", "technical", "sales", "hr", "none of the above"]},
+             "priority": {"type": "score", "instructions": "Priority level?", "criteria": ["low", "medium", "high"]}, "human": {"type": "noul", "instructions": "Human attention needed?"}}
 
 
 async def client(cl, n, lat, dur):
     t_end = time.monotonic() + dur
     while time.monotonic() < t_end:
         t = time.monotonic()
-        r = await cl.post(URL + "/decide", json={"context": random.choice(ctxs), "schema": SCHEMA}, timeout=60)
+        if S1: r = await cl.post(URL + "/v1/systemone", json={"state": random.choice(ctxs), "questions": QUESTIONS, "independent": not PACKED, "layout": LAYOUT}, timeout=60)
+        else: r = await cl.post(URL + "/decide", json={"context": random.choice(ctxs), "schema": SCHEMA}, timeout=60)
         r.raise_for_status(); lat.append(time.monotonic() - t)
 
 

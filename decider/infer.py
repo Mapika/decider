@@ -40,6 +40,18 @@ def neutralize_options(options):
     return out, back
 
 
+class CompiledSchema:
+    def __init__(self, d, rqs, h, index): self.d, self.rqs, self.h, self.index = d, rqs, h, index
+
+    def batch(self, states, max_state_tokens=32768):
+        from .systemone import render_state, assemble
+        probs = self.d._se.score(self.h, [render_state(s) for s in states], temperature=self.d.T, max_ctx_tokens=max_state_tokens)
+        return [{"model": self.d.name, "answers": assemble(self.rqs, self.index, [p.tolist() for p in pr])} for pr in probs]
+
+    def __call__(self, state, max_state_tokens=32768):
+        return self.batch([state], max_state_tokens)[0]
+
+
 class Decider:
     """use_graphs=True (default on CUDA) routes scoring through decider.engine.Engine: shape-bucketed
     CUDA graphs, ~7x lower single-request latency than eager. Set False for CPU or debugging."""
@@ -63,6 +75,10 @@ class Decider:
         else:
             self.eng = None; self.m = DecisionModel(path, dtype=dtype, grad_ckpt=False).to(device).eval()
         self.dev = device; self.T = temperature; self.abstain_below = abstain_below
+        self.name = "decider-" + str(cfg.get("version", "dev"))
+        self.schema_first = bool(cfg.get("schema_first", False)) and self.eng is not None      # model trained on the questions-first layout (v7+)
+        self.isolated_levels = bool(cfg.get("isolated_levels", False))      # Score levels judged one per row (v8+)
+        self._se = None; self._schemas = {}
 
     @torch.no_grad()
     def decide_batch(self, requests, max_ctx_tokens=1536):
@@ -77,7 +93,7 @@ class Decider:
         class _NoShuffle:                      # keep option order as given
             def shuffle(self, x): pass
             def sample(self, xs, k): return xs[:k]
-        items = [build(e, self.m.tok, _NoShuffle(), max_ctx_tokens=max_ctx_tokens) for e in exs]
+        items = [build(e, self.m.tok, _NoShuffle(), max_options=MAX_OPTIONS, max_ctx_tokens=max_ctx_tokens) for e in exs]
         if self.eng is not None:
             probs = torch.cat(self.eng.score_items(items, temperature=self.T))
         else:
@@ -93,12 +109,70 @@ class Decider:
                 j = max(range(len(p)), key=p.__getitem__); back = q.get("_back", {})
                 names = [back.get(o, o) for o in q["options"]]
                 res.append(dict(choice=names[j] if p[j] >= self.abstain_below else None, confidence=p[j],
-                                probs={o: pi for o, pi in zip(names, p)}))
+                                probs={o: pi for o, pi in zip(names, p)}, probs_list=p))
             out.append(res)
         return out
 
     def decide(self, context, questions, **kw):
         return self.decide_batch([(context, questions)], **kw)[0]
+
+    # ---- Jev-shaped interface (decider.systemone): state + {id: Choice | Score | Noul with criteria}
+    # ---- schema cache (v7+): the questions are run once, requests only run the state (decider.schema_engine)
+    def schema(self, questions, independent=True, isolated=None, compile=False):
+        """Compile a fixed set of Jev-shaped questions: schema(state) -> answers; schema.batch([state, ...]) -> [answers]."""
+        import json
+        from .schema_engine import SchemaEngine
+        from .systemone import render_question
+        isolated = self.isolated_levels if isolated is None else isolated
+        key = (json.dumps(questions, sort_keys=True, ensure_ascii=False), independent, isolated)
+        if key not in self._schemas:
+            if self._se is None: self._se = SchemaEngine(self.eng)
+            if len(self._schemas) >= 64:                                  # drop the oldest schema and its graphs
+                old = next(iter(self._schemas)); hid = self._schemas.pop(old)[1].id
+                for k in [k for k in self._se.graphs if k[0] == hid]: del self._se.graphs[k]
+            from .systemone import plan_rows
+            rqs = {k: render_question(v) for k, v in questions.items()}
+            rows, index = plan_rows(rqs, isolated and independent)
+            h = self._se.prepare(rows, independent=independent, compile=compile)      # compile=True: ~25 s per (batch, length) shape, 1.6x faster after
+            self._schemas[key] = (rqs, h, index)
+        return CompiledSchema(self, *self._schemas[key])
+
+    def system_one(self, state, questions, independent=True, max_state_tokens=32768, max_fwd_tokens=65536, layout=None, isolated=None):
+        layout = layout or ("schema_first" if self.schema_first else "state_first")
+        isolated = (self.isolated_levels if isolated is None else isolated) and independent
+        if layout == "schema_first" and self.eng is not None:
+            return self.schema(questions, independent, isolated)(state, max_state_tokens)
+        """independent=True scores every question in its own row (state + that question only), so adding, removing or
+        reordering questions cannot change any other answer; the state is run once and its cache forked to every
+        question (Engine.score_shared).  independent=False packs all questions behind one copy of the state in one row
+        (later questions can then see earlier question texts)."""
+        from .systemone import render_state, render_question, unique_tokens, plan_rows, assemble
+        ctx = render_state(state); rqs = {k: render_question(v) for k, v in questions.items()}
+        opts = (lambda r: neutralize_options(r["options"])[0]) if self.neutralize_none else (lambda r: list(r["options"]))
+        flat, index = plan_rows(rqs, isolated)
+        rows = [[r] for r in flat] if independent else [flat]
+        class _Keep:
+            def shuffle(self, x): pass
+            def sample(self, xs, k): return xs[:k]
+        items = [build(Example(ctx, [Q(r["question"], opts(r), 0) for r in row]), self.m.tok, _Keep(), max_options=MAX_OPTIONS,
+                       max_ctx_tokens=max_state_tokens, layout=layout) for row in rows]
+        with torch.no_grad():
+            if self.eng is not None and len(items) > 1 and layout == "state_first":
+                probs = self.eng.score_shared(items, temperature=self.T)
+            else:
+                probs = []; per = max(1, max_fwd_tokens // max(len(it["ids"]) for it in items))
+                for i in range(0, len(items), per):
+                    if self.eng is not None:
+                        probs += self.eng.score_items(items[i:i + per], temperature=self.T)
+                    else:
+                        bt = collate(items[i:i + per], self.m.tok.pad_token_id)
+                        lg = self.m.slot_logits(*[bt[k].to(self.dev) for k in ("input_ids", "attention_mask", "slot_idx", "slot_batch", "nopts")])
+                        pr = torch.softmax(lg / self.T, -1).cpu(); c = 0
+                        for it in items[i:i + per]:
+                            probs.append(pr[c:c + len(it["slots"])]); c += len(it["slots"])
+        flatp = [p.tolist() for ps in probs for p in ps]
+        return {"model": self.name, "answers": assemble(rqs, index, flatp),
+                "usage": {"input_tokens": unique_tokens(items), "output_tokens": 0}}
 
     # ---- typed schema interface: {question: {"type": "bool"} | {"type": "choice", "options": [...]}
     #                                         | {"type": "scale", "legend": {"0": "none", "1": "low", ...}}}

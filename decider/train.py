@@ -42,7 +42,7 @@ def none_augment(e, rng, p, pool=None):
         if len(q.options) >= 3 and rng.random() < p and not any(is_abstain_option(o) for o in q.options):
             w = rng.choice(ABSTAIN_WORDINGS)
             if rng.random() < NONE_GOLD_RATE:
-                others = [t for t in pool if t != e.task]
+                others = [t for t in pool if t != e.task.split('+')[0]]
                 src = pool[rng.choice(others)]
                 k = min(len(q.options), len(src)); opts = rng.sample(src, k) + [w]
                 qs.append(D.Q(q.text, opts, len(opts) - 1))
@@ -57,16 +57,19 @@ def build_label_pool(train):
     """task -> sorted distinct option strings (only tasks with a fixed label set of 3..60 options)."""
     pool = {}
     for e in train:
+        if "+" in e.task:                      # v6 re-renderings (descriptions, padding, JSON states): not a clean label set
+            continue
         for q in e.qs:
             if 3 <= len(q.options) <= 60:
                 pool.setdefault(e.task, set()).update(q.options)
     return {t: sorted(v) for t, v in pool.items() if 3 <= len(v) <= 200}
 
 
-def make_items(train, tok, rng, max_ctx, none_prob=0.0):
+def make_items(train, tok, rng, max_ctx, none_prob=0.0, max_options=10, schema_first_prob=0.0):
     items = []; pool = build_label_pool(train) if none_prob > 0 else None
     for i, e in enumerate(train):
-        it = build(none_augment(e, rng, none_prob, pool), tok, rng, max_ctx_tokens=max_ctx); it["task"] = e.task; it["ex_id"] = i
+        it = build(none_augment(e, rng, none_prob, pool), tok, rng, max_options=max_options, max_ctx_tokens=max_ctx,
+                   layout="schema_first" if rng.random() < schema_first_prob else "state_first"); it["task"] = e.task; it["ex_id"] = i
         items.append(it)
     return items
 
@@ -78,7 +81,8 @@ def batches_by_tokens(items, max_tokens, rng, bucket=64):
     from collections import defaultdict
     groups = defaultdict(list)
     for i, it in enumerate(items):
-        T = ((len(it["ids"]) + bucket - 1) // bucket) * bucket
+        n = len(it["ids"]); bk = bucket if n <= 2048 else 512 if n <= 8192 else 2048      # few distinct long shapes
+        T = ((n + bk - 1) // bk) * bk
         groups[T].append(i)
     out = []
     for T, idx in groups.items():
@@ -122,6 +126,8 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--resample_every_epoch", action="store_true")
     ap.add_argument("--none_prob", type=float, default=0.0, help="prob. of none-of-the-above augmentation per question")
+    ap.add_argument("--schema_first_prob", type=float, default=0.0, help="share of examples rendered questions-first (cacheable schema prefix)")
+    ap.add_argument("--max_options", type=int, default=10, help="options kept per question (10 = original protocol; 255 when the data set is already sub-sampled, e.g. tasks_v6_delta)")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     logf = open(f"{a.out}/train.log", "a")
@@ -137,7 +143,7 @@ def main():
     model = DecisionModel(a.model).cuda()
     tok = model.tok
     log(f"[data] train examples {len(train)}; tokenizing...")
-    t0 = time.time(); items = make_items(train, tok, rng, a.max_ctx, a.none_prob)
+    t0 = time.time(); items = make_items(train, tok, rng, a.max_ctx, a.none_prob, a.max_options, a.schema_first_prob)
     ntok = sum(len(it["ids"]) for it in items); nq = sum(len(it["slots"]) for it in items)
     log(f"[data] {len(items)} items, {nq} questions, {ntok/1e6:.1f}M tokens, tokenized in {time.time()-t0:.0f}s")
 
@@ -156,7 +162,7 @@ def main():
     t0 = time.time(); ce_acc, n_acc = 0.0, 0; t_last = t0; tok_acc = 0
     while step < total:
         if ep > 0 and a.resample_every_epoch:
-            items = make_items(train, tok, rng, a.max_ctx, a.none_prob)
+            items = make_items(train, tok, rng, a.max_ctx, a.none_prob, a.max_options, a.schema_first_prob)
         for bidx in batches_by_tokens(items, a.max_tokens, rng):
             if step >= total:
                 break

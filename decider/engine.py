@@ -10,6 +10,8 @@ from .prompt import build, MAX_OPTIONS
 
 T_BUCKETS = [64, 128, 192, 256, 320, 384, 512, 640, 768, 1024, 1280, 1536, 2048]
 B_BUCKETS = [1, 2, 4, 8, 16, 32, 64]
+GRAPH_MAX_T = 2048          # longer inputs (up to the 32k request budget) run eagerly: compute dominates there, and one graph
+LONG_STEP = 1024            # per (B, T) shape would cost a compile + capture for every new length
 
 
 def _bucket(x, buckets):
@@ -40,6 +42,23 @@ def fused_causal_conv1d_fn(hidden_states, weight, bias=None, activation=None, **
 def patch_conv():
     from transformers.models.qwen3_5 import modeling_qwen3_5 as mq
     mq.causal_conv1d_fn = fused_causal_conv1d_fn
+
+
+def read_slots(out, rows, slots, nopts, temperature, n_per_item):
+    """One gather + one softmax + one device-to-host copy for the whole batch (was: three small kernels and a sync per item).
+    out [B, T, K] logits; rows/slots/nopts: flat python lists, one entry per question; n_per_item: questions per item."""
+    dev = out.device; idx = torch.tensor([rows, slots, nopts], dtype=torch.long).to(dev, non_blocking=True)
+    lg = out[idx[0], idx[1]]                                                                  # [N, K]
+    lg = lg.masked_fill(torch.arange(lg.shape[1], device=dev)[None, :] >= idx[2][:, None], float("-inf"))
+    p = torch.softmax(lg / temperature, -1).cpu()
+    return list(torch.split(p, n_per_item))
+
+
+def fill_ids(items_ids, B, T, pad):
+    import numpy as np
+    a = np.full((B, T), pad, dtype=np.int64)
+    for b, x in enumerate(items_ids): a[b, :len(x)] = x
+    return torch.from_numpy(a)
 
 
 class Engine:
@@ -90,6 +109,9 @@ class Engine:
     def logits_all(self, ids):
         """ids: [B, T] long on device (already right-padded to a bucket). Returns [B, T, K] float."""
         B, T = ids.shape; self.stats["forwards"] += 1
+        if T > GRAPH_MAX_T:
+            self.stats["long_forwards"] = self.stats.get("long_forwards", 0) + 1
+            return self._fwd_eager(ids)
         if not self.use_graphs:
             return self._fwd(ids)
         key = (B, T)
@@ -103,20 +125,34 @@ class Engine:
     def score_items(self, items, temperature=1.0):
         """items: list of dicts from prompt.build. Returns list of [n_q, MAX_OPTIONS] prob tensors (cpu)."""
         Tmax = max(len(it["ids"]) for it in items)
-        T = _bucket(Tmax, T_BUCKETS) or Tmax; B = _bucket(len(items), B_BUCKETS) or len(items)
-        ids = torch.full((B, T), self.tok.pad_token_id, dtype=torch.long)
-        for b, it in enumerate(items):
-            ids[b, :len(it["ids"])] = torch.tensor(it["ids"])
+        T = _bucket(Tmax, T_BUCKETS) or -(-Tmax // LONG_STEP) * LONG_STEP
+        B = (_bucket(len(items), B_BUCKETS) or len(items)) if T <= GRAPH_MAX_T else len(items)
+        ids = fill_ids([it["ids"] for it in items], B, T, self.tok.pad_token_id)
         out = self.logits_all(ids.to(self.dev, non_blocking=True))
-        res = []
-        ar = torch.arange(MAX_OPTIONS, device=self.dev)
-        for b, it in enumerate(items):
-            sl = torch.tensor(it["slots"], device=self.dev)
-            lg = out[b, sl]                                            # [n_q, K]
-            nop = torch.tensor(it["nopts"], device=self.dev)
-            lg = lg.masked_fill(ar[None, :] >= nop[:, None], float("-inf"))
-            res.append(torch.softmax(lg / temperature, -1).cpu())
-        return res
+        return read_slots(out, [b for b, it in enumerate(items) for _ in it["slots"]], [s for it in items for s in it["slots"]],
+                          [n for it in items for n in it["nopts"]], temperature, [len(it["slots"]) for it in items])
+
+    @torch.no_grad()
+    def score_shared(self, items, temperature=1.0, min_prefix=192):
+        """Rows that start with the same tokens (one state, one question per row): run the shared prefix once, fork its
+        cache (attention KV + delta-net conv/recurrent states) to every row, and run only the question suffixes.
+        Same answers as score_items up to kernel round-off; cost ~ state + sum(questions) instead of n * state."""
+        ids = [it["ids"] for it in items]; n = len(ids)
+        lcp = 0; short = min(len(x) for x in ids) - 1
+        while lcp < short and all(x[lcp] == ids[0][lcp] for x in ids): lcp += 1
+        if n < 2 or lcp < min_prefix:
+            return self.score_items(items, temperature)
+        self.stats["shared_prefix_calls"] = self.stats.get("shared_prefix_calls", 0) + 1
+        pre = torch.tensor(ids[0][:lcp], device=self.dev)[None]
+        cache = self.core(input_ids=pre, use_cache=True).past_key_values
+        cache.reorder_cache(torch.zeros(n, dtype=torch.long, device=self.dev))            # fork: every row gets a copy of row 0
+        Ts = max(len(x) for x in ids) - lcp
+        suf = fill_ids([x[lcp:] for x in ids], n, Ts, self.tok.pad_token_id)
+        h = self.core(input_ids=suf.to(self.dev), past_key_values=cache, use_cache=True).last_hidden_state
+        rows = [b for b, it in enumerate(items) for _ in it["slots"]]; sl = [s - lcp for it in items for s in it["slots"]]
+        idx = torch.tensor([rows, sl], device=self.dev)
+        return read_slots(F.linear(h[idx[0], idx[1]], self.W).float()[:, None, :], list(range(len(rows))), [0] * len(rows),
+                          [n for it in items for n in it["nopts"]], temperature, [len(it["slots"]) for it in items])
 
     def warmup(self, shapes=((1, 128), (1, 256), (1, 384), (1, 512), (8, 256), (8, 512), (32, 256), (32, 512))):
         t = time.time()

@@ -19,7 +19,9 @@ fully fine-tuned for one epoch (942k examples, 183M tokens, 2.5 hours on one
 NVIDIA GH200) with cross-entropy, a proper scoring rule, on a mixture of 64
 public decision datasets, then continued for one epoch on 45k situation-to-action
 examples (agent trajectories, web element choice, synthetic situations, game states)
-with a replay of the general mixture (v4).
+with a replay of the general mixture (v4). v6 continues for one more epoch (391k examples, 173M tokens) on the input
+shapes of TypeSafe's Jev API: described options, up to 255 options, JSON states with path references, long inputs,
+and questions scored independently of each other.
 
 ## Usage
 
@@ -34,7 +36,28 @@ d.decide("My card was charged twice for the same purchase.",
 
 `decide_batch` scores many contexts, each with many questions, in one call.
 Set `abstain_below=t` to return `None` for decisions with confidence under `t`
-(route to a human). 2 to 10 options per question.
+(route to a human). 2 to 255 options per question (v6; more than 10 options use one label token per
+option, see `decider/prompt.py`).
+
+The same request shape as TypeSafe's Jev (`POST /v1/systemone`), in process or over HTTP:
+
+```python
+d.system_one({"ticket": {"messages": [{"from": "customer", "text": "I was charged twice for order A-104. Please refund the duplicate."}]},
+              "refund_policy": "Duplicate charges are eligible for a refund."},
+             {"department": {"type": "choice", "instructions": "Which team should handle this?",
+                             "criteria": {"returns": "Exchanges, refunds, wrong or damaged items",
+                                          "billing": {"what": "Charges, invoices", "not_for": "delivery"}, "other": None}},
+              "refund_requested": {"type": "noul", "instructions": "Does `ticket.messages[0].text` request a refund?"},
+              "frustration": {"type": "score", "instructions": "How frustrated is the customer?", "criteria": ["calm", "frustrated", "very frustrated"]}})
+# {"model": "decider-v6", "answers": {"department": {"type": "choice", "choice": "billing", "confidence": ..., "certainty": ..., "probabilities": {...}},
+#  "refund_requested": {"type": "noul", "noul": ...}, "frustration": {"type": "score", "score": ..., "legend": {...}, ...}}, "usage": {...}}
+```
+
+State may be a string, object or array (up to 32k tokens with the questions); `instructions` and every option
+description may be a string or any JSON value; question ids are never shown to the model. Each question is scored in
+its own row, so answers do not depend on which other questions are asked (`independent=False` packs them into one row,
+about half the latency for short states). `decider.serve` exposes the same thing as `POST /v1/systemone`; the official
+`typesafe-sdk` works against it unchanged with `TYPESAFE_BASE_URL` pointing at the server.
 
 Requirements: `torch`, `transformers>=5`, and `flash-linear-attention` (Triton
 kernels for the Qwen3.5 linear-attention layers; the model runs without it but
@@ -73,6 +96,9 @@ the supplied candidates rather than a fixed head.
 
 * **bool** (`noul`): probability of "yes".
 * **choice**: argmax option, its probability, and the full distribution.
+* Jev names: `noul` (bool), `choice` with `criteria` {name: description | JSON | null}, `score` with `criteria`
+  [level descriptions]. Choice and score answers carry `confidence` (top probability, the calibrated number) and
+  `certainty` (1 - normalised entropy of the distribution).
 * **scale**: an ordered legend (e.g. 0: none ... 3: high); returns the expected
   level (`score`), the probability of the most likely level, and the distribution.
 
@@ -102,6 +128,8 @@ replaced by labels from an unrelated task, making the abstain option correct.
 | Qwen3.5-4B-Base, zero-shot | held-out (23) | 0.711 | 0.734 | 0.390 | 0.089 | 0.169 | 0.761 |
 | **this model (v5)** | in-task (69) | 0.815 | 0.445 | 0.248 | 0.028 | 0.093 | 0.866 |
 | **this model (v5)** | held-out (24) | 0.738 | 0.678 | 0.360 | 0.084 | 0.145 | 0.793 |
+| **this model (v6, T=1.15)** | in-task (69) | 0.813 | 0.450 | 0.251 | 0.032 | 0.094 | 0.864 |
+| **this model (v6, T=1.15)** | held-out (24) | 0.736 | 0.664 | 0.358 | 0.084 | 0.145 | 0.793 |
 
 
 Per-task accuracy / ECE on the held-out datasets:
@@ -234,7 +262,16 @@ less than the evaluation noise (18-task check: accuracy 0.833 vs 0.835, ECE equa
 * Calibration is measured on public datasets; verify it on your own labelled
   data before using confidence for routing.
 * No reasoning: this is a fast pattern-matching decision model, not a chat model.
-* Maximum context 1536 tokens as trained.
+* Inputs up to 32k tokens are accepted (v6 trained to 16k, probed to 30k). Plain long reading works (QuALITY, whole
+  5-8k-token article: 0.71, against 0.51 clipped). Picking one record out of a long JSON array by position is the weak
+  case: 0.70 with 4 records, 0.64 with 16, 0.49 with 64 (single-record ceiling 0.72); address records by key where
+  possible. The helper writes `"_index": i` into arrays of 8 or more elements, which recovers part of it (0.57 at 64).
+* Full label sets (v6): 0.84 on held-out HWU64 (64 options), 0.76 TREC-fine (50), 0.87 DBpedia level 3 (219), 0.70 DBpedia
+  level 2 (70, ECE 0.14: the least calibrated of these). In-task CLINC 151-way 0.88 against 0.98 with 10 sampled options.
+* Questions packed into one row (`independent=False`, or `decide` with several questions) still see earlier question
+  texts: reversing their order changes up to 12% of answers on multi-question tasks. The default `system_one` path
+  scores each question alone and has no such dependence.
+* Held-out text game Freeway fell from 6 (v4) to 3 (v5) to 0 (v6) over three episodes; trained games are unchanged.
 * Knowledge-heavy multiple choice (MMLU, MedQA, ARC) improves only modestly over the
   base model; fine-tuning on decisions does not add world knowledge.
 * Compared with a run on the 47-dataset v1 mixture, adding the v2 datasets
@@ -247,6 +284,12 @@ less than the evaluation noise (18-task check: accuracy 0.833 vs 0.835, ECE equa
   off-topic option lists; on a held-out probe with off-topic option lists it scores 0.83
   (v4: 0.68). Earlier versions (v4 and before) had learned the literal phrase as an abstain
   signal; the bundled helper's rewrite for that is disabled for v5 via `decider_config.json`.
+* Catch-all options next to generic ones: with options such as `check_balance / approve_transfer / support / other`, a plain
+  support complaint is sent to `other` at 0.97-1.00 (v5 and v6 alike; without `other` it goes to `support` at 0.99). The
+  abstention training covers "nothing on offer fits"; it does not cover "the fitting option is generic". Free-form yes/no
+  questions about properties the training tasks never asked ("Is this a message a customer would send to their bank?")
+  are also unreliable. Both come from the narrow range of question wordings in the training data (public datasets plus
+  1.5k synthetic situations), which is the largest remaining difference from a general-purpose decision model.
 * One in-task dataset, `tweet_hate` (SemEval-2019 HatEval), stays near chance on its
   test split. That split is known to differ from its training split in collection
   and label definition; the number is reported as measured.

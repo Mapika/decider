@@ -10,7 +10,7 @@ from . import data3  # noqa: F401  (registers v4 tasks)
 
 
 @torch.no_grad()
-def run_eval(model, evals, bs=32, max_ctx=1536, temperature=1.0, log=print, engine=None):
+def run_eval(model, evals, bs=32, max_ctx=1536, temperature=1.0, log=print, engine=None, max_options=None, max_tokens=24576, layout="state_first"):
     """engine: optional decider.engine.Engine; if given, scoring goes through it instead of the eager path."""
     model.eval()
     dev = next(model.parameters()).device
@@ -19,19 +19,28 @@ def run_eval(model, evals, bs=32, max_ctx=1536, temperature=1.0, log=print, engi
         if not exs:
             continue
         rng = random.Random(1234)
-        items = [dict(build(e, model.tok, rng, max_ctx_tokens=max_ctx), task=tname, ex_id=i) for i, e in enumerate(exs)]
+        kw = dict(max_options=max_options) if max_options else {}
+        kw["layout"] = layout
+        items = [dict(build(e, model.tok, rng, max_ctx_tokens=max_ctx, **kw), task=tname, ex_id=i) for i, e in enumerate(exs)]
         items.sort(key=lambda it: len(it["ids"]))
         P, G, NO, QI = [], [], [], []
         t0 = time.time()
-        for i in range(0, len(items), bs):
-            b = collate(items[i:i + bs], model.tok.pad_token_id)
+        chunks, i = [], 0                                  # batches of <= bs rows and <= max_tokens padded tokens (long wide prompts)
+        while i < len(items):
+            j = i + 1
+            while j < len(items) and j - i < bs and (j - i + 1) * len(items[j]["ids"]) <= max_tokens:
+                j += 1
+            chunks.append((i, j)); i = j
+        for i, j in chunks:
+            b = collate(items[i:j], model.tok.pad_token_id)
             if engine is not None:
-                p = torch.cat(engine.score_items(items[i:i + bs], temperature=temperature)).numpy()
+                p = torch.cat(engine.score_items(items[i:j], temperature=temperature)).numpy()
             else:
                 logits = model.slot_logits(b["input_ids"].to(dev), b["attention_mask"].to(dev), b["slot_idx"].to(dev), b["slot_batch"].to(dev), b["nopts"].to(dev))
                 p = torch.softmax(logits / temperature, -1).cpu().numpy()
             P.append(np.nan_to_num(p)); G.append(b["golds"].numpy()); NO.append(b["nopts"].numpy()); QI.extend(b["qidx"])
         P = np.concatenate(P); G = np.concatenate(G); NO = np.concatenate(NO); QI = np.asarray(QI)
+        P = P[:, :max(int(NO.max()), 10)]                  # the label head is 255 wide; keep only the columns in use
         ok = G >= 0
         s = summarize(P[ok], G[ok], NO[ok]); s["sec"] = round(time.time() - t0, 1); s["heldout"] = D.TASKS.get(tname, {}).get("heldout", False)
         # per-question breakdown for multi-question tasks
@@ -63,6 +72,9 @@ if __name__ == "__main__":
     ap.add_argument("--temperature", type=float, default=1.0)
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--engine", default="eager", help="eager | graph | compile | fp8")
+    ap.add_argument("--max_options", type=int, default=0, help="0 = sub-sample large label sets to 10 (the original protocol); 255 = offer the full label set")
+    ap.add_argument("--max_ctx", type=int, default=1536)
+    ap.add_argument("--layout", default="state_first", help="state_first | schema_first")
     a = ap.parse_args()
     if a.engine == "eager": a.engine = ""
     _, evals = D.load_cache(a.data)
@@ -78,7 +90,7 @@ if __name__ == "__main__":
     else:
         m = DecisionModel(a.model, grad_ckpt=False).cuda()
     os.makedirs(a.out, exist_ok=True)
-    res, dump = run_eval(m, evals, bs=a.bs, temperature=a.temperature, engine=eng)
+    res, dump = run_eval(m, evals, bs=a.bs, temperature=a.temperature, engine=eng, max_options=a.max_options or None, max_ctx=a.max_ctx, layout=a.layout)
     agg = aggregate(res)
     print("[agg]", json.dumps(agg, indent=1))
     json.dump(dict(results=res, agg=agg, model=a.model, engine=a.engine), open(f"{a.out}/eval.json", "w"), indent=1)

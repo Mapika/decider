@@ -16,6 +16,7 @@ single GH200, starting from a modern small open base model.
   come from one forward pass (no decoding).
 * **Candidate conditioning**: label sets larger than 10 are sub-sampled per
   example (gold always kept) and shuffled, so the model must read the options.
+  From v6, up to 255 options can be offered at once (see "v6" below).
 * **Training objective**: cross-entropy (a proper scoring rule) on ~60 public
   decision datasets (intents, routing, moderation, NLI, MCQ, sentiment, ...).
   Optional Brier term. Post-hoc temperature is fitted on in-task data and
@@ -150,6 +151,96 @@ carries no information. Result: a routing battery passes with every wording with
 rewrite; a held-out probe with off-topic option lists goes from 0.68 (v4) to 0.83; the 91
 shared tasks are unchanged (in-task 0.815, held-out 0.742). `decider_config.json` now carries
 `neutralize_none: false` for v5 so the helper stops rewriting the option.
+
+## v6: the input shapes Jev accepts
+
+TypeSafe released Jev on 2026-09-15 with public docs. Compared with them, v5 had the same output contract but a much
+narrower input: bare option labels, at most 10 options, a 1536-token context, plain-text state only, and answers that
+depended on which other questions shared the prompt. v6 (`runs/r11_v6`, continued from v5 for one epoch, 2.4 h) closes those:
+
+| Jev | v5 | v6 |
+|---|---|---|
+| options carry a description or a JSON rubric (`criteria`) | bare labels | `name: description` / `name: {"what", "not_for", "examples"}`, trained with opaque names so the description is read |
+| up to 255 options per Choice | 10 (letters A-J) | 255: one label token per option (A..Z, then two-letter tokens); 10 or fewer options render exactly as before |
+| ~32k-token budget for state + questions | 1536-token context | 32k accepted; trained to 16k, probed to 30k |
+| state is a string, object or array; questions point into it by path | text | JSON states, `` `tickets[3].text` `` paths, several records per state |
+| every answer independent of the other questions | packed prompt: question k sees questions 1..k-1 | one row per question; the state is run once and its cache forked to every question |
+| `confidence` from the shape of the distribution | top probability | `confidence` = top probability (calibrated), plus `certainty` = 1 - normalised entropy |
+| HTTP API + Python/JS SDKs, cookbooks | `/decide` | `POST /v1/systemone` with the same wire format: TypeSafe's own SDK works against it (`TYPESAFE_BASE_URL`); `examples/` |
+
+Not copied: their training method (RLCD) is unpublished, and their workflow evals need their API.
+
+**Data** (`decider/build_v6.py`, all derived from the existing mixture, 391k examples, 173M tokens): label descriptions for all
+669 fixed labels written by a local Qwen3.5-27B from the label name and five training examples (`decider/describe_labels.py`;
+held-out tasks from the name only); described and opaque-named option lists (40k); full native label sets (CLINC 151,
+Banking 77, MASSIVE 60, ...) and small label sets padded with labels from unrelated task families (89k); JSON states holding
+2-60 records with path questions, up to 14k tokens (32k); multi-question examples asked one question at a time or reordered
+(30k); 200k replay of the general mixture at the original 10-option protocol.
+
+**Regression set** (94 tasks, original protocol, T fitted on in-task data: 1.15): in-task acc 0.813 / ECE 0.032 (v5 0.815 / 0.028),
+held-out acc 0.736 / NLL 0.664 / ECE 0.084 (v5 0.738 / 0.678 / 0.084), off-topic abstention 0.832 (0.829), abstain probe 0.63 (0.57).
+Largest moves: CB 0.89 to 0.80 (56 examples), TREC 0.80 to 0.75. Text games: trained games unchanged; held-out Freeway 6 (v4), 3 (v5), 0 (v6);
+BabyAI GoTo 0 to 0.31.
+
+**Full label sets** (every label offered at once; `--max_options 255`; held-out = dataset never trained on):
+
+| task | options | v5 acc | v6 acc | v6 ECE |
+|---|---|---|---|---|
+| HWU64 (held-out) | 64 | 0.245 | 0.841 | 0.018 |
+| TREC fine (held-out) | 50 | 0.292 | 0.758 | 0.052 |
+| DBpedia level 2 (held-out labels) | 70 | 0.173 | 0.701 | 0.141 |
+| DBpedia level 3 (held-out labels) | 219 | 0.089 | 0.871 | 0.055 |
+| CLINC | 151 | 0.110 | 0.879 | 0.058 |
+| Banking77 | 77 | 0.186 | 0.862 | 0.020 |
+| MASSIVE intent | 60 | 0.291 | 0.862 | 0.027 |
+| GoEmotions | 28 | 0.529 | 0.615 | 0.032 |
+
+`examples/hierarchical_beam.py` (TypeSafe's taxonomy-walk pattern on DBpedia 9 -> 70 -> 219): v5 needed the walk (flat 0.13, beam-3 0.77);
+v6 answers the flat 219-way question directly (0.905) and the walk is no longer better (0.85).
+
+**Described options** (mean accuracy; names replaced by opaque ids such as `c7` means only the description identifies an option):
+
+| | plain names | names + descriptions | opaque + descriptions | opaque + JSON rubric |
+|---|---|---|---|---|
+| 8 held-out tasks, v5 | 0.769 | 0.762 | 0.729 | 0.691 |
+| 8 held-out tasks, v6 | 0.763 | 0.784 | 0.771 | 0.770 |
+| 3 in-task (incl. Banking 77-way), v6 | 0.872 | 0.876 | 0.848 | 0.848 |
+
+Descriptions now help slightly over bare names, and an option is usable from its description alone (ECE with opaque names 0.097 to 0.057).
+
+**JSON state, question names one record by path** (records from held-out tasks; ceiling = one record, 0.72):
+
+| records in the state | 4 | 16 | 64 | ~11k tokens | 20-30k tokens |
+|---|---|---|---|---|---|
+| v5 | 0.600 | 0.510 | 0.432 | 0.445 | 0.47 |
+| v6 | 0.696 | 0.644 | 0.488 | 0.640 | 0.57 |
+| v6, array positions written into the state | | 0.660 | 0.574 | 0.665 | |
+
+Records addressed by key stay near the ceiling (0.73 at 16 records); records addressed by array position degrade because the model has
+to count, so `decider.systemone.render_state` writes `"_index": i` into arrays of 8 or more elements (not trained on; it helps anyway).
+Plain long reading already worked in v5: QuALITY with the whole article (5-8k tokens) 0.71 for both, against 0.51 with the article clipped to 5000 characters.
+
+**Independence** (`decider/independence_probe.py`, 7 multi-question tasks). Packed into one prompt, reversing the question order flips
+up to 17% of v5's answers (up to 12% for v6). Scored one row per question there is nothing to flip, and v6 gives up little for it
+(accuracy within 1.5 points of packed on every task; v5 lost up to 4). The cost: 5 questions on a 190-token state take 23 ms instead of 10 ms
+over HTTP. For long states the state is run once and its cache (attention KV and delta-net states) forked per question
+(`Engine.score_shared`): 7 questions on an 11k-token state 252 ms instead of 1464 ms, same answers up to bf16 round-off
+(max |dp| 0.002 in fp32).
+
+```python
+from decider.infer import Decider
+d = Decider("runs/r11_v6/model")
+d.system_one({"ticket": {"messages": [{"from": "customer", "text": "I was charged twice for order A-104. Please refund the duplicate."}]},
+              "refund_policy": "Duplicate charges are eligible for a refund."},
+             {"department": {"type": "choice", "instructions": "Which team should handle this?",
+                             "criteria": {"returns": "Exchanges, refunds, wrong or damaged items", "billing": {"what": "Charges, invoices", "not_for": "delivery"}, "other": None}},
+              "refund_requested": {"type": "noul", "instructions": "Does `ticket.messages[0].text` request a refund?"},
+              "frustration": {"type": "score", "instructions": "How frustrated is the customer?", "criteria": ["calm", "frustrated", "very frustrated"]}})
+```
+```bash
+DECIDER_MODEL=runs/r11_v6/model .venv312/bin/uvicorn decider.serve:app --port 8000
+TYPESAFE_BASE_URL=http://localhost:8000 TYPESAFE_API_KEY=local python your_typesafe_sdk_script.py     # typesafe-sdk 0.6.0, unchanged
+```
 
 ## Vision: decisions from pixels
 
@@ -286,5 +377,5 @@ decider/bench_latency.py  decisions/s and latency of the one-pass interface (eag
 data/tasks.pkl    cached examples (python -m decider.data)
 runs/             zs_2b, zs_4b (zero-shot baselines), r1_200k, ...
 ```
-Model weights: https://huggingface.co/Mapika/decider-2b (after upload).
+Model weights: https://huggingface.co/Mapika/decider-2b (v5; v6 is staged locally in `runs/release/decider-2b-v6`, not uploaded).
 Setup: `uv venv --python 3.12 .venv312 && uv pip install -p .venv312/bin/python torch transformers peft accelerate datasets pillow "numpy<2" scikit-learn flash-linear-attention fastapi "uvicorn[standard]" httpx`.
