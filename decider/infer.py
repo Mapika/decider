@@ -45,7 +45,7 @@ class CompiledSchema:
 
     def batch(self, states, max_state_tokens=32768):
         from decider.systemone import render_state, assemble
-        probs = self.d._se.score(self.h, [render_state(s) for s in states], temperature=self.d.T, max_ctx_tokens=max_state_tokens)
+        probs = self.d._se.score(self.h, [render_state(s) for s in states], temperature=self.d.T_schema, max_ctx_tokens=max_state_tokens)
         return [{"model": self.d.name, "answers": assemble(self.rqs, self.index, [p.tolist() for p in pr])} for pr in probs]
 
     def __call__(self, state, max_state_tokens=32768):
@@ -76,7 +76,8 @@ class Decider:
             self.eng = None; self.m = DecisionModel(path, dtype=dtype, grad_ckpt=False).to(device).eval()
         self.dev = device; self.T = temperature; self.abstain_below = abstain_below
         self.name = "decider-" + str(cfg.get("version", "dev"))
-        self.schema_first = bool(cfg.get("schema_first", False)) and self.eng is not None      # model trained on the questions-first layout (v7+)
+        self.schema_first = bool(cfg.get("schema_first", False)) and self.eng is not None      # default layout. Questions-first (the cacheable one) costs accuracy
+        self.T_schema = float(cfg.get("temperature_schema_first", temperature))                # (about 1.5 points on fixed label sets, more elsewhere): opt in with schema()
         self.isolated_levels = bool(cfg.get("isolated_levels", False))      # Score levels judged one per row (v8+)
         self._se = None; self._schemas = {}
 

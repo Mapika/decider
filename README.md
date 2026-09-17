@@ -98,8 +98,89 @@ before traffic. In process: `s = d.schema(questions, compile=True); s(state); s.
 
 ## Results
 
-RESULTS_PLACEHOLDER
+All numbers are for the v8 weights (`runs/r13_v8`), measured on one GH200. "Held-out" means no example of that dataset was trained on.
+`docs/HISTORY.md` has the per-stage measurements (v1 to v8) and the v5/v6 baselines quoted here.
+
+**94 public tasks, original protocol** (large label sets sub-sampled to 10 options; one temperature fitted on in-task data)
+
+| | in-task acc / ECE (69 tasks) | held-out acc / NLL / ECE (24 tasks) |
+|---|---|---|
+| Qwen3.5-2B-Base, zero-shot | 0.620 / 0.121 | 0.642 / 0.853 / 0.105 |
+| decider v8, state-first (default), T=1.30 | 0.811 / 0.037 | 0.741 / 0.655 / 0.088 |
+| decider v8, schema-first (the cacheable layout), T=1.18 | 0.790 / 0.038 | 0.707 / 0.757 / 0.104 |
+
+Schema-first is a speed-for-accuracy trade, and the cost depends on the workload: on the 69 tasks with a fixed label set
+(classification, routing, scales: what a cached schema is for) it loses 1.5 points on average (median 0.7, calibration equal); on the 24
+tasks whose options change per example (multiple-choice QA, tool choice) it loses 5, because the options are read before the
+question they belong to; on full label sets of 50-219 options and on states of several thousand tokens it loses 5-24 (table below).
+State-first is therefore the default and the schema cache is opt-in (`Decider.schema`, `DECIDER_SCHEMA_CACHE=1`).
+
+**Input shapes** (accuracy; state-first unless noted)
+
+| | v5 | v8 | v8 schema-first |
+|---|---|---|---|
+| all 64 / 50 / 70 / 219 labels offered at once: HWU64, TREC-fine, DBpedia L2, L3 (held-out) | 0.25 / 0.29 / 0.17 / 0.09 | 0.84 / 0.72 / 0.73 / 0.86 | 0.80 / 0.48 / 0.60 / 0.69 |
+| CLINC 151-way / Banking 77-way | 0.11 / 0.19 | 0.88 / 0.87 | |
+| options named by opaque ids, only descriptions tell them apart (8 held-out tasks; plain names: 0.77) | 0.73 | 0.78 | 0.75 |
+| JSON state, question names one of 4 / 16 / 64 records by path (one record: 0.70) | 0.60 / 0.51 / 0.43 | 0.69 / 0.64 / 0.51 | 0.65 / 0.53 / 0.45 |
+| same, 16 / 64 records, array positions written into the state (`render_state` does this) | | 0.68 / 0.62 | 0.61 / 0.60 |
+| the record is in an 11k-token / 20-30k-token state | 0.45 / 0.47 | 0.61 (0.68 indexed) / 0.57 | 0.49 |
+| QuALITY, whole article (5-8k tokens); clipped to 5000 characters: 0.50 | 0.71 | 0.70 | 0.56 |
+
+**Custom questions and catch-all options** (v6 to v8; v7 added teacher-written data for exactly this)
+
+| | v6 | v8 |
+|---|---|---|
+| hand-written battery: the GENERIC option is right although a catch-all is offered ("support" vs "other") / the catch-all is right | 0.60 / 0.90 | 0.85 / 0.95 |
+| teacher-written routing messages, 6 held-out domains: generic / specific / catch-all | 0.50 / 0.95 / 0.82 | 0.94 / 0.97 / 0.90 |
+| teacher-written custom questions, held-out domains: noul / choice / score | 0.94 / 0.96 / 0.74 | 0.96 / 0.98 / 0.83 |
+| off-topic abstention probe / abstention battery | 0.83 / 7 of 8 | 0.83 / 8 of 8 |
+
+The teacher labels come from Qwen3.5-27B; the hand-written battery (60 choice cases, 49 yes/no) is small. Both are in the repo.
+
+**Isolated Score levels.** Each level is judged in its own row, without its number or its neighbours; the per-level P(fits) are
+normalised. Adding a level cannot change another level's fit. Against the usual listwise scoring (all levels in one list):
+
+| | listwise acc / ECE | isolated acc / ECE | mean sum of fits |
+|---|---|---|---|
+| teacher-written score questions, held-out domains | 0.822 / 0.058 | 0.827 / 0.059 | 0.99 |
+| HelpSteer2 (5 attributes, 5 levels) | 0.598 / 0.069 | 0.610 / 0.044 | 1.01 |
+| hate-speech intensity scales | 0.563 / 0.058 | 0.552 / 0.032 | 1.04 |
+| LIAR2 truthfulness (6 levels) | 0.370 / 0.048 | 0.337 / 0.075 | 1.12 |
+
+Before training for it (v6) the same procedure lost up to 20 points and the fits summed to 1.4-3.5.
+
+**Independence.** Packed into one prompt, reversing the question order changes up to 12% of answers (7 multi-question tasks).
+Scored one row per question there is nothing to change, at the same accuracy (within 0.7 points of packed on every task).
+
+**Speed** (GH200, bf16 + torch.compile + CUDA graphs; support tickets are ~230 tokens, chat messages ~12)
+
+| in-process, per forward | full forward | schema cache | |
+|---|---|---|---|
+| 3 questions, tickets: 1 request / 32 requests | 4.0 / 74 ms | 3.4 / 47 ms | 1.2x / 1.6x |
+| 10 described questions, tickets | 5.9 / 154 ms | 4.0 / 64 ms | 1.5x / 2.4x |
+| 10 described questions, chat messages | 6.0 / 121 ms | 3.9 / 29 ms (11,180 decisions/s) | 1.5x / 4.2x |
+| one question with 151 options, chat messages | 8.5 / 217 ms | 3.6 / 11.5 ms | 2.4x / 19x |
+| 10 questions scored independently, chat messages | 14.3 / 276 ms | 4.6 / 75 ms | 3.1x / 3.7x |
+
+Independent scoring with the cache reruns the state once per question, so it only pays for short states (tickets: 1.0-1.7x).
+For long states the state-first path runs the state once and forks its cache per question (7 questions on 11k tokens: 252 ms
+instead of 1464 ms). HTTP, 5 questions per request, tickets, without compile/FP8: `/decide` 193 req/s and `/v1/systemone` packed
+with the schema cache 352 req/s at 64 clients (p50 8 ms at one client); independent scoring 70-75 req/s either way.
+
+**Games.** The four trained text games stay at teacher level (Pong 8, Breakout 22, CliffWalking -13); held-out Freeway, 6 at v4, is 0.
 
 ## Limitations
 
-LIMITATIONS_PLACEHOLDER
+* A 2B model without reasoning: knowledge-heavy multiple choice (MMLU, MedQA) improves little over the base model, and judgments
+  that need several steps should be split into several questions.
+* English only. Calibration is measured on public datasets and teacher-labelled probes, not on your traffic: check it on your own labels.
+* The schema cache costs accuracy (see Results); use it for fixed classification-style schemas with short states.
+* Picking one record out of a long JSON array by position is the weak input shape (0.51 with 64 records against 0.70 with one);
+  address records by key, or let `render_state` write the index into the array (0.62).
+* TREC-fine with all 50 labels fell from 0.76 (v6) to 0.72 (v8); held-out Freeway play fell to 0 and did not come back with the game data replayed.
+* The custom-question data is labelled by a 27B teacher that shares some of the biases it is meant to fix (it agreed with only 72%
+  of its own generic-option labels); see `decider/data/mixture.py` for how those labels are filtered.
+* The vision variant (`decider/vision`) is still on v5 text weights.
+* `scripts/train.sh full` (one run from the base model over the whole mixture) is the reference recipe but has not been run end to
+  end; the released weights were produced by the staged continuation runs described in `docs/HISTORY.md`.

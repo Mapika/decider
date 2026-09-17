@@ -44,6 +44,9 @@ class SchemaEngine:
         self.e = engine; self.core = engine.core; self.W = engine.W; self.tok = engine.tok; self.dev = engine.dev
         self.use_graphs = use_graphs and engine.use_graphs; self.graphs = {}; self.stats = dict(prepared=0, captures=0, replays=0, eager=0)
         self.compile = bool(engine.cfg.get("compile")); self._compiled = {}
+        if self.compile:                        # every compiled schema graph specialises the model frames again (its cache tensors are constants)
+            import torch._dynamo
+            torch._dynamo.config.cache_size_limit = 4096; torch._dynamo.config.accumulated_cache_size_limit = 1 << 16
 
     @torch.no_grad()
     def prepare(self, questions, independent=False, compile=False):

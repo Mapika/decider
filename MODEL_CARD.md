@@ -19,9 +19,10 @@ fully fine-tuned for one epoch (942k examples, 183M tokens, 2.5 hours on one
 NVIDIA GH200) with cross-entropy, a proper scoring rule, on a mixture of 64
 public decision datasets, then continued for one epoch on 45k situation-to-action
 examples (agent trajectories, web element choice, synthetic situations, game states)
-with a replay of the general mixture (v4). v6 continues for one more epoch (391k examples, 173M tokens) on the input
-shapes of TypeSafe's Jev API: described options, up to 255 options, JSON states with path references, long inputs,
-and questions scored independently of each other.
+with a replay of the general mixture (v4). v6 to v8 continue on the input shapes of TypeSafe's Jev API (described options, up to
+255 options, JSON states with path references, long inputs, questions scored independently), on teacher-written custom questions
+(free-form yes/no, user-named options, a generic option next to a catch-all), on a second, cacheable prompt layout, and on
+isolated Score levels. This card describes v8.
 
 ## Usage
 
@@ -56,7 +57,13 @@ d.system_one({"ticket": {"messages": [{"from": "customer", "text": "I was charge
 State may be a string, object or array (up to 32k tokens with the questions); `instructions` and every option
 description may be a string or any JSON value; question ids are never shown to the model. Each question is scored in
 its own row, so answers do not depend on which other questions are asked (`independent=False` packs them into one row,
-about half the latency for short states). `decider.serve` exposes the same thing as `POST /v1/systemone`; the official
+about half the latency for short states). Each Score level is likewise judged in its own row, without its number or its
+neighbours, and the per-level fits are normalised (`"isolated": false` on a question restores listwise scoring); the answer
+also reports `level_fit` and their sum `fit_mass` (near 1 when exactly one level fits).
+
+For a fixed set of questions, `s = d.schema(questions)` computes the question prefix once and `s(state)` / `s.batch(states)`
+then run only the state (1.2-2.4x faster per request, up to 19x per batch). It uses a questions-first prompt layout that costs
+accuracy: about 1.5 points on fixed label sets, 5 on per-example options, more on 50+ options and multi-thousand-token states. `decider.serve` exposes the same thing as `POST /v1/systemone`; the official
 `typesafe-sdk` works against it unchanged with `TYPESAFE_BASE_URL` pointing at the server.
 
 Requirements: `torch`, `transformers>=5`, and `flash-linear-attention` (Triton
@@ -130,6 +137,9 @@ replaced by labels from an unrelated task, making the abstain option correct.
 | **this model (v5)** | held-out (24) | 0.738 | 0.678 | 0.360 | 0.084 | 0.145 | 0.793 |
 | **this model (v6, T=1.15)** | in-task (69) | 0.813 | 0.450 | 0.251 | 0.032 | 0.094 | 0.864 |
 | **this model (v6, T=1.15)** | held-out (24) | 0.736 | 0.664 | 0.358 | 0.084 | 0.145 | 0.793 |
+| **this model (v8, T=1.30)** | in-task (69) | 0.811 | 0.460 | | 0.037 | | |
+| **this model (v8, T=1.30)** | held-out (24) | 0.741 | 0.655 | | 0.088 | | |
+| v8, questions-first layout (schema cache), T=1.18 | held-out (24) | 0.707 | 0.757 | | 0.104 | | |
 
 
 Per-task accuracy / ECE on the held-out datasets:
@@ -284,12 +294,12 @@ less than the evaluation noise (18-task check: accuracy 0.833 vs 0.835, ECE equa
   off-topic option lists; on a held-out probe with off-topic option lists it scores 0.83
   (v4: 0.68). Earlier versions (v4 and before) had learned the literal phrase as an abstain
   signal; the bundled helper's rewrite for that is disabled for v5 via `decider_config.json`.
-* Catch-all options next to generic ones: with options such as `check_balance / approve_transfer / support / other`, a plain
-  support complaint is sent to `other` at 0.97-1.00 (v5 and v6 alike; without `other` it goes to `support` at 0.99). The
-  abstention training covers "nothing on offer fits"; it does not cover "the fitting option is generic". Free-form yes/no
-  questions about properties the training tasks never asked ("Is this a message a customer would send to their bank?")
-  are also unreliable. Both come from the narrow range of question wordings in the training data (public datasets plus
-  1.5k synthetic situations), which is the largest remaining difference from a general-purpose decision model.
+* Catch-all options next to generic ones ("support" vs "other"): v6 sent in-scope messages that fit only the generic option to
+  the catch-all (0.60 on a hand-written battery, 0.50 on held-out teacher-written routing messages). v8: 0.85 and 0.94, with the
+  catch-all cases at 0.95 and 0.90. Question wordings far from the training data (public datasets plus 24k teacher-written
+  questions) remain the main risk; verify on your own examples.
+* Isolated Score levels match listwise scoring within about a point (LIAR2: 3 points lower). Levels should describe situations,
+  not degrees.
 * One in-task dataset, `tweet_hate` (SemEval-2019 HatEval), stays near chance on its
   test split. That split is known to differ from its training split in collection
   and label definition; the number is reported as measured.

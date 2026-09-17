@@ -23,7 +23,7 @@ MAX_FWD_TOKENS = int(os.environ.get("DECIDER_MAX_FWD_TOKENS", "65536"))     # pa
 COMPILE = os.environ.get("DECIDER_COMPILE", "1") == "1"
 FP8 = os.environ.get("DECIDER_FP8", "1") == "1"
 app = FastAPI(title="decider")
-MODEL_NAME = "decider"; TEMP = 1.0; RELEASE_DATE = "2026-09-17"
+MODEL_NAME = "decider"; TEMP = 1.0; TEMP_SCHEMA = 1.0; RELEASE_DATE = "2026-09-17"
 gpu_lock = threading.Lock()            # one GPU job at a time: batched graph replays and shared-prefix requests must not interleave
 SHARED_MIN_TOKENS = int(os.environ.get("DECIDER_SHARED_MIN_TOKENS", "768"))   # independent rows over a state this long share one prefix pass
 eng = None; queue = None; stats = dict(requests=0, batches=0, decisions=0, batch_hist={})
@@ -130,7 +130,11 @@ async def _start():
     global RELEASE_DATE; RELEASE_DATE = str(cfg.get("release_date", RELEASE_DATE))
     global SCHEMA_FIRST, se, squeue, ISOLATED
     ISOLATED = bool(cfg.get("isolated_levels", False))
-    SCHEMA_FIRST = bool(cfg.get("schema_first", False)) and os.environ.get("DECIDER_SCHEMA_CACHE", "1") == "1"
+    # the schema cache needs the questions-first layout, which costs accuracy (about 1.5 points on fixed label sets, more on large
+    # label sets and long states): on when the model's config makes it the default, or with DECIDER_SCHEMA_CACHE=1
+    trained = bool(cfg.get("schema_first", False) or cfg.get("schema_first_trained", False))
+    SCHEMA_FIRST = trained and (bool(cfg.get("schema_first", False)) or os.environ.get("DECIDER_SCHEMA_CACHE", "0") == "1")
+    global TEMP_SCHEMA; TEMP_SCHEMA = float(cfg.get("temperature_schema_first", TEMP))
     if SCHEMA_FIRST:
         from decider.schema_engine import SchemaEngine
         se = SchemaEngine(eng); squeue = asyncio.Queue(); asyncio.create_task(schema_batcher()); print("[serve] schema cache on", flush=True)
@@ -193,7 +197,7 @@ def _worth_caching(questions, independent):
 
 def _score_schema(h, rows):
     with gpu_lock:
-        return se.score_rows(h, rows, temperature=TEMP)
+        return se.score_rows(h, rows, temperature=TEMP_SCHEMA)
 
 
 async def schema_batcher():
@@ -225,9 +229,9 @@ def _locked(fn, items):
 class S1Req(BaseModel):
     state: object
     questions: dict
-    model: str = None
+    model: str | None = None
     independent: bool = True
-    layout: str = None            # "state_first" forces the uncached layout on a schema-first model
+    layout: str | None = None            # "state_first" forces the uncached layout on a schema-first model
 
 
 def _prepare_s1(state, questions, independent):

@@ -38,7 +38,8 @@ def main():
     big = [D.Q("What is the intent of this user message?", evals["clinc_oos"][0].qs[0].options, 0)]
     for name, qs, ctxs in [("3 questions, tickets (~230 tok)", evals["support_tickets"][0].qs, tickets), ("10 Jev-style questions, tickets", jq, tickets),
                            ("10 Jev-style questions, short chat (~12 tok)", jq, chats), ("1 question x 151 options, short chat", big, chats)]:
-        h = se.prepare([dict(question=q.text, options=q.options) for q in qs])
+        h = se.prepare([dict(question=q.text, options=q.options) for q in qs], compile=comp)
+        hi = se.prepare([dict(question=q.text, options=q.options) for q in qs], independent=True, compile=comp) if len(qs) > 1 else None
         packed = lambda c: build(D.Example(c, qs, "x"), eng.tok, K(), max_options=255)
         rows = lambda c: [build(D.Example(c, [q], "x"), eng.tok, K(), max_options=255) for q in qs]
         n_full = len(packed(ctxs[0])["ids"]); print(f"\n== {name}: schema prefix {h.tpmax} tok, full prompt {n_full} tok")
@@ -47,8 +48,9 @@ def main():
             t_packed = timeit(lambda: eng.score_items([packed(c) for c in cs]))
             t_cache = timeit(lambda: se.score(h, cs))
             line = f"   batch {B:2d}: packed full forward {t_packed:7.1f} ms | schema cache {t_cache:7.1f} ms ({t_packed / t_cache:4.1f}x) -> {B * len(qs) / t_cache * 1000:7.0f} decisions/s"
-            if B == 1 and len(qs) > 1:
-                t_rows = timeit(lambda: eng.score_items(rows(cs[0]))); line += f" | independent rows {t_rows:6.1f} ms"
+            if len(qs) > 1 and B in (1, 8, 32):
+                t_rows = timeit(lambda: eng.score_items([r for c in cs[:8] for r in rows(c)]), n=15) * (B / min(B, 8)) if B > 1 else timeit(lambda: eng.score_items(rows(cs[0])))
+                t_ic = timeit(lambda: se.score(hi, cs), n=15); line += f" | independent: rows {t_rows:6.1f} ms, cached {t_ic:6.1f} ms ({t_rows / t_ic:4.1f}x)"
             print(line, flush=True)
     print(se.stats)
 
