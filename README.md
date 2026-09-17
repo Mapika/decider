@@ -176,6 +176,9 @@ with the schema cache 352 req/s at 64 clients (p50 8 ms at one client); independ
   that need several steps should be split into several questions.
 * English only. Calibration is measured on public datasets and teacher-labelled probes, not on your traffic: check it on your own labels.
 * The schema cache costs accuracy (see Results); use it for fixed classification-style schemas with short states.
+* The catch-all fix depends on the generic option looking generic. Buckets named like `general IT help`, `customer_service` or
+  `general_query` now win when they should (0.85-0.94), but in `check_balance / approve_transfer / support / other` a plain app complaint
+  still goes to `other` at 0.99: the bare label `support` is not read as a bucket. Name or describe the generic option as one.
 * Picking one record out of a long JSON array by position is the weak input shape (0.51 with 64 records against 0.70 with one);
   address records by key, or let `render_state` write the index into the array (0.62).
 * TREC-fine with all 50 labels fell from 0.76 (v6) to 0.72 (v8); held-out Freeway play fell to 0 and did not come back with the game data replayed.

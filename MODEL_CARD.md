@@ -298,6 +298,8 @@ less than the evaluation noise (18-task check: accuracy 0.833 vs 0.835, ECE equa
   the catch-all (0.60 on a hand-written battery, 0.50 on held-out teacher-written routing messages). v8: 0.85 and 0.94, with the
   catch-all cases at 0.95 and 0.90. Question wordings far from the training data (public datasets plus 24k teacher-written
   questions) remain the main risk; verify on your own examples.
+* The catch-all fix depends on the generic option looking generic (`general IT help`, `customer_service`, `general_query`). With the bare
+  label `support` next to `other`, a plain app complaint still goes to `other` at 0.99. Name or describe the generic option as a bucket.
 * Isolated Score levels match listwise scoring within about a point (LIAR2: 3 points lower). Levels should describe situations,
   not degrees.
 * One in-task dataset, `tweet_hate` (SemEval-2019 HatEval), stays near chance on its
