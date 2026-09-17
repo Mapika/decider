@@ -44,14 +44,17 @@ class Decider:
     """use_graphs=True (default on CUDA) routes scoring through decider.engine.Engine: shape-bucketed
     CUDA graphs, ~7x lower single-request latency than eager. Set False for CPU or debugging."""
     def __init__(self, path, device="cuda", dtype=torch.bfloat16, temperature=None, abstain_below=0.0, use_graphs=None):
-        if temperature is None:                      # model folder may carry a fitted temperature (decider_config.json)
-            import json, os
-            try:
-                from huggingface_hub import hf_hub_download
-                cfg_path = os.path.join(path, "decider_config.json") if os.path.isdir(path) else hf_hub_download(path, "decider_config.json")
-                temperature = float(json.load(open(cfg_path)).get("temperature", 1.0))
-            except Exception:
-                temperature = 1.0
+        import json, os
+        cfg = {}
+        try:                                          # model folder may carry decider_config.json (temperature, flags)
+            from huggingface_hub import hf_hub_download
+            cfg_path = os.path.join(path, "decider_config.json") if os.path.isdir(path) else hf_hub_download(path, "decider_config.json")
+            cfg = json.load(open(cfg_path))
+        except Exception:
+            pass
+        if temperature is None:
+            temperature = float(cfg.get("temperature", 1.0))
+        self.neutralize_none = bool(cfg.get("neutralize_none", True))   # v4 and earlier learned the literal string as an abstain signal
         if use_graphs is None:
             use_graphs = str(device).startswith("cuda")
         if use_graphs:
@@ -65,7 +68,8 @@ class Decider:
     def decide_batch(self, requests, max_ctx_tokens=1536):
         """requests: list of (context:str, questions:list[dict(question, options)]). One forward pass for everything."""
         exs, meta = [], []
-        requests = [(context, [dict(q, options=neutralize_options(q["options"])[0], _back=neutralize_options(q["options"])[1]) for q in qs]) for context, qs in requests]
+        if self.neutralize_none:
+            requests = [(context, [dict(q, options=neutralize_options(q["options"])[0], _back=neutralize_options(q["options"])[1]) for q in qs]) for context, qs in requests]
         for context, qs in requests:
             for q in qs:
                 assert 2 <= len(q["options"]) <= MAX_OPTIONS, f"2..{MAX_OPTIONS} options required"

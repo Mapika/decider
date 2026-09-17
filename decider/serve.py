@@ -35,7 +35,8 @@ class _NoShuffle:
 def _prepare(context, schema):
     qs = Decider._schema_to_questions(schema)
     for q in qs:
-        q["options"], q["_back"] = neutralize_options(q["options"])
+        if getattr(eng, "neutralize_none", True):
+            q["options"], q["_back"] = neutralize_options(q["options"])
     ex = Example(context, [Q(q["question"], list(q["options"]), 0) for q in qs])
     it = build(ex, eng.tok, _NoShuffle(), max_ctx_tokens=eng.max_ctx)
     return qs, it
@@ -95,6 +96,9 @@ async def batcher():
 async def _start():
     global eng, queue
     eng = Engine(MODEL, compile=COMPILE, fp8=FP8, conv_patch=COMPILE); print("[serve] engine", eng.cfg, flush=True)
+    import json
+    try: eng.neutralize_none = bool(json.load(open(os.path.join(MODEL, "decider_config.json"))).get("neutralize_none", True))
+    except Exception: eng.neutralize_none = True
     shapes = [(B, T) for B in (1, 2, 4, 8, 16, 32) for T in T_BUCKETS if T <= eng.max_ctx + 256]
     if MAX_BATCH > 32: shapes += [(64, T) for T in T_BUCKETS if T <= 512]
     t = eng.warmup(shapes); print(f"[serve] captured {len(shapes)} graphs in {t:.0f}s", flush=True)
