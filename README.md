@@ -137,6 +137,20 @@ others held. Without the success bonus the CliffWalking policy learned to avoid 
 never finishing, a standard failure of sparse-goal RL. The first version also produced NaN
 gradients from an entropy term over masked options (0 times -inf); masked entropy fixed it.
 
+### v5: the proper abstention fix
+
+v3/v4 had learned the literal option "none of the above" as an abstain signal (offered
+verbatim, they abstained even on clear cases). Varying the wording (r9) did not help: the
+gold-removed augmentation itself teaches "abstain when the exact label is missing", so a
+coarser but correct option ("billing" for a card charged twice) was rejected. v5 (r10) redefines
+the augmentation: 75% add an abstain option (twelve wordings) with the answer unchanged; 25%
+replace the whole option list with labels from an unrelated task so the abstain option is right
+only when nothing fits; abstain-style options are always kept in prompts so their presence
+carries no information. Result: a routing battery passes with every wording without the helper
+rewrite; a held-out probe with off-topic option lists goes from 0.68 (v4) to 0.83; the 91
+shared tasks are unchanged (in-task 0.815, held-out 0.742). `decider_config.json` now carries
+`neutralize_none: false` for v5 so the helper stops rewriting the option.
+
 ## Vision: decisions from pixels
 
 Qwen3.5-2B is a vision-language model; `decider/vision.py` uses the full model with the same
@@ -188,6 +202,10 @@ Reward fixed what imitation could not: the relaunch after a lost life (the DAgge
 from a policy that never launched), and by iteration 16 Breakout from pixels exceeds the
 RAM-state teacher (22). Pong moves with the same updates and is not stable across checkpoints.
 The published vision model uses the iteration-12 checkpoint (the balanced one).
+
+v3 (vision release, built on the v5 text weights, then 12 iterations of pixel RL; best checkpoint
+iteration 4): Breakout 41, Pong 3, CliffWalking -13, MiniGrid Empty 0.96, Freeway 0, BabyAI 0,
+Mario 315. It trades v2's Pong (8) and Freeway (8) for Breakout and the corrected abstention.
 
 Frame accuracy does not equal play: v1 never launched the ball in Breakout (a rare action in the
 training frames) and lost every Pong point; oversampling and DAgger fixed CliffWalking and got Pong
