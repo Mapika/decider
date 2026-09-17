@@ -8,8 +8,8 @@
     # -> [{'choice': 'billing', 'confidence': 0.97, 'probs': {...}}, {...}]
 """
 import torch
-from .model import DecisionModel, collate
-from .prompt import build, MAX_OPTIONS
+from decider.model import DecisionModel, collate
+from decider.prompt import build, MAX_OPTIONS
 from dataclasses import dataclass
 
 
@@ -44,7 +44,7 @@ class CompiledSchema:
     def __init__(self, d, rqs, h, index): self.d, self.rqs, self.h, self.index = d, rqs, h, index
 
     def batch(self, states, max_state_tokens=32768):
-        from .systemone import render_state, assemble
+        from decider.systemone import render_state, assemble
         probs = self.d._se.score(self.h, [render_state(s) for s in states], temperature=self.d.T, max_ctx_tokens=max_state_tokens)
         return [{"model": self.d.name, "answers": assemble(self.rqs, self.index, [p.tolist() for p in pr])} for pr in probs]
 
@@ -70,7 +70,7 @@ class Decider:
         if use_graphs is None:
             use_graphs = str(device).startswith("cuda")
         if use_graphs:
-            from .engine import Engine
+            from decider.engine import Engine
             self.eng = Engine(path, device=device, dtype=dtype); self.m = self.eng.m
         else:
             self.eng = None; self.m = DecisionModel(path, dtype=dtype, grad_ckpt=False).to(device).eval()
@@ -121,8 +121,8 @@ class Decider:
     def schema(self, questions, independent=True, isolated=None, compile=False):
         """Compile a fixed set of Jev-shaped questions: schema(state) -> answers; schema.batch([state, ...]) -> [answers]."""
         import json
-        from .schema_engine import SchemaEngine
-        from .systemone import render_question
+        from decider.schema_engine import SchemaEngine
+        from decider.systemone import render_question
         isolated = self.isolated_levels if isolated is None else isolated
         key = (json.dumps(questions, sort_keys=True, ensure_ascii=False), independent, isolated)
         if key not in self._schemas:
@@ -130,7 +130,7 @@ class Decider:
             if len(self._schemas) >= 64:                                  # drop the oldest schema and its graphs
                 old = next(iter(self._schemas)); hid = self._schemas.pop(old)[1].id
                 for k in [k for k in self._se.graphs if k[0] == hid]: del self._se.graphs[k]
-            from .systemone import plan_rows
+            from decider.systemone import plan_rows
             rqs = {k: render_question(v) for k, v in questions.items()}
             rows, index = plan_rows(rqs, isolated and independent)
             h = self._se.prepare(rows, independent=independent, compile=compile)      # compile=True: ~25 s per (batch, length) shape, 1.6x faster after
@@ -146,7 +146,7 @@ class Decider:
         reordering questions cannot change any other answer; the state is run once and its cache forked to every
         question (Engine.score_shared).  independent=False packs all questions behind one copy of the state in one row
         (later questions can then see earlier question texts)."""
-        from .systemone import render_state, render_question, unique_tokens, plan_rows, assemble
+        from decider.systemone import render_state, render_question, unique_tokens, plan_rows, assemble
         ctx = render_state(state); rqs = {k: render_question(v) for k, v in questions.items()}
         opts = (lambda r: neutralize_options(r["options"])[0]) if self.neutralize_none else (lambda r: list(r["options"]))
         flat, index = plan_rows(rqs, isolated)

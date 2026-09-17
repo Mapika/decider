@@ -1,12 +1,10 @@
 """Evaluate a DecisionModel (fine-tuned or raw base) on all eval sets. Saves per-question probs."""
 import argparse, json, os, pickle, random, time
 import numpy as np, torch
-from .model import DecisionModel, collate
-from .prompt import build
-from .metrics import summarize
-from . import data as D
-from . import data2  # noqa: F401  (registers v2 tasks)
-from . import data3  # noqa: F401  (registers v4 tasks)
+from decider.model import DecisionModel, collate
+from decider.prompt import build
+from decider.metrics import summarize
+from decider import data as D
 
 
 @torch.no_grad()
@@ -84,7 +82,7 @@ if __name__ == "__main__":
         evals = {k: v[:a.limit] for k, v in evals.items()}
     eng = None
     if a.engine:
-        from .engine import Engine
+        from decider.engine import Engine
         eng = Engine(a.model, compile=a.engine in ("compile", "fp8"), fp8=a.engine == "fp8", conv_patch=a.engine in ("compile", "fp8"))
         m = eng.m
     else:

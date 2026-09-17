@@ -1,0 +1,2956 @@
+{
+ "strategyqa": {
+  "What is the answer to this question?": {
+   "no": {
+    "what": "Inputs where the answer to the question is definitively negative or false.",
+    "not_for": "Inputs where the answer is affirmative, true, or yes."
+   },
+   "yes": {
+    "what": "Inputs where the answer to the question is affirmatively true or correct.",
+    "not_for": "Inputs where the answer is false, incorrect, or negative."
+   }
+  }
+ },
+ "tweet_irony": {
+  "Is this tweet ironic?": {
+   "ironic": {
+    "what": "Inputs where the literal meaning contradicts the intended message to convey sarcasm or mockery.",
+    "not_for": "Sincere statements, factual claims, or straightforward expressions without hidden contradictory meanings."
+   },
+   "not ironic": {
+    "what": "Inputs where the literal meaning matches the intended message without any sarcasm or hidden contradiction.",
+    "not_for": "Statements using sarcasm, exaggeration, or saying the opposite of what is meant."
+   }
+  }
+ },
+ "paws": {
+  "Do these two sentences have the same meaning?": {
+   "no": {
+    "what": "Sentences that express different meanings, contradict each other, or convey distinct information despite similar wording.",
+    "not_for": "Sentences with identical or nearly identical meanings."
+   },
+   "yes": {
+    "what": "Inputs where both sentences convey identical meanings despite potential differences in wording or structure.",
+    "not_for": "Sentences with different meanings, contradictory statements, or unrelated topics."
+   }
+  }
+ },
+ "ade": {
+  "Does this sentence report an adverse drug effect?": {
+   "no": {
+    "what": "Sentences describing drug administration, efficacy, or neutral observations without mentioning negative health outcomes belong here.",
+    "not_for": "Reports of side effects, toxicity, allergic reactions, or other harmful drug-induced symptoms."
+   },
+   "yes": {
+    "what": "Sentences explicitly stating that a medication caused a harmful or negative physical reaction in a patient.",
+    "not_for": "Texts describing drug benefits, intended uses, or general side effect lists without specific patient reports."
+   }
+  }
+ },
+ "pubmedqa": {
+  "Based on the abstract, what is the answer?": {
+   "no": {
+    "what": "The abstract explicitly states the answer is negative or contradicts the premise of the question.",
+    "not_for": "Abstracts with positive answers, uncertain conclusions, or missing information."
+   },
+   "yes": {
+    "what": "The abstract explicitly confirms the hypothesis or directly answers the classification question with a definitive positive statement.",
+    "not_for": "Abstracts that are ambiguous, negative, or lack sufficient evidence to confirm the claim."
+   },
+   "maybe": {
+    "what": "Inputs where the abstract lacks sufficient evidence to definitively confirm or deny the specific claim.",
+    "not_for": "Abstracts clearly confirming the claim or explicitly refuting it."
+   }
+  }
+ },
+ "cr_reviews": {
+  "Is this product-review sentence positive or negative?": {
+   "negative": {
+    "what": "Sentences expressing dissatisfaction, criticism, or disappointment with the product's quality, features, or performance.",
+    "not_for": "Reviews praising the product, highlighting its benefits, or expressing overall satisfaction."
+   },
+   "positive": {
+    "what": "Sentences expressing satisfaction, praise, or approval of the product's features, performance, or overall experience.",
+    "not_for": "Reviews criticizing quality, complaining about defects, or expressing disappointment with the purchase."
+   }
+  }
+ },
+ "fin_sentiment": {
+  "What is the financial sentiment of this headline?": {
+   "bearish": {
+    "what": "Headlines predicting price declines, reporting losses, or highlighting negative economic indicators belong here.",
+    "not_for": "Positive growth news, stable market reports, or ambiguous statements without clear direction."
+   },
+   "bullish": {
+    "what": "Headlines predicting rising asset prices, strong earnings, or positive market momentum belong here.",
+    "not_for": "Reports of falling prices, losses, or uncertain market conditions."
+   },
+   "neutral": {
+    "what": "Headlines reporting factual market data or events without implying future price increases or decreases.",
+    "not_for": "Stories predicting price rises, forecasting drops, or expressing strong optimism or pessimism."
+   }
+  }
+ },
+ "student_questions": {
+  "Which subject is this student question about?": {
+   "Maths": {
+    "what": "Questions involving numerical calculations, algebraic equations, geometric proofs, or statistical analysis belong here.",
+    "not_for": "Problems focused on chemical reactions, biological systems, or physical forces."
+   },
+   "Biology": {
+    "what": "Questions about living organisms, their structures, functions, growth, evolution, and interactions with environments.",
+    "not_for": "Chemical reactions, mathematical calculations, or physical forces and motion."
+   },
+   "Physics": {
+    "what": "Questions about matter, energy, motion, forces, and the fundamental laws governing the physical universe.",
+    "not_for": "Chemical reactions, biological life processes, or pure mathematical calculations without physical context."
+   },
+   "Chemistry": {
+    "what": "Questions about chemical elements, compounds, reactions, molecular structures, and stoichiometry belong here.",
+    "not_for": "Physics questions on forces, biology on living cells, or pure math calculations."
+   }
+  }
+ },
+ "fin_phrasebank": {
+  "What is the sentiment of this financial news sentence?": {
+   "Neutral": {
+    "what": "Sentences stating factual financial data or events without expressing optimism, pessimism, or emotional judgment.",
+    "not_for": "Statements predicting market gains, reporting losses, or using emotionally charged language."
+   },
+   "Negative": {
+    "what": "Inputs describing financial losses, market declines, economic downturns, or adverse corporate performance.",
+    "not_for": "Reports of stable markets, minor fluctuations, or positive growth trends."
+   },
+   "Positive": {
+    "what": "Inputs describing favorable financial outcomes, such as rising stock prices, strong earnings, or successful mergers.",
+    "not_for": "Sentences reporting losses, market declines, or neutral factual statements without positive implications."
+   }
+  }
+ },
+ "bbc_news": {
+  "What section of the news site does this article belong to?": {
+   "tech": {
+    "what": "Articles covering new gadgets, software, artificial intelligence, cybersecurity, and the latest developments in the technology industry.",
+    "not_for": "Business reports on tech stocks, entertainment reviews of tech-themed movies, or political debates on internet regulation."
+   },
+   "sport": {
+    "what": "Articles covering athletic competitions, professional teams, individual athletes, and game results.",
+    "not_for": "Business deals involving teams, celebrity athlete gossip, or political sports policy debates."
+   },
+   "business": {
+    "what": "Articles covering corporate earnings, market trends, economic policy, and financial industry developments.",
+    "not_for": "Tech product reviews, political election results, celebrity gossip, or sports match scores."
+   },
+   "politics": {
+    "what": "Articles covering government actions, elections, legislation, and political figures or parties.",
+    "not_for": "Business deals, celebrity gossip, sports results, or technology product reviews."
+   },
+   "entertainment": {
+    "what": "Articles about movies, music, celebrities, TV shows, and other leisure activities or pop culture events.",
+    "not_for": "Business reports on media companies, political scandals involving stars, or tech gadget reviews."
+   }
+  }
+ },
+ "cb": {
+  "What is the logical relation between text 1 and text 2?": {
+   "neutral": {
+    "what": "Text 2 presents information unrelated to or not inferable from text 1, making its truth value undetermined.",
+    "not_for": "Inputs where text 2 is clearly true or false based on text 1."
+   },
+   "contradiction": {
+    "what": "Text 2 directly opposes or negates the factual claims made in text 1, making both impossible to be true simultaneously.",
+    "not_for": "Inputs where text 2 is unrelated, adds new info, or logically follows from text 1."
+   },
+   "entailment (text 2 follows from text 1)": {
+    "what": "Text 2 is logically guaranteed to be true whenever text 1 is true, with no new information added.",
+    "not_for": "Texts where text 2 adds new info, is unrelated, or directly conflicts with text 1."
+   }
+  }
+ },
+ "trec": {
+  "What type of answer is this question asking for?": {
+   "entities": {
+    "what": "This category includes specific, named objects, organizations, or products that are not people, places, numbers, or abstract ideas.",
+    "not_for": "People, locations, numbers, abbreviations, or abstract concepts belong to other categories."
+   },
+   "locations": {
+    "what": "Inputs identifying specific geographic places, cities, countries, regions, or physical addresses on Earth.",
+    "not_for": "Human names, organizations, abstract concepts, or numeric coordinates without place names."
+   },
+   "abbreviation": {
+    "what": "Inputs are shortened forms of words or phrases, typically consisting of initial letters or syllables.",
+    "not_for": "Full words, proper names, numbers, or detailed explanations of concepts."
+   },
+   "human beings": {
+    "what": "Inputs identifying specific individuals, including real people, fictional characters, or historical figures by name or role.",
+    "not_for": "Groups, organizations, abstract concepts, or non-human entities like animals or objects."
+   },
+   "numeric values": {
+    "what": "Inputs containing specific counts, measurements, dates, or mathematical quantities expressed as digits or number words.",
+    "not_for": "Abbreviations, entity names, locations, human names, or abstract concepts without numerical data."
+   },
+   "description and abstract concepts": {
+    "what": "This category includes explanations of processes, definitions of ideas, and clarifications of non-physical concepts or theories.",
+    "not_for": "Do not use for specific people, places, numbers, abbreviations, or concrete named entities."
+   }
+  }
+ },
+ "dolly_category": {
+  "What category of instruction is this?": {
+   "open qa": {
+    "what": "Inputs asking for factual answers to broad questions where the response is not limited to a specific text or predefined set.",
+    "not_for": "Questions requiring answers found only within a provided text or limited to yes/no responses."
+   },
+   "closed qa": {
+    "what": "Inputs asking specific questions with a single correct answer found directly within the provided text.",
+    "not_for": "Open-ended queries, general knowledge questions, or tasks requiring creative writing or summarization."
+   },
+   "general qa": {
+    "what": "Inputs asking for general knowledge, facts, or explanations that do not require creative generation or specific text analysis.",
+    "not_for": "Creative writing, summarization, information extraction, or questions requiring brainstorming or classification."
+   },
+   "brainstorming": {
+    "what": "Inputs requesting the generation of multiple ideas, suggestions, or creative concepts for a specific topic or problem.",
+    "not_for": "Requests for single factual answers, summaries, or structured data extraction."
+   },
+   "summarization": {
+    "what": "Inputs asking to condense a provided text into a shorter version while retaining key information.",
+    "not_for": "Questions requiring new content creation, specific fact retrieval, or broad topic discussion."
+   },
+   "classification": {
+    "what": "Inputs requiring the assignment of text, images, or data into predefined, mutually exclusive groups based on specific criteria.",
+    "not_for": "Open-ended questions, creative writing tasks, or requests to generate new information without fixed labels."
+   },
+   "creative writing": {
+    "what": "Inputs requesting the generation of original stories, poems, scripts, or other fictional narratives from scratch.",
+    "not_for": "Summarizing existing texts, answering factual questions, or extracting specific data points."
+   },
+   "information extraction": {
+    "what": "Inputs asking to locate and return specific facts, entities, or values directly present in the provided text.",
+    "not_for": "Questions requiring external knowledge, creative generation, or summarizing the entire text."
+   }
+  }
+ },
+ "massive_scenario": {
+  "Which scenario (domain) does this voice-assistant utterance belong to?": {
+   "qa": {
+    "what": "User questions seeking factual answers, definitions, or explanations about general topics, people, places, or concepts.",
+    "not_for": "Commands to play media, set alarms, check weather, or manage calendar events."
+   },
+   "iot": {
+    "what": "Inputs controlling smart home devices like lights, thermostats, locks, or appliances via voice commands.",
+    "not_for": "Music playback, weather updates, calendar events, or general conversation topics."
+   },
+   "news": {
+    "what": "Inputs requesting current events, headlines, or updates on specific topics like politics, sports, or business.",
+    "not_for": "General facts, historical events, or weather forecasts belong to other categories."
+   },
+   "play": {
+    "what": "Inputs requesting the assistant to start, pause, or control playback of media content like movies, TV shows, or podcasts.",
+    "not_for": "Music requests, general questions, or commands to play games."
+   },
+   "alarm": {
+    "what": "Inputs for setting, canceling, or modifying scheduled wake-up timers and recurring daily reminders.",
+    "not_for": "General time queries, calendar event scheduling, or music playback timers."
+   },
+   "audio": {
+    "what": "Inputs requesting playback of podcasts, audiobooks, radio stations, or sound effects belong here.",
+    "not_for": "Music requests, general play commands, or news updates belong to other categories."
+   },
+   "email": {
+    "what": "Inputs for composing, sending, reading, or managing personal and professional email messages.",
+    "not_for": "Calendar scheduling, general chat, or social media messaging requests."
+   },
+   "lists": {
+    "what": "Inputs for creating, editing, or retrieving shopping, to-do, or reminder lists.",
+    "not_for": "Calendar events, alarms, or general reminders without list context."
+   },
+   "music": {
+    "what": "Inputs requesting to play, pause, skip, or identify specific songs, albums, artists, or playlists.",
+    "not_for": "General audio playback, radio stations, podcasts, or news broadcasts."
+   },
+   "social": {
+    "what": "Inputs involving messaging, calling contacts, or managing social media interactions and connections.",
+    "not_for": "Calendar events, email management, or general conversation without specific social actions."
+   },
+   "cooking": {
+    "what": "Inputs involving recipe instructions, ingredient lists, cooking timers, or food preparation steps belong here.",
+    "not_for": "Food ordering, restaurant recommendations, or general nutrition advice belong to other categories."
+   },
+   "general": {
+    "what": "This category covers broad conversational queries, greetings, and general knowledge questions not fitting specific functional domains.",
+    "not_for": "Specific requests for weather, music, alarms, calendar events, or IoT device control."
+   },
+   "weather": {
+    "what": "Inputs requesting current conditions, forecasts, or climate data for specific locations or times.",
+    "not_for": "General travel advice, transport delays, or news stories about weather events."
+   },
+   "calendar": {
+    "what": "Inputs for creating, modifying, or querying scheduled events, meetings, and reminders within a digital calendar.",
+    "not_for": "Setting alarms, checking current time, or managing general to-do lists."
+   },
+   "datetime": {
+    "what": "Inputs asking for current time, date, day of week, or setting reminders based on specific times.",
+    "not_for": "Scheduling calendar events, setting alarms, or checking weather forecasts."
+   },
+   "takeaway": {
+    "what": "Inputs requesting food delivery, restaurant ordering, or checking delivery status for meals to be brought to the user.",
+    "not_for": "Restaurant reservations, cooking recipes, or general food recommendations without delivery intent."
+   },
+   "transport": {
+    "what": "Inputs requesting directions, traffic updates, ride-hailing services, or public transit schedules and routes.",
+    "not_for": "General travel advice, booking flights, or hotel reservations belong to other categories."
+   },
+   "recommendation": {
+    "what": "Inputs requesting personalized suggestions for activities, places, or items based on user preferences or context.",
+    "not_for": "Direct commands to play media, set alarms, or check specific factual data."
+   }
+  }
+ },
+ "sst2": {
+  "What is the sentiment of this sentence?": {
+   "negative": {
+    "what": "Inputs expressing criticism, disappointment, or unfavorable opinions about a subject belong here.",
+    "not_for": "Inputs praising a subject or expressing enjoyment and satisfaction."
+   },
+   "positive": {
+    "what": "Inputs expressing approval, joy, or admiration through uplifting adjectives, emotional force, or praise for gentle, lighthearted qualities.",
+    "not_for": "Inputs expressing criticism, sadness, anger, or disappointment about a subject."
+   }
+  }
+ },
+ "cola": {
+  "Is this sentence grammatically acceptable?": {
+   "acceptable": {
+    "what": "Sentences that are grammatically correct and follow standard English syntax rules.",
+    "not_for": "Sentences with syntax errors, missing words, or incorrect word order."
+   },
+   "unacceptable": {
+    "what": "Sentences containing grammatical errors, incorrect word order, or nonsensical phrasing that violate standard English rules.",
+    "not_for": "Grammatically correct sentences with proper syntax, agreement, and clear meaning."
+   }
+  }
+ },
+ "tweet_offensive": {
+  "Is this tweet offensive?": {
+   "not offensive": {
+    "what": "Inputs expressing praise, humor, casual commentary, or commercial intent without hate speech, harassment, or harmful slurs.",
+    "not_for": "Content containing hate speech, direct threats, severe harassment, or explicit slurs."
+   },
+   "offensive": {
+    "what": "Inputs containing personal insults, slurs, hate speech, or violent threats directed at individuals or groups.",
+    "not_for": "Disagreements, factual debates, or criticism of ideas without personal attacks."
+   }
+  }
+ },
+ "bitext_support": {
+  "Which support category does this request fall under?": {
+   "ACCOUNT": {
+    "what": "Requests to create, modify, reset, or close user accounts and profile settings.",
+    "not_for": "Billing, order status, shipping, refunds, or subscription management issues."
+   },
+   "ORDER": {
+    "what": "Requests to purchase items, modify order contents, or cancel a specific purchase transaction.",
+    "not_for": "Billing issues, shipping delays, subscription management, or general account inquiries."
+   },
+   "SUBSCRIPTION": {
+    "what": "Requests to sign up for, manage, or cancel newsletter and promotional email subscriptions.",
+    "not_for": "Canceling paid service plans, product orders, or account access."
+   },
+   "FEEDBACK": {
+    "what": "Requests for assistance in submitting product reviews, service comments, or formal complaints to the company.",
+    "not_for": "Order status, payment issues, shipping delays, or account cancellation requests."
+   },
+   "DELIVERY": {
+    "what": "Requests to check expected arrival dates, track shipment status, or confirm delivery timelines for purchased items.",
+    "not_for": "Issues about shipping costs, carrier selection, or general order placement details."
+   },
+   "PAYMENT": {
+    "what": "Requests about accepted payment methods, card declines, or general transaction processing issues.",
+    "not_for": "Billing disputes, invoice requests, subscription renewals, or refund processing inquiries."
+   },
+   "CONTACT": {
+    "what": "Requests to speak with a live agent, operator, or human representative for direct assistance.",
+    "not_for": "General inquiries about orders, payments, or account details without asking for a human."
+   },
+   "SHIPPING": {
+    "what": "Requests to update, correct, or configure shipping addresses for existing or future orders.",
+    "not_for": "General delivery delays, tracking issues, or subscription billing changes."
+   },
+   "CANCEL": {
+    "what": "Requests to view or understand fees, penalties, or charges associated with ending a service or subscription early.",
+    "not_for": "Requests to actually cancel an account, stop a subscription, or process a refund."
+   },
+   "INVOICE": {
+    "what": "Requests to locate, view, or download specific billing documents and receipts for past transactions.",
+    "not_for": "Issues about payment failures, subscription changes, or general account access problems."
+   },
+   "REFUND": {
+    "what": "Requests to check refund status, request money back, or ask about refund eligibility and policies.",
+    "not_for": "Queries about order status, shipping delays, or general payment processing issues."
+   }
+  },
+  "What is the specific intent of this request?": {
+   "create account": {
+    "what": "Requests to register a new user profile or establish a fresh account on the platform.",
+    "not_for": "Editing existing accounts, recovering passwords, or fixing registration errors."
+   },
+   "edit account": {
+    "what": "Requests to modify existing personal profile information, such as names, emails, or contact details, within an established user account.",
+    "not_for": "Creating new accounts, deleting accounts, recovering passwords, or changing shipping addresses."
+   },
+   "place order": {
+    "what": "Inputs where the user explicitly asks for instructions or assistance to purchase items and complete a new transaction.",
+    "not_for": "Requests to modify existing orders, track shipments, or handle payment issues after purchase."
+   },
+   "get refund": {
+    "what": "Inputs where the user explicitly requests assistance to receive a monetary reimbursement or compensation for a purchase.",
+    "not_for": "Requests to check refund policies, track refund status, or inquire about cancellation fees."
+   },
+   "check payment methods": {
+    "what": "Inputs asking to list, verify, or confirm which payment options or specific providers are accepted by the service.",
+    "not_for": "Requests about failed transactions, payment errors, or issues processing a specific payment."
+   },
+   "review": {
+    "what": "Requests for assistance in submitting product or service feedback, comments, or ratings to the company.",
+    "not_for": "Complaints about issues, general inquiries, or requests to read existing reviews from others."
+   },
+   "delivery options": {
+    "what": "Inputs asking about available shipping methods, delivery cities, or countries where orders can be placed.",
+    "not_for": "Requests to track a specific order, change an address, or check delivery timeframes."
+   },
+   "change shipping address": {
+    "what": "Requests to modify an existing delivery address for an order or account.",
+    "not_for": "Setting up a new address, tracking orders, or changing shipping methods."
+   },
+   "check cancellation fee": {
+    "what": "Inputs asking to view or understand specific costs, penalties, or fees charged for canceling an order or terminating a service.",
+    "not_for": "Requests to actually cancel an order, check refund policies, or inquire about general cancellation procedures."
+   },
+   "track order": {
+    "what": "Inputs asking for the current location, delivery status, or estimated arrival time of a specific placed order.",
+    "not_for": "Requests about refund status, shipping address changes, or general delivery period policies."
+   },
+   "contact customer service": {
+    "what": "Inputs seeking contact details, hours, or methods to reach customer support representatives.",
+    "not_for": "Requests to speak with a human agent or specific complaints."
+   },
+   "check invoice": {
+    "what": "Inputs asking to locate, view, or verify existing billing documents or receipts for past transactions.",
+    "not_for": "Requests to generate new invoices, check payment methods, or track refunds."
+   },
+   "delete account": {
+    "what": "Requests to permanently close or remove a user account, including inquiries about the deletion process for specific account tiers.",
+    "not_for": "Requests to cancel orders, change account details, or recover passwords instead of deleting the account."
+   },
+   "payment issue": {
+    "what": "Requests to report, notify, or resolve errors and failures occurring during the online payment process.",
+    "not_for": "Queries about available payment methods, refund policies, or checking invoice details."
+   },
+   "check refund policy": {
+    "what": "Inputs asking to review the rules, conditions, or eligibility criteria for receiving a refund.",
+    "not_for": "Requests to actually process a refund, track its status, or check cancellation fees."
+   },
+   "delivery period": {
+    "what": "Inputs asking to find, check, or understand the estimated time frame for an order to arrive.",
+    "not_for": "Requests to track a specific order's current location or view available shipping speed options."
+   },
+   "switch account": {
+    "what": "Requests to change the current account type, plan, or subscription tier to a different one.",
+    "not_for": "Creating new accounts, editing profile details, or recovering lost passwords."
+   },
+   "recover password": {
+    "what": "Requests to reset, retrieve, or regain access to a lost or forgotten account password or PIN.",
+    "not_for": "Issues with creating new accounts, editing profile details, or general registration problems."
+   },
+   "set up shipping address": {
+    "what": "Requests to configure, enter, or troubleshoot the initial setup of a new or secondary shipping address in the user's account.",
+    "not_for": "Changing an existing address, tracking orders, or selecting delivery options for a specific purchase."
+   },
+   "contact human agent": {
+    "what": "Requests specifically asking for instructions or methods to speak directly with a live human representative or operator.",
+    "not_for": "General inquiries, complaints, or account issues that do not explicitly demand a human agent."
+   },
+   "cancel order": {
+    "what": "Requests to stop processing a specific purchase before it ships, often citing inability to pay or change of mind.",
+    "not_for": "Requests to modify order details, check cancellation fees, or track an order's status."
+   },
+   "registration problems": {
+    "what": "Requests to report, notify, or seek help with errors and issues encountered during the account signup process.",
+    "not_for": "Problems with logging in, recovering passwords, or editing existing account details."
+   },
+   "get invoice": {
+    "what": "Requests to download, retrieve, or obtain a copy of a specific invoice or bill for a past transaction.",
+    "not_for": "Requests to verify invoice details, check payment methods, or view refund policies."
+   },
+   "change order": {
+    "what": "Requests to modify existing order details, such as adding, removing, or swapping items within a specific purchase.",
+    "not_for": "Requests to cancel orders, change shipping addresses, or track order status."
+   },
+   "newsletter subscription": {
+    "what": "Requests to subscribe to, unsubscribe from, or check the status of a company newsletter.",
+    "not_for": "Account creation, password recovery, or general customer service contact requests."
+   },
+   "track refund": {
+    "what": "Inputs where the user seeks to check the current status or progress of a money return they are expecting.",
+    "not_for": "Requests to initiate a new refund, check refund policies, or track physical order delivery."
+   },
+   "complaint": {
+    "what": "Inputs where the user explicitly seeks assistance to file a formal claim, reclamation, or complaint against the company.",
+    "not_for": "General negative feedback, reviews, or requests to contact customer service without filing a claim."
+   }
+  }
+ },
+ "tweet_emotion": {
+  "Which emotion does this tweet express?": {
+   "joy": {
+    "what": "Inputs expressing happiness, amusement, or delight through laughter, cute observations, or celebratory greetings.",
+    "not_for": "Inputs showing anger, sadness, or hopeful optimism about future events."
+   },
+   "anger": {
+    "what": "Inputs expressing rage, hostility, or intense frustration through insults, threats, or explicit declarations of fury.",
+    "not_for": "Sadness, disappointment, or general regret without aggressive or hostile language."
+   },
+   "sadness": {
+    "what": "Inputs expressing sorrow, despair, depression, or distressing nightmares about personal failures or difficult circumstances.",
+    "not_for": "Inputs expressing anger, joy, optimism, or general frustration without deep sorrow."
+   },
+   "optimism": {
+    "what": "Inputs expressing hope for future improvement, belief in positive outcomes, or encouragement to persist despite current struggles.",
+    "not_for": "Inputs expressing pure happiness, current excitement, or deep sorrow without hope."
+   }
+  }
+ },
+ "hate_speech_scales": {
+  "What is the sentiment of this comment?": {
+   "4: strongly negative": {
+    "what": "Inputs containing extreme hostility, severe profanity, hate speech, or violent threats directed at individuals or groups.",
+    "not_for": "Mild criticism, neutral observations, or positive remarks lacking severe abuse or threats."
+   },
+   "2: neutral": {
+    "what": "Inputs expressing factual statements, sarcasm, or complex arguments without clear emotional approval or disapproval.",
+    "not_for": "Comments showing obvious praise, anger, or strong emotional reactions to the topic."
+   },
+   "3: negative": {
+    "what": "Inputs expressing clear disapproval, hostility, insults, or harmful intent without extreme intensity.",
+    "not_for": "Mildly positive remarks, neutral facts, or extremely violent/hate speech."
+   },
+   "1: positive": {
+    "what": "Inputs expressing clear approval, agreement, encouragement, or supportive sentiments without extreme intensity.",
+    "not_for": "Avoid neutral statements, mild criticism, or extremely enthusiastic or furious reactions."
+   },
+   "0: strongly positive": {
+    "what": "Inputs expressing enthusiastic congratulations, deep affirmation, or intense emotional support with strong positive language.",
+    "not_for": "Mildly positive comments, neutral statements, or mixed sentiments lacking intense enthusiasm."
+   }
+  },
+  "How insulting is this comment?": {
+   "4: extremely": {
+    "what": "Inputs containing severe hate speech, explicit slurs, violent threats, or dehumanizing attacks targeting protected groups or individuals.",
+    "not_for": "Mild insults, general criticism, or offensive remarks lacking explicit slurs or calls for violence."
+   },
+   "3: very": {
+    "what": "Inputs containing direct personal attacks, severe generalizations about groups, or explicit sexual insults that clearly demean the target.",
+    "not_for": "Mild criticism, vague negativity, or comments lacking direct personal attacks or severe group generalizations."
+   },
+   "1: slightly": {
+    "what": "Inputs containing mild personal jabs, casual slang, or minor controversial statements without severe hate speech or direct threats.",
+    "not_for": "Severe slurs, explicit threats, or completely neutral factual statements."
+   },
+   "2: somewhat": {
+    "what": "Comments containing mild insults, stereotypes, or condescending remarks that are offensive but not aggressively hateful.",
+    "not_for": "Avoid neutral remarks, extremely aggressive hate speech, or purely factual disagreements without personal attacks."
+   },
+   "0: not at all": {
+    "what": "Inputs expressing civility, support, factual discussion, or personal reflection without any insulting language or intent.",
+    "not_for": "Comments containing insults, slurs, or aggressive attacks targeting individuals or groups."
+   }
+  },
+  "Is this comment hate speech?": {
+   "2: hate speech": {
+    "what": "Comments containing severe slurs, dehumanizing language, or explicit calls for violence against protected groups or individuals.",
+    "not_for": "Borderline insults, vague hostility, or controversial opinions lacking direct hate speech elements."
+   },
+   "0: not hate speech": {
+    "what": "Comments expressing political opinions, personal insults, or controversial views without targeting protected groups with dehumanizing or violent rhetoric.",
+    "not_for": "Content explicitly attacking protected groups with violence, dehumanization, or severe slurs."
+   },
+   "1: unclear or borderline": {
+    "what": "Comments containing ambiguous slurs, mixed positive/negative sentiments, or unclear intent regarding protected groups.",
+    "not_for": "Clear hate speech or completely benign comments without any offensive language."
+   }
+  },
+  "How dehumanizing is this comment?": {
+   "2: somewhat": {
+    "what": "Comments containing direct insults, slurs, or violent threats targeting specific groups or individuals without explicit dehumanizing metaphors.",
+    "not_for": "Inputs with no hostility, mild criticism, or explicit comparisons to animals, objects, or subhuman entities."
+   },
+   "3: very": {
+    "what": "Comments that explicitly label entire groups as disgusting, morally corrupt, or subhuman using severe slurs and sweeping generalizations.",
+    "not_for": "Mildly offensive remarks, isolated slurs without group condemnation, or vague criticisms lacking dehumanizing language."
+   },
+   "0: not at all": {
+    "what": "Inputs expressing empathy, political disagreement, sexual desire, or identity without denying human dignity or reducing people to objects.",
+    "not_for": "Comments explicitly denying humanity, comparing people to animals, or stripping away basic human rights."
+   },
+   "1: slightly": {
+    "what": "Comments containing mild generalizations, political disagreements, or factual disputes without explicit dehumanizing language or hate speech.",
+    "not_for": "Inputs with explicit slurs, calls for violence, or denying basic human rights belong in higher categories."
+   },
+   "4: extremely": {
+    "what": "Inputs containing graphic sexual violence, explicit dehumanizing slurs, or calls for mass genocide against specific groups.",
+    "not_for": "Mild insults, general misogyny, or non-violent controversial political opinions."
+   }
+  },
+  "How much does this comment incite violence?": {
+   "3: very": {
+    "what": "Comments explicitly threatening severe physical harm, death, or genocide against individuals or groups.",
+    "not_for": "Mild insults, vague threats, or hate speech lacking direct calls for violence."
+   },
+   "1: slightly": {
+    "what": "Comments using aggressive slurs or expressing hatred toward groups without explicitly calling for physical harm or violence.",
+    "not_for": "Inputs explicitly urging others to kill, attack, or commit physical violence against specific targets."
+   },
+   "4: extremely": {
+    "what": "Comments explicitly calling for lethal violence, severe physical harm, or mass destruction against specific individuals or groups.",
+    "not_for": "Mild insults, vague threats, or criticism lacking direct calls for extreme physical violence."
+   },
+   "0: not at all": {
+    "what": "Comments containing insults, controversial opinions, or personal attacks that lack any call for physical harm or violence.",
+    "not_for": "Inputs explicitly urging others to attack, harm, or kill specific individuals or groups."
+   },
+   "2: somewhat": {
+    "what": "Comments containing explicit slurs, dehumanizing language, or direct threats that encourage harm against specific groups.",
+    "not_for": "Mild insults, political criticism, or vague expressions of anger without direct calls for violence."
+   }
+  }
+ },
+ "toxic_chat": {
+  "Is this user request toxic?": {
+   "no": {
+    "what": "Inputs are polite, factual, or creative requests containing no hate speech, harassment, or harmful content.",
+    "not_for": "Requests containing hate speech, threats, harassment, or explicit instructions to generate harmful content."
+   },
+   "yes": {
+    "what": "Inputs containing hate speech, violence, sexual content, jailbreak attempts, or instructions for illegal acts belong here.",
+    "not_for": "Harmless queries about general topics, creative writing without explicit content, or standard informational requests."
+   }
+  },
+  "Is this user request a jailbreak attempt?": {
+   "no": {
+    "what": "Requests for creative writing, technical information, or game mechanics that do not attempt to bypass safety guidelines or restrictions.",
+    "not_for": "Inputs explicitly trying to override system rules, ignore safety filters, or force prohibited content generation."
+   },
+   "yes": {
+    "what": "Inputs attempting to bypass safety filters by forcing the AI to ignore rules, adopt amoral personas, or generate prohibited content.",
+    "not_for": "Requests for fictional stories, roleplay, or creative writing that do not explicitly try to bypass safety guidelines."
+   }
+  }
+ },
+ "insincere_questions": {
+  "Is this forum question insincere (rhetorical, provocative, or not seeking a real answer)?": {
+   "insincere": {
+    "what": "Questions that are rhetorical, provocative, or based on false premises rather than seeking genuine information.",
+    "not_for": "Genuine inquiries about history, culture, or personal experiences seeking factual answers."
+   },
+   "sincere": {
+    "what": "Questions asking for factual information, genuine opinions, or specific advice without hidden agendas or rhetorical intent.",
+    "not_for": "Provocative, rhetorical, or purely argumentative questions not seeking a real answer."
+   }
+  }
+ },
+ "prosocial_safety": {
+  "How much does this utterance call for a cautious or corrective response?": {
+   "1: possibly needs caution": {
+    "what": "Inputs expressing mild distress, frustration, or negative life events that hint at potential issues but lack immediate danger.",
+    "not_for": "Casual complaints, severe self-harm threats, or urgent crises requiring immediate intervention."
+   },
+   "2: probably needs caution": {
+    "what": "Inputs suggesting risky behaviors, potential harm, or questionable logic that likely require a cautious or corrective response.",
+    "not_for": "Casual queries, clear emergencies needing immediate intervention, or harmless personal preferences."
+   },
+   "4: needs intervention": {
+    "what": "Inputs expressing immediate self-harm, severe violence, hate speech, or sexual assault requiring urgent safety intervention.",
+    "not_for": "Casual remarks, mild distress, or ambiguous statements lacking immediate severe harm indicators."
+   },
+   "0: casual, no safety concern": {
+    "what": "Inputs expressing personal feelings, life updates, or relationship dynamics without immediate threats, self-harm, or urgent safety risks.",
+    "not_for": "Statements indicating active self-harm, severe abuse, imminent danger, or requiring immediate professional intervention."
+   },
+   "3: needs caution": {
+    "what": "Inputs containing severe hate speech, dangerous political misinformation, or explicit threats of violence requiring immediate caution.",
+    "not_for": "Casual remarks, mild jokes, or low-risk statements that do not demand urgent intervention."
+   }
+  }
+ },
+ "emotion": {
+  "Which emotion does this text express?": {
+   "sadness": {
+    "what": "Inputs expressing feelings of discouragement, burden, embarrassment, or inadequacy without explicit anger or fear.",
+    "not_for": "Inputs showing excitement, affection, rage, terror, or sudden shock instead."
+   },
+   "love": {
+    "what": "Inputs expressing deep affection, loyalty, tenderness, or spiritual connection toward others or a higher purpose.",
+    "not_for": "Feelings of sadness, anger, fear, surprise, or pure joy without relational depth."
+   },
+   "fear": {
+    "what": "Inputs expressing terror, anxiety, or dread about immediate threats, pressure, or uncertain dangerous situations.",
+    "not_for": "Inputs showing sadness, anger, or general indecision without explicit threat or panic."
+   },
+   "joy": {
+    "what": "Inputs expressing excitement, giddiness, achievement, or enthusiastic satisfaction about personal experiences or accomplishments.",
+    "not_for": "Inputs describing sadness, anger, fear, surprise, or deep romantic love instead."
+   },
+   "surprise": {
+    "what": "Texts expressing sudden realization, awe, or being overwhelmed by unexpected events or profound honors.",
+    "not_for": "Inputs showing deep sorrow, intense rage, romantic affection, or paralyzing terror."
+   },
+   "anger": {
+    "what": "Inputs expressing frustration, bitterness, or self-directed irritation regarding personal failures or social interactions.",
+    "not_for": "Sadness, fear, or guilt without explicit frustration or bitterness."
+   }
+  }
+ },
+ "tweet_sentiment": {
+  "What is the sentiment of this tweet?": {
+   "negative": {
+    "what": "Inputs expressing anger, criticism, disappointment, or strong disapproval toward people, events, or media.",
+    "not_for": "Inputs that are factual, humorous without malice, or express approval and satisfaction."
+   },
+   "neutral": {
+    "what": "Inputs stating facts, reporting events, or asking questions without expressing clear positive or negative emotions.",
+    "not_for": "Inputs expressing strong approval, excitement, anger, disappointment, or clear personal opinions."
+   },
+   "positive": {
+    "what": "Inputs expressing joy, excitement, appreciation, or enthusiastic endorsement of people, events, or objects.",
+    "not_for": "Inputs expressing sadness, anger, indifference, or factual statements without emotional tone."
+   }
+  }
+ },
+ "amazon_stars": {
+  "How many stars did this reviewer most likely give?": {
+   "3 stars": {
+    "what": "Reviews expressing mixed feelings where the product has notable flaws or unmet expectations but also some redeeming qualities.",
+    "not_for": "Inputs describing products that are either completely defective or entirely excellent without significant drawbacks."
+   },
+   "5 stars": {
+    "what": "Inputs expressing strong enthusiasm, perfect satisfaction, or describing the product as flawless and exceeding expectations.",
+    "not_for": "Reviews with minor complaints, mixed feelings, or merely adequate performance without excitement."
+   },
+   "2 stars": {
+    "what": "Inputs describing products with significant functional failures, poor durability, or major defects that prevent normal use.",
+    "not_for": "Inputs describing minor annoyances, unmet expectations, or products that work well but have small flaws."
+   },
+   "1 star": {
+    "what": "Inputs describing severe product defects, fraud, or total failure that leave the reviewer extremely disappointed or unable to use the item.",
+    "not_for": "Inputs with minor flaws, mixed feelings, or moderate satisfaction that warrant higher ratings."
+   },
+   "4 stars": {
+    "what": "Inputs describing products that work well overall but have minor flaws, limitations, or slight disappointments.",
+    "not_for": "Inputs describing perfect products with no issues or completely broken, unusable items."
+   }
+  }
+ },
+ "sst5": {
+  "What is the sentiment of this sentence?": {
+   "neutral": {
+    "what": "Inputs describing mixed, factual, or mildly critical observations without strong emotional praise or condemnation.",
+    "not_for": "Sentences expressing clear enthusiasm, deep disappointment, or strong moral judgment."
+   },
+   "positive": {
+    "what": "Inputs expressing clear approval, enjoyment, or strong recommendation of the subject without significant criticism.",
+    "not_for": "Inputs with mixed feelings, mild praise, or any negative criticism."
+   },
+   "very positive": {
+    "what": "Inputs expressing intense enthusiasm, high praise, or overwhelming satisfaction with the subject matter.",
+    "not_for": "Inputs showing mild approval, mixed feelings, or neutral observations without strong emotion."
+   },
+   "very negative": {
+    "what": "Inputs expressing extreme disdain, severe criticism, or describing content as offensive, worthless, or a complete failure.",
+    "not_for": "Inputs with mild criticism, mixed feelings, or neutral observations lacking intense hostility."
+   },
+   "negative": {
+    "what": "Inputs expressing clear disappointment, criticism, or dissatisfaction with the subject's quality or execution.",
+    "not_for": "Inputs that are merely neutral, slightly positive, or extremely harsh."
+   }
+  }
+ },
+ "go_emotions": {
+  "Which emotion best describes this comment?": {
+   "excitement": {
+    "what": "Inputs expressing eager anticipation, high energy, or enthusiastic looking forward to a specific upcoming event or outcome.",
+    "not_for": "General happiness, surprise, or amusement without specific anticipation of a future event."
+   },
+   "relief": {
+    "what": "Inputs expressing relief after a threat, problem, or negative situation is resolved or avoided.",
+    "not_for": "Inputs showing joy, gratitude, or amusement without prior tension or danger."
+   },
+   "caring": {
+    "what": "Inputs showing concern for someone's well-being, safety, or needs, often offering help or expressing worry.",
+    "not_for": "Comments expressing anger, annoyance, or disapproval rather than genuine concern for another's welfare."
+   },
+   "pride": {
+    "what": "Inputs expressing satisfaction with one's own achievements, identity, or the accomplishments of a group one belongs to.",
+    "not_for": "Inputs showing general happiness, excitement, or admiration for others' work instead of personal achievement."
+   },
+   "nervousness": {
+    "what": "Inputs expressing anxiety, worry, panic, or unease about a situation or outcome.",
+    "not_for": "Comments showing fear of danger, sadness, or general disappointment instead of anxiety."
+   },
+   "love": {
+    "what": "Inputs expressing deep affection, strong fondness, or romantic attachment toward people, teams, or content.",
+    "not_for": "Comments showing excitement, approval, or admiration without explicit expressions of love or deep affection."
+   },
+   "neutral": {
+    "what": "Inputs that state facts, observations, or casual remarks without expressing any discernible positive or negative emotion.",
+    "not_for": "Comments showing clear joy, anger, sadness, or other specific emotional reactions."
+   },
+   "optimism": {
+    "what": "Inputs expressing hope for a positive future outcome or wishing for things to improve.",
+    "not_for": "Fear of bad outcomes, sadness about current events, or neutral statements without hope."
+   },
+   "remorse": {
+    "what": "Inputs expressing personal regret, guilt, or sorrow for one's own past mistakes or harmful actions.",
+    "not_for": "Comments offering sympathy for others' pain or expressing general sadness without self-blame."
+   },
+   "anger": {
+    "what": "Inputs expressing intense hostility, rage, or aggressive frustration, often using profanity, shouting, or violent imagery.",
+    "not_for": "Inputs showing annoyance, disappointment, or disapproval without intense rage or aggression."
+   },
+   "fear": {
+    "what": "Inputs expressing terror, anxiety, or being scared of specific threats, people, or potential negative outcomes.",
+    "not_for": "Inputs showing nervousness about performance, sadness about loss, or anger at a threat."
+   },
+   "surprise": {
+    "what": "Inputs expressing sudden shock, disbelief, or unexpected realization about a specific event, fact, or behavior.",
+    "not_for": "Inputs showing anger, amusement, or confusion without the element of sudden unexpectedness."
+   },
+   "curiosity": {
+    "what": "Inputs asking questions to learn facts, reasons, or details about a situation or topic.",
+    "not_for": "Questions expressing confusion, seeking advice, or asking for opinions rather than facts."
+   },
+   "grief": {
+    "what": "Inputs expressing deep sorrow over loss, tragedy, or misfortune, often offering condolences or lamenting a devastating event.",
+    "not_for": "Expressions of anger, disgust, or mild annoyance that do not convey deep sorrow or mourning."
+   },
+   "sadness": {
+    "what": "Inputs expressing sorrow, grief, or deep unhappiness about a loss, misfortune, or unfortunate situation.",
+    "not_for": "Inputs showing anger, annoyance, or sarcasm that might superficially mention sadness but lack genuine sorrow."
+   },
+   "desire": {
+    "what": "Inputs expressing a strong wish, craving, or longing for a specific outcome, object, or action to occur.",
+    "not_for": "Comments showing gratitude for received help, approval of current actions, or simple curiosity without longing."
+   },
+   "realization": {
+    "what": "Inputs where the speaker suddenly understands a fact, corrects a mistake, or acknowledges a new personal insight.",
+    "not_for": "Confusion about facts, expressing anger, or stating opinions without a moment of sudden understanding."
+   },
+   "confusion": {
+    "what": "Inputs expressing uncertainty, lack of understanding, or questioning the meaning of a statement or situation.",
+    "not_for": "Inputs showing anger, disappointment, or simple curiosity without expressed bewilderment."
+   },
+   "admiration": {
+    "what": "Inputs expressing deep respect, awe, or high regard for someone's skills, character, or specific achievements.",
+    "not_for": "Comments showing simple approval, excitement, or love without explicit respect for ability."
+   },
+   "disgust": {
+    "what": "Inputs expressing strong revulsion, moral outrage, or deep contempt for a person, action, or situation.",
+    "not_for": "Anger, annoyance, or disapproval without the element of visceral repulsion or moral sickness."
+   },
+   "embarrassment": {
+    "what": "Inputs expressing shame, cringe, or regret over one's own or another's awkward, foolish, or undignified actions.",
+    "not_for": "General sadness, disappointment, or anger about failures without feelings of shame or cringe."
+   },
+   "annoyance": {
+    "what": "Inputs expressing irritation, frustration, or mild anger toward specific actions, situations, or people.",
+    "not_for": "Strong rage, deep sadness, or pure amusement without irritation."
+   },
+   "gratitude": {
+    "what": "Comments explicitly thanking others for help, advice, or shared information, often expressing appreciation for the value received.",
+    "not_for": "General praise, excitement about an idea, or relief without direct thanks to a person."
+   },
+   "amusement": {
+    "what": "Comments expressing laughter, finding situations funny, or mocking others with lighthearted or sarcastic humor.",
+    "not_for": "Inputs showing anger, disgust, or genuine joy without a humorous or mocking tone."
+   },
+   "disappointment": {
+    "what": "Inputs expressing letdown, unmet expectations, or dissatisfaction with outcomes, performance, or situations.",
+    "not_for": "Inputs showing anger, disgust, sadness, or neutral complaints without a sense of letdown."
+   },
+   "approval": {
+    "what": "Comments expressing agreement with a decision, action, or viewpoint, often validating a choice as correct or beneficial.",
+    "not_for": "Inputs showing admiration for a person, amusement at a joke, or neutral observation without endorsement."
+   },
+   "joy": {
+    "what": "Inputs expressing intense happiness, celebration, or delight about a positive event or outcome.",
+    "not_for": "Comments showing excitement, amusement, relief, or pride instead of pure happiness."
+   },
+   "disapproval": {
+    "what": "Inputs expressing negative judgment, criticism, or disagreement with a person, action, or idea.",
+    "not_for": "Confusion, anger, or neutral questions lacking explicit negative judgment."
+   }
+  }
+ },
+ "hate_offensive": {
+  "How should this tweet be classified?": {
+   "neither": {
+    "what": "Inputs containing casual complaints, personal opinions, or neutral statements without hate speech or severe profanity.",
+    "not_for": "Content targeting protected groups with hate speech or using severe, explicit profanity."
+   },
+   "offensive language": {
+    "what": "Inputs containing profanity, slurs, or vulgar terms like 'bitch' or 'hoe' without targeting a protected group.",
+    "not_for": "Content attacking protected groups based on identity, which belongs in hate speech."
+   },
+   "hate speech": {
+    "what": "Content targeting individuals or groups with slurs, dehumanizing language, or calls for harm based on identity.",
+    "not_for": "General profanity, political criticism, or insults not targeting protected groups."
+   }
+  }
+ },
+ "sms_spam": {
+  "Is this SMS message spam?": {
+   "ham (legitimate)": {
+    "what": "Personal messages containing casual conversation, life updates, or non-commercial instructions between known contacts.",
+    "not_for": "Unsolicited promotional offers, lottery scams, or suspicious links from unknown senders."
+   },
+   "spam": {
+    "what": "Messages containing unsolicited prize claims, dating service alerts, or urgent financial instructions with premium-rate phone numbers.",
+    "not_for": "Legitimate personal messages, official bank alerts, or expected notifications from known contacts."
+   }
+  }
+ },
+ "qqp": {
+  "Are these two questions asking the same thing?": {
+   "no": {
+    "what": "Inputs where the two questions address different topics, seek distinct information, or have unrelated intents.",
+    "not_for": "Inputs where both questions ask for the same information or share identical intent."
+   },
+   "yes": {
+    "what": "Inputs where both questions seek identical information or express the same core inquiry despite phrasing differences.",
+    "not_for": "Questions with different scopes, specific details, or fundamentally distinct intents."
+   }
+  }
+ },
+ "wic": {
+  "Is the word used with the same meaning in both sentences?": {
+   "no": {
+    "what": "Inputs where the target word has different meanings or senses in the two provided sentences.",
+    "not_for": "Inputs where the word retains the same meaning across both sentences."
+   },
+   "yes": {
+    "what": "Inputs where the target word carries the identical core meaning in both provided sentences.",
+    "not_for": "Inputs where the word has different meanings, senses, or usages across the two sentences."
+   }
+  }
+ },
+ "stsb": {
+  "How similar in meaning are the two texts?": {
+   "0: completely unrelated": {
+    "what": "Inputs belong here if the two texts describe entirely different actions, subjects, or settings with no shared topic or details.",
+    "not_for": "Texts sharing a topic, action, or specific details belong in higher categories."
+   },
+   "1: on the same topic but different meaning": {
+    "what": "Inputs share a general subject like a person or setting but describe entirely different actions or events.",
+    "not_for": "Inputs with completely unrelated topics, or those sharing specific details or equivalent meanings."
+   },
+   "5: completely equivalent in meaning": {
+    "what": "Inputs where both texts convey identical core actions, subjects, and objects with only trivial grammatical or lexical variations.",
+    "not_for": "Texts with different subjects, actions, or significant details that alter the overall meaning."
+   },
+   "2: share some details": {
+    "what": "Inputs share a common setting or action but differ in specific objects, instruments, or participants involved.",
+    "not_for": "Inputs that are completely unrelated, fully equivalent, or only differ in minor details."
+   },
+   "3: roughly equivalent, important details differ": {
+    "what": "Inputs describe the same core action or subject but differ in specific, important details like objects or methods.",
+    "not_for": "Inputs that are identical, share only a topic, or differ in minor details."
+   },
+   "4: mostly equivalent, minor details differ": {
+    "what": "Inputs where texts convey the same core meaning but differ in minor, non-essential details like specific attributes or actions.",
+    "not_for": "Texts with major meaning differences, completely unrelated topics, or identical content."
+   }
+  }
+ },
+ "tweet_hate": {
+  "Does this tweet contain hate speech?": {
+   "no": {
+    "what": "Inputs discussing immigration, refugees, or social issues without using dehumanizing language, slurs, or calls for violence against protected groups.",
+    "not_for": "Posts containing slurs, dehumanizing metaphors, or explicit calls for violence against immigrants or refugees."
+   },
+   "yes": {
+    "what": "Inputs containing direct slurs, dehumanizing language, or calls for violence against individuals or protected groups.",
+    "not_for": "Political criticism, insults about competence, or general disagreement without targeted hate."
+   }
+  }
+ },
+ "clinc_oos": {
+  "What is the intent of this user message?": {
+   "greeting": {
+    "what": "Inputs containing standard salutations, farewells, or casual inquiries about the assistant's well-being without specific task requests.",
+    "not_for": "Questions asking for the assistant's name, age, hobbies, or whether it is a bot."
+   },
+   "find phone": {
+    "what": "Inputs where the user is trying to locate a lost or misplaced mobile phone.",
+    "not_for": "Requests to track a phone remotely or find a phone number."
+   },
+   "calculator": {
+    "what": "Inputs requesting arithmetic calculations, percentage computations, or mathematical function evaluations like antilogs.",
+    "not_for": "Questions about spending history, bill due dates, or rewards balance amounts."
+   },
+   "alarm": {
+    "what": "Inputs requesting to create, schedule, or activate a specific time-based alert or wake-up notification.",
+    "not_for": "Setting reminders, timers, or calendar events instead of alarms."
+   },
+   "no": {
+    "what": "Inputs where the user explicitly denies a request, rejects an offer, or states that a proposition is false.",
+    "not_for": "Negative answers to factual questions like 'Is it raining?' or 'What is the balance?'."
+   },
+   "tell joke": {
+    "what": "Inputs requesting the assistant to tell a joke, share something funny, or provide humorous content.",
+    "not_for": "Requests for general conversation, storytelling, or specific factual information unrelated to humor."
+   },
+   "what is your name": {
+    "what": "Inputs asking the AI to reveal its own name or preferred form of address.",
+    "not_for": "Questions about the user's name, other people's names, or general greetings."
+   },
+   "maybe": {
+    "what": "Inputs expressing uncertainty, indecision, or lack of knowledge about a specific fact or outcome.",
+    "not_for": "Greeting messages, requests for definitions, or clear yes/no answers."
+   },
+   "play music": {
+    "what": "Inputs requesting to play specific songs, artists, playlists, or general music playback.",
+    "not_for": "Asking about music genres, lyrics, artist biographies, or music history facts."
+   },
+   "gas": {
+    "what": "Inputs asking for the current fuel level, remaining gas amount, or tank status in a vehicle.",
+    "not_for": "Requests about gas prices, refueling locations, or vehicle maintenance schedules."
+   },
+   "cancel": {
+    "what": "Inputs requesting to stop, undo, or discontinue the most recent command or ongoing action immediately.",
+    "not_for": "Requests to cancel scheduled appointments, reservations, or account services like freezing."
+   },
+   "next song": {
+    "what": "Inputs requesting to skip the current track and immediately play the following song in the queue.",
+    "not_for": "Requests to play specific songs, pause music, or change playback speed."
+   },
+   "whisper mode": {
+    "what": "Inputs requesting the assistant to lower its volume, speak softly, or toggle a quiet speaking mode.",
+    "not_for": "Requests to change voice accent, language, or general settings unrelated to volume."
+   },
+   "who made you": {
+    "what": "Inputs asking for the specific creator, developer, or company responsible for building the AI assistant.",
+    "not_for": "Questions about the AI's hobbies, pets, or general identity unrelated to its creator."
+   },
+   "where are you from": {
+    "what": "Inputs asking about the assistant's origin, creation location, or manufacturing country.",
+    "not_for": "Questions about the assistant's name, employer, or hobbies."
+   },
+   "goodbye": {
+    "what": "User messages expressing farewell, gratitude for the conversation, or intent to end the interaction.",
+    "not_for": "General thanks for help, greetings, or requests to repeat information."
+   },
+   "change volume": {
+    "what": "Inputs requesting to adjust, increase, decrease, or set the audio volume level on a device or speaker.",
+    "not_for": "Requests to change playback speed, language, or general smart home settings."
+   },
+   "payday": {
+    "what": "Inputs asking for specific dates regarding paychecks, pay periods, or when the user will receive their salary.",
+    "not_for": "Queries about total earnings, tax withholdings, or general payroll policy details."
+   },
+   "how old are you": {
+    "what": "Inputs asking for the assistant's age, creation date, or operational duration.",
+    "not_for": "Questions about the user's age or birthplace."
+   },
+   "change speed": {
+    "what": "Inputs requesting the assistant to adjust its speech rate to be faster or slower.",
+    "not_for": "Requests to change music tempo, vehicle speed, or general conversation topics."
+   },
+   "yes": {
+    "what": "Inputs that affirmatively confirm a statement, request, or fact using direct agreement or positive assertions.",
+    "not_for": "Inputs asking for confirmation of reservations, schedules, or specific transaction details."
+   },
+   "repeat": {
+    "what": "Inputs where the user explicitly requests the assistant to restate or repeat its previous response due to not hearing or understanding it.",
+    "not_for": "Requests to repeat a specific fact, fun fact, or general information not tied to the last response."
+   },
+   "freeze account": {
+    "what": "Inputs requesting to temporarily suspend or lock a financial account to prevent unauthorized transactions or payments.",
+    "not_for": "Requests to report lost cards, report fraud, or unfreeze an already frozen account."
+   },
+   "make call": {
+    "what": "Inputs requesting the system to initiate a voice call to a specific person, contact, or emergency number.",
+    "not_for": "Finding a lost phone, changing phone settings, or asking about phone availability."
+   },
+   "smart home": {
+    "what": "Inputs requesting control of home devices like lights, fans, or thermostats to turn them on or off.",
+    "not_for": "Setting timers, alarms, or reminders, which belong to timer or reminder categories."
+   },
+   "roll dice": {
+    "what": "Inputs requesting the system to simulate rolling a die or dice for games or random number generation.",
+    "not_for": "Requests to play full board games, card games, or general gambling activities."
+   },
+   "flip coin": {
+    "what": "Inputs requesting the assistant to simulate a coin toss to determine a random outcome like heads or tails.",
+    "not_for": "Requests for actual physical coin flips, gambling advice, or general probability questions."
+   },
+   "sync device": {
+    "what": "Inputs requesting to connect, link, or disconnect the assistant from a user's mobile device or phone.",
+    "not_for": "Requests to make calls, change volume, or find a lost phone."
+   },
+   "meaning of life": {
+    "what": "Inputs asking for the purpose, meaning, or significance of human existence and life itself.",
+    "not_for": "Questions about specific word definitions, dictionary meanings, or general philosophical concepts unrelated to life's purpose."
+   },
+   "income": {
+    "what": "Inputs asking for specific details about the user's earnings, salary, wages, or total pay received.",
+    "not_for": "Queries about bank account balances, rewards points, or general financial advice."
+   },
+   "what song": {
+    "what": "Inputs asking to identify the title or name of a song currently playing or being heard.",
+    "not_for": "Requests to play music, find lyrics, or get artist information without identifying the track."
+   },
+   "measurement conversion": {
+    "what": "Inputs asking to convert a specific quantity from one unit of measurement to another, such as length, weight, or time.",
+    "not_for": "General definitions of units, currency exchange rates, or simple time and date queries."
+   },
+   "w2": {
+    "what": "Inputs requesting access to, location of, or methods for obtaining W-2 tax forms.",
+    "not_for": "General tax advice, income inquiries, or requests for other tax documents like 1099s."
+   },
+   "timer": {
+    "what": "Inputs requesting the assistant to start a countdown for a specific duration or time interval.",
+    "not_for": "Asking for the current time, setting calendar events, or checking account balances."
+   },
+   "meal suggestion": {
+    "what": "Inputs requesting specific food ideas, dinner plans, or meal recommendations, often specifying a cuisine or country.",
+    "not_for": "Requests for cooking times, ingredient lists, or shopping list updates."
+   },
+   "pto request status": {
+    "what": "Inputs asking for the approval status or current progress of a specific vacation or time-off request.",
+    "not_for": "Queries about total PTO balance, general vacation policies, or submitting new requests."
+   },
+   "how busy": {
+    "what": "Inputs asking about current crowd levels, wait times, or seating availability at restaurants or venues.",
+    "not_for": "Requests for general directions, traffic conditions, or specific reservation bookings."
+   },
+   "todo list": {
+    "what": "Inputs asking to retrieve, read, or verify items on a personal task or to-do list.",
+    "not_for": "Requests for shopping lists, reservation confirmations, or general calendar events."
+   },
+   "next holiday": {
+    "what": "Inputs asking for the date or time remaining until the next upcoming day off or public holiday.",
+    "not_for": "General calendar queries, scheduling meetings, or asking about specific holiday names."
+   },
+   "change user name": {
+    "what": "Inputs where the user requests to update their display name or specifies a preferred nickname for the assistant to use.",
+    "not_for": "Greeting messages, spelling corrections, or general account information inquiries unrelated to name changes."
+   },
+   "jump start": {
+    "what": "Inputs requesting instructions or guidance on how to jump start a vehicle with a dead battery.",
+    "not_for": "Queries about general car maintenance, oil changes, or finding a mechanic."
+   },
+   "definition": {
+    "what": "Inputs asking for the meaning, definition, or explanation of specific words, phrases, or idioms.",
+    "not_for": "Questions about general facts, news, or specific entity details like recipes or nutrition."
+   },
+   "who do you work for": {
+    "what": "Inputs asking to identify the specific company, organization, or entity that employs the assistant.",
+    "not_for": "Questions about the assistant's name, origin, or general identity."
+   },
+   "reminder update": {
+    "what": "Inputs where the user explicitly requests to create, set, or schedule a new reminder for a future task or event.",
+    "not_for": "Requests to update calendars, todo lists, shopping lists, or general scheduling tasks."
+   },
+   "new card": {
+    "what": "Inputs where the user explicitly requests to apply for or obtain a new credit or debit card.",
+    "not_for": "Queries about existing card balances, credit scores, or general card features."
+   },
+   "pay bill": {
+    "what": "Inputs where the user explicitly requests assistance to pay a specific bill, such as rent, utilities, insurance, or taxes.",
+    "not_for": "Checking account balance, viewing transaction history, or asking about credit limits."
+   },
+   "current location": {
+    "what": "Inputs asking the system to identify or display the user's exact current geographic position or coordinates.",
+    "not_for": "Requests for directions to a destination, traffic updates, or general map searches."
+   },
+   "ingredient substitution": {
+    "what": "Inputs asking if specific food items can be replaced with alternatives in recipes or cooking.",
+    "not_for": "General recipe requests, nutrition facts, or meal planning without substitution queries."
+   },
+   "change language": {
+    "what": "Inputs requesting to switch the assistant's communication language to a specific non-English language.",
+    "not_for": "Requests to change voice accent, spelling corrections, or translation of specific text."
+   },
+   "spelling": {
+    "what": "Inputs asking for the correct spelling of a word or the count of specific letters within a word.",
+    "not_for": "Requests to translate text, define words, or correct grammar in sentences."
+   },
+   "spending history": {
+    "what": "Inputs asking for details on past transactions, total amounts spent, or specific merchant purchases over a time period.",
+    "not_for": "Requests for current account balance, credit limits, or minimum payment amounts."
+   },
+   "reset settings": {
+    "what": "Inputs requesting to restore a device or application to its original factory configuration or default state.",
+    "not_for": "Requests to change specific settings like volume, name, or playlist updates."
+   },
+   "user name": {
+    "what": "Inputs asking how the system currently stores, displays, or refers to the user's name.",
+    "not_for": "Requests to change the name, ask the assistant's name, or inquire about account status."
+   },
+   "pin change": {
+    "what": "Inputs where the user requests to reset, change, or recover a forgotten personal identification number for an account.",
+    "not_for": "Requests to change passwords, update user names, or report a damaged card."
+   },
+   "lost luggage": {
+    "what": "Inputs where the user reports lost baggage on a flight and seeks assistance to locate or recover it.",
+    "not_for": "General travel inquiries, flight status checks, or complaints about delayed but not lost luggage."
+   },
+   "what can i ask you": {
+    "what": "Inputs asking about the assistant's capabilities, supported tasks, or the types of questions it can answer.",
+    "not_for": "Specific task requests like playing music, checking weather, or asking for meal suggestions."
+   },
+   "are you a bot": {
+    "what": "Inputs where the user explicitly questions whether the assistant is a human, a bot, or a real person.",
+    "not_for": "Questions about the assistant's name, employer, age, or general capabilities."
+   },
+   "thank you": {
+    "what": "Inputs expressing gratitude, appreciation, or thanks for assistance provided by the assistant.",
+    "not_for": "Greetings, farewells, or general conversation not specifically thanking for help."
+   },
+   "do you have pets": {
+    "what": "Inputs asking about the assistant's personal pets, pet ownership, or preference between cats and dogs.",
+    "not_for": "Questions about pet care, nutrition, or veterinary services for real animals."
+   },
+   "gas type": {
+    "what": "Inputs asking for the specific fuel grade or type required for a vehicle.",
+    "not_for": "Queries about gas prices, station locations, or vehicle maintenance schedules."
+   },
+   "insurance": {
+    "what": "Inputs asking about the user's specific health plan, insurance coverage details, or associated benefits.",
+    "not_for": "General health advice, vaccine information, or unrelated financial queries like credit scores."
+   },
+   "credit score": {
+    "what": "Inputs asking to retrieve, check, or evaluate the user's current credit score or credit rating.",
+    "not_for": "Requests to improve credit scores, pay bills, or check credit card balances."
+   },
+   "directions": {
+    "what": "Inputs requesting specific transit steps or routes to reach a destination using public transportation like buses.",
+    "not_for": "General travel suggestions, restaurant recommendations, or queries about vehicle maintenance and fuel."
+   },
+   "tire pressure": {
+    "what": "Inputs asking for current tire pressure readings or whether tires need air inflation.",
+    "not_for": "General maintenance scheduling, vehicle diagnostics, or unrelated car status queries."
+   },
+   "travel suggestion": {
+    "what": "Inputs asking for destination recommendations, local activities, or fun things to do in a specific city or region.",
+    "not_for": "Flight status, travel notifications, or general travel logistics like booking or baggage."
+   },
+   "reminder": {
+    "what": "Inputs asking the assistant to retrieve, list, or read back user-set reminders and scheduled tasks.",
+    "not_for": "Setting new alarms, scheduling meetings, or checking general time and weather."
+   },
+   "recipe": {
+    "what": "Inputs requesting specific cooking instructions, ingredient lists, or methods to prepare a particular dish or food item.",
+    "not_for": "Asking about ingredient substitutions, food expiration dates, or general food definitions."
+   },
+   "apr": {
+    "what": "Inputs asking for the specific annual percentage rate or interest rate charged on a user's credit card account.",
+    "not_for": "Queries about credit limits, bill balances, or general card features unrelated to interest rates."
+   },
+   "pto used": {
+    "what": "Inputs asking for the specific amount of paid time off, vacation days, or leave already consumed by the user.",
+    "not_for": "Queries about remaining balance, total allowance, or scheduling new time off."
+   },
+   "min payment": {
+    "what": "Inputs asking for the smallest required amount to pay on a specific bill or credit card balance.",
+    "not_for": "Queries about total balance, due dates, or full payment amounts."
+   },
+   "weather": {
+    "what": "Inputs asking for current conditions, forecasts, or specific weather events like rain, snow, or temperature.",
+    "not_for": "Travel alerts, flight status, or general time and date queries."
+   },
+   "text": {
+    "what": "Inputs where the user requests the assistant to send a text message to a specific person on their behalf.",
+    "not_for": "Requests to check message history, read incoming texts, or manage contact lists."
+   },
+   "cook time": {
+    "what": "Inputs asking for the specific duration required to prepare, bake, or cook a food item.",
+    "not_for": "Questions about ingredients, nutritional facts, or general recipe steps without time focus."
+   },
+   "cancel reservation": {
+    "what": "User requests to cancel a specific dining or event reservation previously made.",
+    "not_for": "Requests to cancel subscriptions, orders, or general account services."
+   },
+   "fun fact": {
+    "what": "Inputs requesting interesting, educational, or entertaining facts about specific topics or general knowledge.",
+    "not_for": "Questions asking for definitions, how-to guides, or personal opinions instead of facts."
+   },
+   "calendar": {
+    "what": "Inputs asking to view, check, or list existing events and appointments on the user's calendar for specific dates.",
+    "not_for": "Requests to add, update, or delete calendar events, or general date queries without calendar context."
+   },
+   "date": {
+    "what": "Inputs asking for the current, past, or future calendar date, including specific days relative to today.",
+    "not_for": "Queries about holidays, meeting schedules, or general time of day."
+   },
+   "credit limit": {
+    "what": "Inputs asking for the specific maximum spending amount available on a user's credit card or line of credit.",
+    "not_for": "Queries about minimum payments, interest rates, or general spending history."
+   },
+   "translate": {
+    "what": "Inputs requesting the translation of words, phrases, or sentences into a different language.",
+    "not_for": "Requests for language learning tips, cultural facts, or general conversation in a foreign language."
+   },
+   "rollover 401k": {
+    "what": "Inputs asking how to transfer or redirect a 401k retirement account, often due to changing jobs.",
+    "not_for": "General balance inquiries, new card requests, or questions about other investment types."
+   },
+   "bill due": {
+    "what": "Inputs asking for the specific date when a utility or service bill must be paid.",
+    "not_for": "Queries about bill amounts, payment methods, or general account status."
+   },
+   "bill balance": {
+    "what": "Inputs asking for the specific dollar amount owed or total cost due on current utility or service bills.",
+    "not_for": "Requests to pay bills, check payment history, or view general account balances."
+   },
+   "timezone": {
+    "what": "Inputs asking to identify the specific time zone for a given country, city, or region.",
+    "not_for": "Queries about current local time, time differences, or converting times between zones."
+   },
+   "oil change how": {
+    "what": "Inputs asking for instructions, tools, or difficulty regarding performing an oil change on a vehicle.",
+    "not_for": "Queries about tire changes, car rentals, or general vehicle maintenance not involving oil."
+   },
+   "damaged card": {
+    "what": "Inputs where the user reports a physical defect like bending, cracking, or breaking of their payment card.",
+    "not_for": "Reports of lost, stolen, or expired cards, or requests for new cards without damage."
+   },
+   "restaurant suggestion": {
+    "what": "Inputs asking for recommendations or suggestions for specific restaurants or places to eat.",
+    "not_for": "Requests for restaurant reviews, recipes, or general food availability."
+   },
+   "plug type": {
+    "what": "Inputs asking about electrical outlet standards, plug shapes, or the need for adapters in specific countries.",
+    "not_for": "General travel alerts, currency exchange rates, or questions about local customs and laws."
+   },
+   "meeting schedule": {
+    "what": "Inputs requesting a list or overview of the user's scheduled meetings for a specific time period.",
+    "not_for": "Requests to create new meetings, update existing ones, or check general calendar availability."
+   },
+   "replacement card duration": {
+    "what": "Inputs asking for the specific time required to receive a replacement card after reporting loss or theft.",
+    "not_for": "Requests for new cards, general card status, or unrelated topics like weather."
+   },
+   "restaurant reviews": {
+    "what": "Inputs asking for quality assessments, ratings, or general public opinions about specific restaurants or their menu items.",
+    "not_for": "Requests for reservations, directions, hours, or specific menu ingredients."
+   },
+   "tire change": {
+    "what": "Inputs asking for recommendations or schedules regarding when to replace or change vehicle tires.",
+    "not_for": "Requests for immediate roadside tire change services or general vehicle maintenance advice."
+   },
+   "mpg": {
+    "what": "Inputs asking for the vehicle's fuel efficiency, gas mileage, or miles per gallon estimates.",
+    "not_for": "Questions about fuel costs, gas prices, or general car maintenance."
+   },
+   "credit limit change": {
+    "what": "Inputs where the user requests to increase, decrease, or modify their existing credit card spending limit.",
+    "not_for": "Queries about current limit status, credit score improvement, or general account balance inquiries."
+   },
+   "shopping list": {
+    "what": "Inputs asking to retrieve, list, or verify specific items currently stored on the user's personal shopping list.",
+    "not_for": "Requests to add new items, find stores, or check prices for products."
+   },
+   "food last": {
+    "what": "Inputs asking about food safety, expiration dates, or how long specific items remain edible after storage.",
+    "not_for": "Nutrition facts, restaurant reviews, or general cooking instructions."
+   },
+   "change accent": {
+    "what": "Inputs requesting the assistant to switch its voice gender, regional accent, or speech style.",
+    "not_for": "Requests to change volume, language, or general settings unrelated to voice characteristics."
+   },
+   "last maintenance": {
+    "what": "Inputs asking for the date or time of the user's most recent vehicle service, oil change, or shop visit.",
+    "not_for": "Future appointment scheduling, general car advice, or unrelated maintenance history queries."
+   },
+   "pto balance": {
+    "what": "Inputs asking for the user's current remaining or earned paid time off, vacation, or holiday days.",
+    "not_for": "Requests about PTO request status, approval, or scheduling specific leave dates."
+   },
+   "oil change when": {
+    "what": "User queries asking for the specific timing, schedule, or mileage interval for their next vehicle oil change.",
+    "not_for": "Questions about oil types, costs, or general car maintenance unrelated to scheduling."
+   },
+   "change ai name": {
+    "what": "Inputs where the user explicitly instructs the AI to adopt or change its own name.",
+    "not_for": "Asking the AI's current name or changing the user's own name."
+   },
+   "balance": {
+    "what": "Inputs asking for the current monetary amount available in a specific bank or financial account.",
+    "not_for": "Requests about rewards points, bill balances, or spending history instead of account funds."
+   },
+   "travel alert": {
+    "what": "Inputs asking about safety warnings, advisories, or official alerts for specific travel destinations.",
+    "not_for": "General weather forecasts, visa requirements, or flight schedule inquiries."
+   },
+   "report fraud": {
+    "what": "Inputs where the user reports unauthorized transactions, suspicious charges, or card misuse to initiate a fraud investigation.",
+    "not_for": "Queries about card declines, bill due dates, or general account freezing requests."
+   },
+   "time": {
+    "what": "Inputs asking for the current time, specific time in a location, or time in a particular timezone.",
+    "not_for": "Questions about expiration dates, bill due dates, or general timezone definitions without time requests."
+   },
+   "book hotel": {
+    "what": "Inputs requesting to find, check availability, or reserve hotel rooms or accommodations for specific dates and locations.",
+    "not_for": "Requests for flight bookings, travel suggestions, or general directions to hotels."
+   },
+   "share location": {
+    "what": "Inputs where the user requests to send their current GPS coordinates or whereabouts to a specific person.",
+    "not_for": "Asking for the user's own location or general location-based queries without sharing intent."
+   },
+   "taxes": {
+    "what": "Inputs asking to calculate or estimate federal tax liabilities based on earnings or income.",
+    "not_for": "Requests for W2 forms, tax filing status, or general tax law explanations."
+   },
+   "card declined": {
+    "what": "User inquiries explaining why a specific transaction was rejected or why their payment card was not accepted.",
+    "not_for": "Requests for damaged card replacements, card decline duration, or general card status checks."
+   },
+   "nutrition info": {
+    "what": "Inputs asking for specific nutritional facts, healthiness, or dietary details of particular food items.",
+    "not_for": "Requests for recipes, cooking times, or general shopping list updates."
+   },
+   "traffic": {
+    "what": "Inputs asking about current road congestion levels, gridlock, or traffic conditions for specific locations or times.",
+    "not_for": "Queries about driving directions, route planning, or general travel times without mentioning congestion."
+   },
+   "flight status": {
+    "what": "Inputs asking for real-time updates on flight departure, arrival, or boarding times for specific flights.",
+    "not_for": "Booking new flights, checking baggage allowance, or asking about airline loyalty rewards."
+   },
+   "calendar update": {
+    "what": "Inputs requesting to add, edit, delete, or clear specific events and dates from the user's calendar.",
+    "not_for": "Scheduling new meetings, checking availability, or setting alarms and reminders."
+   },
+   "report lost card": {
+    "what": "Inputs where the user explicitly states their payment card is lost or stolen and seeks to report it.",
+    "not_for": "Queries about card expiration dates, balance checks, or general card usage instructions."
+   },
+   "expiration date": {
+    "what": "Inputs asking for the specific month and year when a user's credit or debit card will expire.",
+    "not_for": "Queries about card expiration policies, renewal processes, or general card validity rules."
+   },
+   "vaccines": {
+    "what": "Queries asking about required vaccinations, immunizations, or shots needed before traveling to specific countries.",
+    "not_for": "General travel notifications, weather checks, or questions about gas types and plug types."
+   },
+   "todo list update": {
+    "what": "Inputs requesting to add, remove, or clear specific tasks from a personal to-do list.",
+    "not_for": "Calendar event updates, timer settings, or general reminders without a list context."
+   },
+   "calories": {
+    "what": "Inputs asking for the specific calorie count of a particular food item or meal.",
+    "not_for": "General nutrition advice, weight loss plans, or macro-nutrient breakdowns beyond calories."
+   },
+   "order": {
+    "what": "Inputs where the user explicitly requests the assistant to purchase or order specific items, often referencing a shopping list.",
+    "not_for": "Creating shopping lists, checking item availability, or asking for product definitions without ordering."
+   },
+   "none of the above (out of scope)": {
+    "what": "User queries about general knowledge, external facts, or unrelated topics that fall outside the assistant's specific functional capabilities.",
+    "not_for": "Questions about account balance, bill payments, travel alerts, or other supported banking and service features."
+   },
+   "accept reservations": {
+    "what": "Inputs asking whether specific restaurants or venues accept advance bookings for dining or events.",
+    "not_for": "Requests to actually make a reservation, check availability, or book a table."
+   },
+   "shopping list update": {
+    "what": "Inputs requesting to add, remove, or verify specific items on a user's shopping list.",
+    "not_for": "General shopping queries, recipe ingredients, or creating a new list from scratch."
+   },
+   "ingredients list": {
+    "what": "Inputs asking for specific food items or components required to prepare a particular dish or recipe.",
+    "not_for": "Requests for full cooking instructions, nutritional facts, or general recipe ideas without ingredient focus."
+   },
+   "improve credit score": {
+    "what": "Inputs asking for specific tips, steps, or strategies to build, improve, or maintain a user's credit score.",
+    "not_for": "Queries about current credit score values, credit report disputes, or general financial advice."
+   },
+   "update playlist": {
+    "what": "Inputs requesting to add specific songs or artists to an existing music playlist.",
+    "not_for": "Requests to play a song, find lyrics, or identify a track."
+   },
+   "distance": {
+    "what": "Inputs asking for the physical distance between locations or the travel time required to reach a destination.",
+    "not_for": "Requests for turn-by-turn navigation, current traffic conditions, or general location names."
+   },
+   "exchange rate": {
+    "what": "Inputs asking for the current conversion value between two different currencies.",
+    "not_for": "Requests about interest rates, general balance inquiries, or transaction history."
+   },
+   "schedule meeting": {
+    "what": "Inputs requesting to set up a new meeting, book a room, or arrange a specific time with attendees.",
+    "not_for": "Queries about existing meeting schedules, calendar updates, or general availability checks."
+   },
+   "uber": {
+    "what": "Requests to book, schedule, or arrange a ride-hailing service for transportation to a specific destination.",
+    "not_for": "General travel suggestions, traffic updates, or inquiries about vehicle maintenance like oil changes."
+   },
+   "redeem rewards": {
+    "what": "Inputs where the user wants to use, cash in, or redeem accumulated credit card points or rewards for goods or services.",
+    "not_for": "Asking about point balance, earning rates, or general account status without redeeming."
+   },
+   "travel notification": {
+    "what": "Inputs where the user informs their bank about upcoming travel dates and destinations to prevent account issues.",
+    "not_for": "Requests for travel suggestions, booking confirmations, or general travel status inquiries."
+   },
+   "direct deposit": {
+    "what": "Inputs requesting instructions or assistance to configure automatic paycheck transfers into a bank account.",
+    "not_for": "Queries about general income amounts, tax withholdings, or checking account balances."
+   },
+   "carry on": {
+    "what": "Inputs asking about airline carry-on baggage rules, size limits, or item quantity restrictions for specific flights.",
+    "not_for": "General travel notifications, flight booking requests, or questions about checked luggage policies."
+   },
+   "what are your hobbies": {
+    "what": "Inputs asking the AI to describe its personal interests, leisure activities, or what it does for fun.",
+    "not_for": "Questions about the AI's creator, age, origin, or name."
+   },
+   "routing": {
+    "what": "Inputs requesting the specific routing number for a user's bank account or financial institution.",
+    "not_for": "Queries about account balances, transaction history, or general banking fees."
+   },
+   "order checks": {
+    "what": "Requests to order, mail, or receive new physical checkbooks because the user has run out or needs more.",
+    "not_for": "Inquiries about check balances, transaction history, or general banking account status."
+   },
+   "schedule maintenance": {
+    "what": "Inputs requesting to book appointments for vehicle servicing, oil changes, or diagnostic checks.",
+    "not_for": "Queries about past maintenance dates or general vehicle repair advice."
+   },
+   "car rental": {
+    "what": "Inputs requesting to book, find, or reserve a rental car for specific dates and locations.",
+    "not_for": "Requests for ride-hailing services like Uber, general travel directions, or flight status checks."
+   },
+   "order status": {
+    "what": "Inputs asking for the current shipping, delivery, or processing status of a specific online purchase or order.",
+    "not_for": "Flight status, maintenance schedules, bill due dates, or general transaction history inquiries."
+   },
+   "international visa": {
+    "what": "Inputs asking whether a specific country requires a visa for entry or travel.",
+    "not_for": "Questions about travel suggestions, international fees, or general trip planning."
+   },
+   "transfer": {
+    "what": "Inputs requesting to move a specific monetary amount from one account to another.",
+    "not_for": "Requests to check balances, view spending history, or update credit limits."
+   },
+   "confirm reservation": {
+    "what": "Inputs where the user explicitly asks to verify or confirm an existing restaurant reservation.",
+    "not_for": "Requests to make new reservations, cancel bookings, or check general restaurant availability."
+   },
+   "restaurant reservation": {
+    "what": "Inputs requesting to book a dining table at a specific restaurant for a group size and time.",
+    "not_for": "Requests to cancel, confirm, or modify existing reservations, or general meal suggestions."
+   },
+   "transactions": {
+    "what": "Inputs requesting details, verification, or history of specific financial payments and account activity.",
+    "not_for": "Balance inquiries, bill due dates, credit scores, or general account status checks."
+   },
+   "book flight": {
+    "what": "Inputs requesting to search for, schedule, or purchase airline tickets for specific travel dates and destinations.",
+    "not_for": "Checking existing flight status, booking car rentals, or managing travel alerts."
+   },
+   "interest rate": {
+    "what": "Inputs asking to retrieve or verify the specific interest rate applied to a user's bank account, CD, or loan.",
+    "not_for": "Requests about credit limits, spending history, or general account balances."
+   },
+   "insurance change": {
+    "what": "Inputs requesting steps to switch, modify, or obtain a new insurance policy or plan.",
+    "not_for": "Queries about insurance claims, coverage details, or general health advice."
+   },
+   "rewards balance": {
+    "what": "Inputs asking to check the current total number of reward points or balance available on a specific card.",
+    "not_for": "Requests to redeem points, earn points, or check general account balance."
+   },
+   "pto request": {
+    "what": "Inputs where the user asks to submit, create, or schedule a paid time off request for specific dates.",
+    "not_for": "General calendar event creation, vacation planning, or checking existing PTO balance."
+   },
+   "account blocked": {
+    "what": "Inputs asking why a bank account is frozen, has a hold, or is blocking transactions.",
+    "not_for": "Requests to freeze an account, report a lost card, or check account balance."
+   },
+   "application status": {
+    "what": "Inputs asking for the current processing stage or approval result of a submitted credit card or financial account application.",
+    "not_for": "General account status, PTO requests, or questions about who created the AI."
+   },
+   "international fees": {
+    "what": "Inputs asking about transaction costs or charges incurred when using a card or account outside the home country.",
+    "not_for": "Questions about domestic fees, general interest rates, or currency conversion rates without fee inquiries."
+   }
+  }
+ },
+ "subjectivity": {
+  "Is this sentence objective or subjective?": {
+   "objective": {
+    "what": "Inputs describing verifiable facts, plot summaries, or documented events without personal opinions or emotional judgments.",
+    "not_for": "Sentences expressing personal feelings, opinions, or emotional interpretations of a situation."
+   },
+   "subjective": {
+    "what": "Inputs containing personal opinions, emotional judgments, or evaluative language about a film's quality, style, or effectiveness.",
+    "not_for": "Factual statements about plot, cast, runtime, or production details without personal judgment."
+   }
+  }
+ },
+ "civil_comments": {
+  "Is this comment threat?": {
+   "no": {
+    "what": "Comments expressing insults, political criticism, or disagreement without threatening physical harm or violence.",
+    "not_for": "Inputs containing explicit threats of violence, death, or physical harm."
+   },
+   "yes": {
+    "what": "Comments explicitly advocating for killing, shooting, hanging, or other forms of lethal violence against specific individuals or groups.",
+    "not_for": "Criticism of violence, hypothetical scenarios, or non-lethal threats like property damage."
+   }
+  },
+  "Is this comment identity attack?": {
+   "yes": {
+    "what": "Comments attacking individuals or groups based on race, religion, nationality, or other protected identity characteristics.",
+    "not_for": "Political criticism, policy debates, or personal attacks unrelated to protected identity groups."
+   },
+   "no": {
+    "what": "Comments discussing events, policies, or individuals without targeting specific protected identity groups or personal attributes.",
+    "not_for": "Comments attacking someone based on race, religion, gender, or other protected identity traits."
+   }
+  },
+  "Is this comment toxic?": {
+   "yes": {
+    "what": "Comments containing direct insults, hate speech, personal attacks, or aggressive harassment toward individuals or groups.",
+    "not_for": "Disagreements, factual corrections, or strong opinions expressed without personal attacks or insults."
+   },
+   "no": {
+    "what": "Comments expressing strong opinions, controversial views, or harsh language without direct personal attacks or hate speech.",
+    "not_for": "Comments containing direct insults, threats, hate speech, or severe harassment targeting individuals."
+   }
+  },
+  "Is this comment obscene?": {
+   "yes": {
+    "what": "Comments containing profanity, slurs, or explicit insults directed at individuals or groups.",
+    "not_for": "Polite disagreements, factual statements, or complaints lacking explicit profanity or slurs."
+   },
+   "no": {
+    "what": "Comments expressing political opinions, social critiques, or factual statements without using explicit profanity or graphic sexual descriptions.",
+    "not_for": "Comments containing explicit profanity, graphic sexual descriptions, or severe hate speech."
+   }
+  },
+  "Is this comment insult?": {
+   "yes": {
+    "what": "Comments containing direct personal attacks, name-calling, or hostile language intended to insult the recipient.",
+    "not_for": "Factual disagreements, policy critiques, or arguments lacking personal insults or abusive language."
+   },
+   "no": {
+    "what": "Comments expressing strong political opinions, criticism, or sarcasm without directly attacking a person's character or dignity.",
+    "not_for": "Direct personal attacks, name-calling, or language intended to demean an individual."
+   }
+  }
+ },
+ "counterfactual": {
+  "Does this review sentence contain a counterfactual statement?": {
+   "yes": {
+    "what": "Inputs containing hypothetical scenarios, regrets, or conditional outcomes that contradict actual past or present events.",
+    "not_for": "Direct factual statements, simple opinions, or predictions about future events without counterfactual conditions."
+   },
+   "no": {
+    "what": "Inputs describing actual experiences, facts, or real outcomes without imagining alternative scenarios that did not happen.",
+    "not_for": "Inputs imagining different outcomes, such as 'if I had bought this, it would be better'."
+   }
+  }
+ },
+ "snli": {
+  "What is the logical relation between text 1 and text 2?": {
+   "neutral": {
+    "what": "Text 2 contains details not confirmed by Text 1, making the truth of Text 2 impossible to determine from Text 1 alone.",
+    "not_for": "Inputs where Text 2 is definitely true or definitely false based on Text 1."
+   },
+   "contradiction": {
+    "what": "Text 2 directly opposes or negates the specific facts, actions, or settings described in Text 1.",
+    "not_for": "Inputs where Text 2 is unrelated, adds new info, or is merely a subset of Text 1."
+   },
+   "entailment (text 2 follows from text 1)": {
+    "what": "Text 2 must be a logical consequence of Text 1, where the truth of Text 1 guarantees the truth of Text 2.",
+    "not_for": "Inputs where Text 2 adds new information, contradicts Text 1, or is unrelated to Text 1."
+   }
+  }
+ },
+ "yahoo_topics": {
+  "Which topic category does this question belong to?": {
+   "Sports": {
+    "what": "Questions about athletic competitions, teams, players, game rules, and sports-related controversies or opinions.",
+    "not_for": "Car returns, general human error, or non-sports entertainment topics."
+   },
+   "Entertainment & Music": {
+    "what": "Questions about music genres, artists, albums, podcasts, and general entertainment media consumption.",
+    "not_for": "Business questions about entertainment industry profits or costs of unrelated goods."
+   },
+   "Education & Reference": {
+    "what": "Questions seeking factual information, definitions, career advice, or general knowledge about academic subjects and historical events.",
+    "not_for": "Personal health advice, political opinions, or specific computer troubleshooting steps."
+   },
+   "Science & Mathematics": {
+    "what": "Questions about scientific principles, mathematical derivations, biological mechanisms, and technical academic coursework.",
+    "not_for": "Health advice, general education logistics, or non-technical career inquiries."
+   },
+   "Business & Finance": {
+    "what": "Inputs about commercial transactions, business operations, financial management, grants, and property rental disputes.",
+    "not_for": "General legal advice, personal relationship conflicts, or non-commercial government inquiries."
+   },
+   "Computers & Internet": {
+    "what": "Questions about software, hardware, internet services, online troubleshooting, and digital file management.",
+    "not_for": "General tech news, business strategy, or entertainment content unrelated to technical setup."
+   },
+   "Politics & Government": {
+    "what": "Questions about political events, government policies, elections, laws, and the actions of public officials or political groups.",
+    "not_for": "Personal legal advice, crime details, or general societal issues without specific government focus."
+   },
+   "Family & Relationships": {
+    "what": "Inputs about dating, marriage, family dynamics, interpersonal conflicts, and romantic feelings between individuals.",
+    "not_for": "Questions about general societal norms, political policies, or medical advice regarding relationships."
+   },
+   "Health": {
+    "what": "Inputs about medical conditions, treatments, medications, bodily functions, and physical safety concerns.",
+    "not_for": "Dance technique tips, general career definitions, or non-medical lifestyle advice."
+   },
+   "Society & Culture": {
+    "what": "Questions about social norms, cultural traditions, religious beliefs, and general societal opinions or behaviors.",
+    "not_for": "Specific medical advice, political policy debates, or detailed scientific explanations."
+   }
+  }
+ },
+ "massive_intent": {
+  "What is the intent of this voice-assistant utterance?": {
+   "general greet": {
+    "what": "Inputs containing casual greetings, salutations, or polite inquiries about the assistant's well-being without specific task requests.",
+    "not_for": "Greetings combined with specific commands like setting alarms or checking calendar events."
+   },
+   "transport taxi": {
+    "what": "Inputs requesting to hail, book, or call a taxi or cab for immediate or scheduled transportation.",
+    "not_for": "General traffic updates, ride-sharing app settings, or public transport schedules."
+   },
+   "audio volume other": {
+    "what": "Inputs requesting general volume adjustments, settings access, or clarity improvements without specifying a direction like up, down, or mute.",
+    "not_for": "Commands explicitly asking to mute, increase, or decrease the audio volume."
+   },
+   "audio volume mute": {
+    "what": "Inputs requesting to completely silence audio output or disable sound entirely.",
+    "not_for": "Requests to lower volume, mute specific apps, or stop playing media."
+   },
+   "play audiobook": {
+    "what": "Inputs requesting to start, resume, or restart listening to specific audiobooks or general audiobook content.",
+    "not_for": "Requests to play music, radio, games, or general media playback."
+   },
+   "qa definition": {
+    "what": "Inputs requesting the meaning, definition, or explanation of specific words, terms, or concepts.",
+    "not_for": "Factual queries about people, places, or events, or general jokes and greetings."
+   },
+   "iot cleaning": {
+    "what": "Commands instructing smart home devices to perform cleaning tasks, such as activating a robot vacuum or cleaning a specific area.",
+    "not_for": "Turning lights on/off, controlling plugs, or general smart home device activation without cleaning intent."
+   },
+   "lists createoradd": {
+    "what": "Inputs requesting the creation of a new list or the addition of specific items to an existing list.",
+    "not_for": "Removing items from lists, querying list contents, or managing other data types."
+   },
+   "play game": {
+    "what": "User requests to start or engage in a specific game, trivia, or interactive play session with the assistant.",
+    "not_for": "Requests to play music, radio, podcasts, or audiobooks."
+   },
+   "play radio": {
+    "what": "Inputs requesting to start, select, or tune into a specific radio station, channel, or radio service.",
+    "not_for": "Requests for podcasts, audiobooks, music tracks, or general music settings."
+   },
+   "lists query": {
+    "what": "Inputs requesting the assistant to display, read, or summarize the contents of user-created lists or reminders.",
+    "not_for": "Commands to add, remove, or modify list items, or general queries about daily tasks."
+   },
+   "iot wemo on": {
+    "what": "Inputs requesting to power on a Wemo smart plug or similar IoT outlet device.",
+    "not_for": "Turning off plugs, controlling lights, or managing other IoT devices."
+   },
+   "calendar remove": {
+    "what": "Inputs requesting to delete, cancel, or dismiss specific scheduled events or appointments from the user's calendar.",
+    "not_for": "Setting new events, querying existing schedules, or removing items from shopping lists."
+   },
+   "datetime query": {
+    "what": "Inputs asking for the current time, date, day of the week, or specific calendar information.",
+    "not_for": "Requests to set alarms, convert time zones, or schedule calendar events."
+   },
+   "music settings": {
+    "what": "Inputs requesting changes to playback behavior like shuffle, repeat modes, or song ordering within a music session.",
+    "not_for": "Commands to play, pause, skip tracks, or adjust volume levels."
+   },
+   "general joke": {
+    "what": "Inputs requesting the assistant to tell a joke, make the user laugh, or provide humorous content.",
+    "not_for": "Requests for general greetings, social queries, or definitions of humor terms."
+   },
+   "audio volume down": {
+    "what": "Inputs requesting to decrease the current audio playback volume level on the device.",
+    "not_for": "Requests to increase volume, change music settings, or control other smart devices."
+   },
+   "iot hue lightdim": {
+    "what": "Inputs requesting to lower the brightness level of Hue smart lights.",
+    "not_for": "Turning lights on, off, or changing colors instead of dimming."
+   },
+   "alarm remove": {
+    "what": "Inputs requesting the deletion or cancellation of specific or all existing alarms.",
+    "not_for": "Queries about alarm times, setting new alarms, or general alarm status checks."
+   },
+   "iot wemo off": {
+    "what": "Commands to power off Wemo smart plugs or similar IoT socket devices.",
+    "not_for": "Turning on devices, changing light colors, or controlling non-plug IoT appliances."
+   },
+   "lists remove": {
+    "what": "Inputs requesting the deletion of specific items or entire lists from a user's saved to-do or shopping lists.",
+    "not_for": "Creating lists, adding items, or removing calendar events and alarms."
+   },
+   "music query": {
+    "what": "Inputs asking for specific details about currently playing or user-preferred music, such as artist, release date, duration, or genre.",
+    "not_for": "Requests to play music, adjust volume, or express dislike for a track."
+   },
+   "iot hue lightup": {
+    "what": "Inputs requesting to increase brightness, raise light levels, or make lights brighter using Hue smart bulbs.",
+    "not_for": "Turning lights on/off, changing colors, or dimming brightness belong to other categories."
+   },
+   "recommendation movies": {
+    "what": "Inputs requesting movie suggestions, current showtimes, ticket availability, or lists of top-rated films.",
+    "not_for": "General movie facts, playing music, or booking events unrelated to cinema screenings."
+   },
+   "audio volume up": {
+    "what": "Inputs requesting the assistant to increase audio playback volume or make sound louder.",
+    "not_for": "Requests to mute, lower volume, or adjust other device settings."
+   },
+   "weather query": {
+    "what": "Inputs asking for current conditions, forecasts, or specific weather details for a location or time period.",
+    "not_for": "General facts, news about weather events, or cooking queries involving weather."
+   },
+   "alarm query": {
+    "what": "Inputs asking to list, check, or retrieve details about currently set alarms or their scheduled times.",
+    "not_for": "Requests to create, delete, or modify alarms belong to alarm set or alarm remove."
+   },
+   "email query": {
+    "what": "Inputs asking the assistant to check for, read, or confirm the existence of received emails from specific senders.",
+    "not_for": "Requests to send new emails, find contact details, or manage email settings."
+   },
+   "qa factoid": {
+    "what": "Inputs asking for specific factual details like locations, counts, ages, or entity information.",
+    "not_for": "Definition requests, currency conversions, stock prices, or general quirky questions."
+   },
+   "music likeness": {
+    "what": "Inputs expressing positive or negative opinions about music, or requests to save those opinions to a playlist.",
+    "not_for": "Requests to play music, query song details, or adjust music settings."
+   },
+   "news query": {
+    "what": "Inputs requesting current events, headlines, or specific news articles from named sources or regions.",
+    "not_for": "Requests for weather, traffic, sports scores, or general factual questions."
+   },
+   "qa stock": {
+    "what": "Inputs requesting current prices, fluctuations, or general news about specific company stocks or the stock market.",
+    "not_for": "General factoid queries, currency conversions, or math problems unrelated to stock market data."
+   },
+   "iot coffee": {
+    "what": "Inputs requesting the preparation, brewing, or ordering of coffee, including specific times or temperature preferences.",
+    "not_for": "General food orders, non-coffee drink requests, or queries about coffee shop locations."
+   },
+   "alarm set": {
+    "what": "Inputs requesting to create or schedule a new alarm or reminder for a specific time or duration.",
+    "not_for": "Removing alarms, querying alarm times, or setting calendar events."
+   },
+   "play music": {
+    "what": "Inputs requesting the assistant to start playing specific songs, artists, playlists, or general background music.",
+    "not_for": "Requests to adjust volume, mute audio, or play audiobooks instead of music."
+   },
+   "iot hue lighton": {
+    "what": "Inputs requesting to turn on Hue smart lights or increase brightness due to darkness.",
+    "not_for": "Turning off lights, dimming, changing colors, or controlling non-Hue devices."
+   },
+   "iot hue lightoff": {
+    "what": "Inputs requesting to turn off specific Hue smart lights or all lights in a room.",
+    "not_for": "Turning lights on, dimming, changing colors, or controlling non-Hue devices."
+   },
+   "cooking recipe": {
+    "what": "Inputs requesting specific instructions, ingredients, or methods to prepare food or use kitchen tools.",
+    "not_for": "General cooking questions about facts, times, or techniques without a full recipe request."
+   },
+   "recommendation events": {
+    "what": "Inputs requesting local or upcoming events like concerts, festivals, or carnivals in a specific area.",
+    "not_for": "General location recommendations, weather queries, or transport requests unrelated to specific events."
+   },
+   "play podcasts": {
+    "what": "Inputs requesting to play, skip, or find specific podcast episodes or recommendations.",
+    "not_for": "Requests to play music, radio, audiobooks, or general media queries."
+   },
+   "music dislikeness": {
+    "what": "User expresses dislike for the current song or artist, requesting the system to remember this preference to avoid future playback.",
+    "not_for": "Requests to play music, query song details, or adjust audio volume levels."
+   },
+   "email addcontact": {
+    "what": "Inputs requesting to save a new email address or person into the user's contact list.",
+    "not_for": "Sending emails, querying existing contacts, or managing other contact details."
+   },
+   "qa maths": {
+    "what": "Inputs requesting arithmetic calculations, percentage computations, or solutions to specific mathematical equations and word problems.",
+    "not_for": "Currency conversions, stock prices, or general factual questions unrelated to math."
+   },
+   "takeaway order": {
+    "what": "Inputs requesting to place a food order with a specific restaurant or for a specific dish.",
+    "not_for": "Queries about restaurant availability, prices, or menus without placing an order."
+   },
+   "email querycontact": {
+    "what": "Queries requesting specific personal contact details like phone numbers, addresses, job titles, or birthdays for named individuals.",
+    "not_for": "General email inquiries, sending messages, or asking about email account settings."
+   },
+   "cooking query": {
+    "what": "Inputs asking for recipes, cooking methods, ingredient substitutions, or meal suggestions for preparing food.",
+    "not_for": "Queries about restaurant recommendations, food delivery, or general nutritional facts."
+   },
+   "transport traffic": {
+    "what": "Inputs asking for current traffic conditions, congestion levels, or commute status on specific routes or locations.",
+    "not_for": "General transport queries about routes, schedules, or directions without traffic specifics."
+   },
+   "general quirky": {
+    "what": "Inputs containing random personal stories, emotional statements, or unusual non-standard queries that do not fit specific functional categories.",
+    "not_for": "Specific queries about weather, traffic, news, or standard commands like setting alarms or playing music."
+   },
+   "calendar query": {
+    "what": "Inputs asking to retrieve, confirm, or list existing calendar events, meetings, or reminders.",
+    "not_for": "Requests to add, remove, or set new calendar events or alarms."
+   },
+   "transport ticket": {
+    "what": "Inputs requesting to book, reserve, or purchase train tickets for specific travel routes and dates.",
+    "not_for": "Queries about train schedules, traffic conditions, or general transportation information without booking intent."
+   },
+   "recommendation locations": {
+    "what": "Inputs requesting suggestions for specific physical places like restaurants, shops, or stores based on user preferences or location.",
+    "not_for": "General transport queries, specific takeaway orders, or cooking recipe requests."
+   },
+   "social query": {
+    "what": "Inputs asking for updates, status, or viral content from social media platforms like Facebook or Twitter.",
+    "not_for": "Inputs about posting content, general greetings, or news queries unrelated to social networks."
+   },
+   "iot hue lightchange": {
+    "what": "Inputs requesting to change Hue light colors, shuffle effects, or adjust brightness levels.",
+    "not_for": "Turning lights on/off, dimming only, or controlling non-Hue smart devices."
+   },
+   "qa currency": {
+    "what": "Inputs requesting current exchange rates or conversion values between specific national currencies.",
+    "not_for": "General math questions, currency definitions, or non-currency financial queries."
+   },
+   "calendar set": {
+    "what": "Inputs requesting to create new calendar events, schedule reminders, or add specific appointments to the user's calendar.",
+    "not_for": "Queries asking for existing calendar details or setting simple alarms without event context."
+   },
+   "transport query": {
+    "what": "Inputs asking for travel routes, schedules, or directions between locations without requesting a ticket purchase or taxi booking.",
+    "not_for": "Requests to buy tickets, book taxis, or check current traffic conditions."
+   },
+   "takeaway query": {
+    "what": "Inputs asking about restaurant availability, delivery status, or recommendations for food to take away.",
+    "not_for": "Inputs placing a new food order or asking general cooking questions."
+   },
+   "social post": {
+    "what": "Inputs requesting the assistant to publish status updates, photos, or events to social media platforms like Twitter or Facebook.",
+    "not_for": "Queries about social media content, general greetings, or sending direct messages to contacts."
+   },
+   "email sendemail": {
+    "what": "Inputs requesting the assistant to compose, forward, reply to, or schedule sending an email message to a specific recipient.",
+    "not_for": "Queries about email content, contact management, or general greetings without sending intent."
+   },
+   "datetime convert": {
+    "what": "Inputs requesting time zone conversions, time differences between regions, or translating specific times across different time zones.",
+    "not_for": "General time queries, setting alarms, or converting dates without time zone context."
+   }
+  }
+ },
+ "support_tickets": {
+  "What type of ticket is this?": {
+   "Change": {
+    "what": "Tickets requesting planned modifications, enhancements, or updates to existing systems, features, or processes.",
+    "not_for": "Reports of broken systems, urgent fixes, or standard service requests like password resets."
+   },
+   "Problem": {
+    "what": "Tickets identifying root causes of recurring incidents, data inconsistencies, or systemic failures requiring deep investigation.",
+    "not_for": "Single service outages, user access requests, or immediate fixes for isolated events."
+   },
+   "Request": {
+    "what": "Tickets requesting information, documentation, or step-by-step instructions for system integration, security protocols, or technology usage.",
+    "not_for": "Reports of system failures, unexpected errors, or requests to modify existing configurations."
+   },
+   "Incident": {
+    "what": "Reports of unexpected service interruptions, system crashes, security breaches, or functional failures disrupting normal operations.",
+    "not_for": "Routine service requests, planned changes, or root cause analysis for recurring issues."
+   }
+  },
+  "Which queue should this ticket be routed to?": {
+   "General Inquiry": {
+    "what": "Requests for strategic advice, marketing guidance, or general business inquiries that do not involve specific technical failures or billing issues.",
+    "not_for": "Technical bugs, server outages, payment problems, or specific product support requests."
+   },
+   "IT Support": {
+    "what": "Tickets regarding software integration, system performance issues, tool features, and internal IT infrastructure troubleshooting.",
+    "not_for": "Billing disputes, general sales inquiries, product returns, or human resources matters."
+   },
+   "Billing and Payments": {
+    "what": "Tickets regarding subscription plans, invoice discrepancies, payment processing errors, and billing system configuration updates.",
+    "not_for": "General product features, technical outages, or non-billing data access issues."
+   },
+   "Customer Service": {
+    "what": "Tickets reporting software performance issues, data security breaches, or feature malfunctions requiring troubleshooting and technical resolution.",
+    "not_for": "Billing disputes, general inquiries, sales questions, or non-technical service outages."
+   },
+   "Returns and Exchanges": {
+    "what": "Tickets requesting to return purchased items for refunds or exchange them for different products.",
+    "not_for": "Issues with investment returns, software integration, or general product feature inquiries."
+   },
+   "Service Outages and Maintenance": {
+    "what": "Tickets reporting widespread service disruptions, outages, or scheduled maintenance affecting multiple users or systems.",
+    "not_for": "Individual technical errors, billing issues, or general product feature questions."
+   },
+   "Sales and Pre-Sales": {
+    "what": "Inquiries about product capabilities, security features, integration guidance, or marketing strategies for potential or new customers.",
+    "not_for": "Existing customer technical issues, billing problems, or requests for product returns."
+   },
+   "Human Resources": {
+    "what": "Tickets regarding employee benefits, hiring, internal policies, payroll, or workplace conduct inquiries.",
+    "not_for": "Product features, technical bugs, billing issues, or general customer service requests."
+   },
+   "Product Support": {
+    "what": "Tickets regarding product performance issues, feature usage, strategy optimization, or data analytics insights for business growth.",
+    "not_for": "Billing disputes, IT infrastructure failures, account access problems, or general customer service inquiries."
+   },
+   "Technical Support": {
+    "what": "Tickets involving software bugs, data errors, security breaches, or technical integration failures requiring engineering investigation.",
+    "not_for": "Billing disputes, general product inquiries, sales questions, or non-technical service outages."
+   }
+  },
+  "What priority should this ticket get?": {
+   "low": {
+    "what": "Tickets requesting general information, feature updates, or integration guidance without immediate system failure or critical data loss.",
+    "not_for": "Urgent outages, critical security breaches, or active data loss requiring immediate resolution."
+   },
+   "high": {
+    "what": "Tickets involving critical system crashes, active security breaches, or urgent operational failures requiring immediate intervention.",
+    "not_for": "General strategy inquiries, feature requests, or non-urgent metric declines."
+   },
+   "medium": {
+    "what": "Tickets requesting general information, feature details, or reporting non-critical data inconsistencies and engagement issues.",
+    "not_for": "Urgent system outages, critical security breaches, or minor cosmetic typos requiring immediate fixes."
+   }
+  }
+ },
+ "mnli": {
+  "What is the logical relation between text 1 and text 2?": {
+   "contradiction": {
+    "what": "Text 2 directly opposes or negates a specific fact, claim, or event explicitly stated in Text 1.",
+    "not_for": "Inputs where text 2 is unrelated, adds new info, or logically follows text 1."
+   },
+   "entailment (text 2 follows from text 1)": {
+    "what": "Inputs where text 2 is a logical consequence or paraphrase of the facts stated in text 1.",
+    "not_for": "Inputs where text 2 contradicts text 1 or introduces unrelated information."
+   },
+   "neutral": {
+    "what": "Text 2 introduces new information not supported or contradicted by Text 1, making its truth value undeterminable from the first text alone.",
+    "not_for": "Inputs where Text 2 is clearly proven true or false based solely on Text 1."
+   }
+  }
+ },
+ "banking77": {
+  "Which banking-support intent does this customer message express?": {
+   "get physical card": {
+    "what": "Requests to obtain a new physical card, check its delivery status, or locate the PIN sent with the card.",
+    "not_for": "Virtual card requests, PIN changes, or issues with existing card functionality."
+   },
+   "pin blocked": {
+    "what": "Inputs where the user's PIN is locked due to multiple failed attempts and they need to unlock it.",
+    "not_for": "Requests to change a PIN, forgotten PINs, or general card activation issues."
+   },
+   "edit personal details": {
+    "what": "Inputs requesting to update personal information like name, phone number, or address within the user's account profile.",
+    "not_for": "Identity verification requests, password resets, or changing card-specific details like PINs."
+   },
+   "unable to verify identity": {
+    "what": "Messages where the user cannot complete identity verification, is unsure how to provide ID, or questions why verification failed.",
+    "not_for": "Requests to verify identity, questions about why verification is required, or general identity verification inquiries."
+   },
+   "atm support": {
+    "what": "Inputs asking which ATMs accept the card, how to locate compatible machines, or general ATM network availability.",
+    "not_for": "Queries about withdrawal fees, exchange rates, or cards being swallowed by machines."
+   },
+   "verify my identity": {
+    "what": "Inputs asking for the specific steps, documents, or methods required to complete identity verification.",
+    "not_for": "Questions about why verification is needed or issues with failing the verification process."
+   },
+   "card not working": {
+    "what": "Inputs where the user reports their card is physically broken, rejected, or completely non-functional during general use.",
+    "not_for": "Do not use for declined transactions, expired cards, or specific payment failures."
+   },
+   "order physical card": {
+    "what": "Requests to obtain, order, or inquire about shipping and costs for a new physical card.",
+    "not_for": "Queries about card arrival status, activation, or getting virtual cards instead."
+   },
+   "top up limits": {
+    "what": "Queries about maximum amounts, frequency caps, or restrictions on adding funds to an account or card.",
+    "not_for": "Failed top-ups, reverted transactions, or specific payment method issues like card declines."
+   },
+   "visa or mastercard": {
+    "what": "Inputs where the user asks about or expresses a preference for Visa or Mastercard card types.",
+    "not_for": "Issues with card activation, payments, fees, or delivery status."
+   },
+   "activate my card": {
+    "what": "Messages where the user requests to enable a new or inactive card for use.",
+    "not_for": "Issues with card payments, lost cards, or PIN problems."
+   },
+   "age limit": {
+    "what": "Queries about minimum age requirements to open an account or use services, including eligibility for children.",
+    "not_for": "Questions about identity verification steps, account activation, or general account setup procedures."
+   },
+   "top up by bank transfer charge": {
+    "what": "Queries about fees or costs specifically for adding funds to an account via bank transfer methods like SEPA or SWIFT.",
+    "not_for": "Questions about card top-up fees, general transfer timing, or exchange rates."
+   },
+   "country support": {
+    "what": "Inputs asking which countries are supported for account opening, card usage, or residency eligibility.",
+    "not_for": "Queries about specific currencies, card acceptance at merchants, or supported card networks."
+   },
+   "card linking": {
+    "what": "Inputs asking how to register, activate, or display a new physical card within the mobile application interface.",
+    "not_for": "Requests to order a new card, fix a broken card, or report a lost card."
+   },
+   "passcode forgotten": {
+    "what": "Inputs where the user cannot access their account because they have forgotten or lost their login passcode or password.",
+    "not_for": "Issues with card PINs, identity verification failures, or general account access problems unrelated to forgotten passwords."
+   },
+   "verify top up": {
+    "what": "Messages asking how to verify a top-up, requesting verification codes, or questioning the need for top-up verification.",
+    "not_for": "Failed top-ups, top-up limits, or charges related to topping up by card."
+   },
+   "top up by cash or cheque": {
+    "what": "Inputs asking how to add funds using physical cash or a cheque, or inquiring about the availability of these specific methods.",
+    "not_for": "Queries about topping up via bank transfer, card charges, or digital payment apps."
+   },
+   "virtual card not working": {
+    "what": "Messages where the user reports that their disposable or virtual card is rejected, declined, or fails to process transactions.",
+    "not_for": "Issues with physical cards, card activation, or general card not working without specifying virtual."
+   },
+   "getting virtual card": {
+    "what": "Inputs asking how to order, receive, or locate a virtual card, or reporting delays in getting one.",
+    "not_for": "Issues with a virtual card not working after it has already been issued."
+   },
+   "cash withdrawal charge": {
+    "what": "Messages questioning fees or charges applied specifically to ATM cash withdrawals or cash-out transactions.",
+    "not_for": "Queries about pending withdrawals, failed transactions, or general card payment fees."
+   },
+   "disposable card limits": {
+    "what": "Queries about the maximum number, usage frequency, or creation limits for disposable virtual cards.",
+    "not_for": "Requests to create cards, general card limits, or issues with card activation."
+   },
+   "automatic top up": {
+    "what": "Messages requesting to set up, configure, or inquire about limits for recurring automatic account funding.",
+    "not_for": "Manual top-ups, pending transactions, or general balance inquiries unrelated to automation."
+   },
+   "getting spare card": {
+    "what": "Requests to obtain additional physical card copies for the same account, including inquiries about limits and costs.",
+    "not_for": "Requests for virtual cards, replacement for lost cards, or initial card activation."
+   },
+   "terminate account": {
+    "what": "Inputs where the user explicitly requests to close, cancel, or delete their entire account due to dissatisfaction or personal choice.",
+    "not_for": "Requests to cancel a specific card, transaction, or subscription instead of the whole account."
+   },
+   "topping up by card": {
+    "what": "Messages about adding funds to an account using a debit or credit card, including failed attempts or missing balances.",
+    "not_for": "Issues with bank transfers, cash deposits, or topping up via other methods like Apple Pay."
+   },
+   "card about to expire": {
+    "what": "Messages requesting a replacement card or guidance because the current card's expiration date is approaching.",
+    "not_for": "Lost, stolen, compromised, or non-functioning cards, or general virtual card requests."
+   },
+   "card acceptance": {
+    "what": "Inputs asking which merchants, websites, or locations accept the card for payments.",
+    "not_for": "Queries about supported card brands, currencies, or why a specific transaction was declined."
+   },
+   "contactless not working": {
+    "what": "Messages reporting that contactless payments fail to process or asking how to troubleshoot contactless functionality issues.",
+    "not_for": "Issues with card activation, general card failure, or contactless payment fees."
+   },
+   "change pin": {
+    "what": "Inputs asking how to update or reset a card's personal identification number via app, ATM, or branch.",
+    "not_for": "Queries about lost cards, card activation, or general card payment issues."
+   },
+   "verify source of funds": {
+    "what": "Inputs asking how to confirm the origin of funds or identify the sender of money received.",
+    "not_for": "Queries about verifying identity, checking transaction status, or confirming top-up success."
+   },
+   "Refund not showing up": {
+    "what": "Messages where the user reports a refund has not appeared in their account or statement yet.",
+    "not_for": "Requests to initiate a refund, disputes about wrong charges, or general transfer timing questions."
+   },
+   "exchange via app": {
+    "what": "Requests to convert funds between different currencies directly within the mobile application.",
+    "not_for": "Queries about exchange rates, cash withdrawal fees, or physical currency exchange services."
+   },
+   "declined transfer": {
+    "what": "Messages where a user reports a specific bank transfer attempt was rejected or failed with a 'declined' status.",
+    "not_for": "Failed transfers without decline status, declined card payments, or declined cash withdrawals."
+   },
+   "card arrival": {
+    "what": "Inputs where the customer asks about the delivery status, expected arrival time, or tracking of a physical card they have ordered.",
+    "not_for": "Issues with activating, using, or replacing a card that has already been received."
+   },
+   "exchange rate": {
+    "what": "Inputs asking about the specific foreign exchange rates, calculation methods, or timing for currency conversions.",
+    "not_for": "Queries about cash withdrawal fees, wrong amounts received, or general currency support."
+   },
+   "lost or stolen phone": {
+    "what": "Messages reporting a lost or stolen mobile device and requesting immediate security actions like disabling app access.",
+    "not_for": "Reports of lost or stolen physical bank cards, PINs, or general account fraud."
+   },
+   "exchange charge": {
+    "what": "Inputs asking about fees, costs, or discounts specifically related to currency exchange transactions.",
+    "not_for": "Questions about exchange rates, transfer fees, or general account charges."
+   },
+   "top up by card charge": {
+    "what": "Queries about fees or costs specifically incurred when adding funds to an account using a debit or credit card.",
+    "not_for": "Questions about cash, cheque, bank transfer fees, or general top-up limits."
+   },
+   "transfer timing": {
+    "what": "Inputs asking about the expected duration or arrival time for a money transfer to reach the recipient's account.",
+    "not_for": "Queries about failed transfers, transfer limits, or charges associated with sending money."
+   },
+   "receiving money": {
+    "what": "Inputs asking how to receive incoming funds, such as salary deposits or personal transfers from others into the account.",
+    "not_for": "Queries about sending money, topping up, or verifying the source of funds for outgoing transactions."
+   },
+   "card swallowed": {
+    "what": "Messages where an ATM retains the customer's physical card, preventing its return after a transaction attempt.",
+    "not_for": "Lost, stolen, or damaged cards not involving ATM retention."
+   },
+   "wrong amount of cash received": {
+    "what": "Reports where the physical cash dispensed by an ATM is less than the amount requested and charged to the account.",
+    "not_for": "Discrepancies in digital transfer amounts, balance updates, or incorrect exchange rates."
+   },
+   "apple pay or google pay": {
+    "what": "Messages about topping up the account using Apple Pay or Google Pay, including setup issues or failed transactions.",
+    "not_for": "General card failures, other top-up methods, or issues with physical card payments."
+   },
+   "balance not updated after cheque or cash deposit": {
+    "what": "Messages where a user reports that their account balance has not increased after depositing cash or a cheque.",
+    "not_for": "Balance issues after bank transfers, pending top-ups, or general transaction delays."
+   },
+   "declined cash withdrawal": {
+    "what": "Messages where the user reports an ATM cash withdrawal attempt was rejected or failed to dispense funds.",
+    "not_for": "Issues with pending withdrawals, unrecognized transactions, or general card malfunctions not specific to ATM declines."
+   },
+   "get disposable virtual card": {
+    "what": "Inputs asking how to create, obtain, or understand the function of single-use virtual cards for secure online payments.",
+    "not_for": "Requests for standard virtual cards, physical cards, or general card activation and delivery."
+   },
+   "pending cash withdrawal": {
+    "what": "Messages where a user questions why an ATM cash withdrawal transaction remains in a pending status within their banking app.",
+    "not_for": "Issues about failed withdrawals, declined transactions, or cash not being dispensed by the machine."
+   },
+   "why verify identity": {
+    "what": "Inputs questioning the necessity, reasons, or specific data requirements behind the identity verification process.",
+    "not_for": "Requests to perform verification, report failed checks, or ask about account usage while pending."
+   },
+   "transfer fee charged": {
+    "what": "Messages questioning, explaining, or disputing specific fees charged for executing a money transfer between accounts.",
+    "not_for": "Queries about transfer timing, failed transfers, or general currency exchange rates."
+   },
+   "card delivery estimate": {
+    "what": "Inputs asking about the expected arrival time, shipping duration, or expedited delivery options for a new or replacement card.",
+    "not_for": "Queries about card activation, tracking a lost card, or reporting a compromised card."
+   },
+   "lost or stolen card": {
+    "what": "Inputs reporting a physical card that is lost, stolen, or missing, requesting immediate blocking and replacement.",
+    "not_for": "Lost phones, identity verification, card delivery delays, or general card linking issues."
+   },
+   "supported cards and currencies": {
+    "what": "Inputs asking which card brands or fiat currencies are accepted for funding the account or making payments.",
+    "not_for": "Queries about specific exchange rates, transaction fees, or why a payment was declined."
+   },
+   "pending transfer": {
+    "what": "Queries about transfers currently in a pending state, including reasons for delays, expected completion times, or missing funds.",
+    "not_for": "Transfers already completed, declined transfers, or issues with transfers not received by the recipient."
+   },
+   "card payment fee charged": {
+    "what": "Messages questioning or reporting unexpected fees specifically applied to card-based purchases or transactions.",
+    "not_for": "Fees for transfers, top-ups, currency exchange, or general account charges unrelated to card payments."
+   },
+   "extra charge on statement": {
+    "what": "Messages questioning unexpected fees, small charges, or unexplained amounts appearing on the user's bank statement.",
+    "not_for": "Queries about transfer fees, ATM charges, or specific transaction declines."
+   },
+   "transaction charged twice": {
+    "what": "Inputs where the user reports being charged multiple times for a single transaction or purchase.",
+    "not_for": "Double charges for different transactions, pending duplicate authorizations, or general refund requests."
+   },
+   "transfer into account": {
+    "what": "Inputs asking how to send money from an external bank account into the user's current account.",
+    "not_for": "Transfers between own accounts, topping up by card, or sending money to others."
+   },
+   "top up reverted": {
+    "what": "Reports where a completed or pending top-up is unexpectedly cancelled, reversed, or the funds disappear from the account.",
+    "not_for": "Failed transfers, pending top-ups, or general balance update delays without reversal."
+   },
+   "pending card payment": {
+    "what": "Messages asking about the status, duration, or reasons for a card transaction currently showing as pending.",
+    "not_for": "Queries about pending transfers, cash withdrawals, or top-ups are for other categories."
+   },
+   "beneficiary not allowed": {
+    "what": "Messages where users cannot add a beneficiary or fail transfers due to restrictions on the recipient account.",
+    "not_for": "Failed transfers due to insufficient funds, technical errors, or general transfer cancellations."
+   },
+   "failed transfer": {
+    "what": "Messages where the user reports a money transfer attempt that did not complete successfully or was rejected by the system.",
+    "not_for": "Queries about pending transfers, refunds not showing, or balance not updating after a transfer."
+   },
+   "reverted card payment?": {
+    "what": "Inputs where the user reports a completed card payment was cancelled, returned, or reversed by the bank.",
+    "not_for": "Declined payments, failed top-ups, or general card decline reasons."
+   },
+   "fiat currency support": {
+    "what": "Inputs asking which specific fiat currencies the bank supports for holding, exchanging, or using within the account.",
+    "not_for": "Queries about exchange rates, currency conversion fees, or specific transaction amounts in foreign currencies."
+   },
+   "request refund": {
+    "what": "Requests to return money for a purchase, cancel a transaction, or get a refund for an undelivered item.",
+    "not_for": "Complaints about missing refunds, exchange fees, or charges already appearing on statements."
+   },
+   "top up failed": {
+    "what": "Inputs where a user reports a top-up transaction was rejected, denied, or failed to process successfully.",
+    "not_for": "Do not use for successful top-ups, pending transactions, or queries about top-up limits."
+   },
+   "transfer not received by recipient": {
+    "what": "Messages where the sender confirms a transfer was made but the recipient has not yet received the funds.",
+    "not_for": "Failed transfers, pending transfers, or balance not updated after a bank transfer."
+   },
+   "compromised card": {
+    "what": "Reports of suspected unauthorized use, theft, or fraud where the user believes someone else is using their card.",
+    "not_for": "Requests to cancel cards for non-fraud reasons, lost cards, or general card not working issues."
+   },
+   "card payment wrong exchange rate": {
+    "what": "Messages where the customer disputes a card transaction because the applied currency exchange rate was incorrect or unfavorable.",
+    "not_for": "General exchange rate inquiries, failed transfers, or issues with cash withdrawal rates."
+   },
+   "cash withdrawal not recognised": {
+    "what": "Reports of unauthorized or unrecognized cash withdrawals appearing on the account statement that the customer did not perform.",
+    "not_for": "Failed withdrawals, declined transactions, or disputes over withdrawal fees and charges."
+   },
+   "pending top up": {
+    "what": "Messages where a user reports a top-up transaction is stuck in a pending state or asks about its processing time.",
+    "not_for": "Failed transfers, balance not updated after deposit, or general top-up method inquiries."
+   },
+   "cancel transfer": {
+    "what": "Requests to stop, reverse, or undo a money transfer initiated by the user before it completes or after it fails.",
+    "not_for": "Failed transfers, refunds not showing, or transfers not received by the recipient."
+   },
+   "card payment not recognised": {
+    "what": "Reports of specific card transactions appearing in the app or statement that the user did not authorize or recognize.",
+    "not_for": "Unrecognized direct debits, duplicate charges, or general card malfunction issues."
+   },
+   "wrong exchange rate for cash withdrawal": {
+    "what": "Reports where the exchange rate applied to a cash withdrawal or ATM transaction was incorrect or unexpected.",
+    "not_for": "Card payment exchange rate errors, wrong cash amounts received, or general currency support queries."
+   },
+   "balance not updated after bank transfer": {
+    "what": "Reports where a balance fails to reflect a completed or pending incoming bank transfer.",
+    "not_for": "Issues with cash deposits, cheque deposits, or failed outgoing transfers."
+   },
+   "direct debit payment not recognised": {
+    "what": "Reports of unrecognized direct debit transactions or unauthorized deductions where the user disputes the payment's origin.",
+    "not_for": "Disputes for card purchases, general fraud, or unrecognized transfers not labeled as direct debits."
+   },
+   "declined card payment": {
+    "what": "Messages where the user reports a specific transaction was rejected or declined by the bank during a purchase attempt.",
+    "not_for": "General card malfunctions, unrecognized transactions, or issues with cash withdrawals and contactless payments."
+   }
+  }
+ },
+ "yelp": {
+  "How many stars did this reviewer most likely give?": {
+   "4 stars": {
+    "what": "Inputs describing very good experiences with minor flaws or high praise that stops short of perfection.",
+    "not_for": "Reviews with perfect praise, significant complaints, or mixed feelings about quality."
+   },
+   "1 star": {
+    "what": "Inputs expressing extreme dissatisfaction, anger, or disgust regarding service, cleanliness, or product quality.",
+    "not_for": "Reviews with minor complaints, mixed feelings, or generally positive experiences."
+   },
+   "5 stars": {
+    "what": "Inputs expressing extreme enthusiasm, praising exceptional quality, service, or value with no significant criticisms.",
+    "not_for": "Reviews with mixed feelings, minor complaints, or moderate praise lacking overwhelming excitement."
+   },
+   "2 stars": {
+    "what": "Reviews describing poor food quality, slow service, or significant issues that make the experience barely acceptable but not terrible.",
+    "not_for": "Inputs describing excellent experiences, minor annoyances, or completely unacceptable, dangerous situations."
+   },
+   "3 stars": {
+    "what": "Reviews describing an average experience with mixed positives and negatives, stating the place is okay but not great.",
+    "not_for": "Inputs expressing strong enthusiasm, deep disappointment, or clear recommendations to visit or avoid."
+   }
+  }
+ },
+ "qnli": {
+  "Does the sentence contain the answer to the question?": {
+   "yes": {
+    "what": "Inputs where the sentence explicitly provides the direct answer to the specific question asked.",
+    "not_for": "Sentences that discuss the topic but fail to answer the specific question directly."
+   },
+   "no": {
+    "what": "Inputs where the sentence discusses the topic but fails to provide the specific answer requested by the question.",
+    "not_for": "Sentences that directly state the specific fact or entity the question asks for."
+   }
+  }
+ },
+ "mrpc": {
+  "Are these two sentences paraphrases of each other?": {
+   "yes": {
+    "what": "Inputs where both sentences convey the same core meaning using different wording, structure, or level of detail.",
+    "not_for": "Sentences with conflicting facts, different subjects, or unrelated topics."
+   },
+   "no": {
+    "what": "Inputs where the two sentences convey different facts, contradict each other, or contain non-overlapping information.",
+    "not_for": "Sentences that express the same meaning using different words or structures."
+   }
+  }
+ },
+ "ag_news": {
+  "What is the topic of this news article?": {
+   "Sci/Tech": {
+    "what": "News about scientific discoveries, space missions, software tools, and technological product developments.",
+    "not_for": "General world events, sports results, or pure corporate financial business news."
+   },
+   "Sports": {
+    "what": "News about athletes, teams, competitions, scores, and professional sports organizations.",
+    "not_for": "Business deals involving sports teams or general world news mentioning athletes."
+   },
+   "Business": {
+    "what": "News about corporate transactions, stock markets, economic indicators, employment data, and industrial production figures.",
+    "not_for": "Articles focusing on scientific discoveries, athletic competitions, or general international political events."
+   },
+   "World": {
+    "what": "News about international relations, foreign governments, diplomatic events, and global political conflicts involving multiple nations.",
+    "not_for": "Sports scores, corporate earnings, scientific discoveries, or domestic-only political stories."
+   }
+  }
+ },
+ "fever": {
+  "Is the claim supported or refuted by the evidence?": {
+   "refuted by the evidence": {
+    "what": "Inputs where the provided evidence directly contradicts the claim, proving it false.",
+    "not_for": "Claims confirmed by evidence or those lacking sufficient information to verify."
+   },
+   "supported by the evidence": {
+    "what": "Inputs where the provided evidence explicitly confirms the specific details stated in the claim.",
+    "not_for": "Claims contradicted by evidence or lacking sufficient information to verify."
+   },
+   "not enough information": {
+    "what": "Inputs where the evidence discusses unrelated topics, different entities, or lacks specific details to verify the claim.",
+    "not_for": "Claims directly confirmed or contradicted by explicit facts in the provided evidence."
+   }
+  }
+ },
+ "newsgroups": {
+  "Which newsgroup was this post made in?": {
+   "sci.electronics": {
+    "what": "Posts discussing electronic components, circuits, devices, and related technical hardware questions or troubleshooting.",
+    "not_for": "Nuclear power generation, medical devices, or general science topics unrelated to electronics."
+   },
+   "comp.sys.ibm.pc.hardware": {
+    "what": "Posts discussing IBM PC hardware components, specifications, compatibility issues, and technical modifications.",
+    "not_for": "Mac hardware, Windows software, graphics, or non-PC computer systems."
+   },
+   "rec.sport.hockey": {
+    "what": "Posts discussing hockey games, teams, scores, rosters, or personal experiences watching the sport.",
+    "not_for": "Discussions about baseball, motorcycles, or general sports not specific to hockey."
+   },
+   "sci.crypt": {
+    "what": "Posts discussing encryption algorithms, cryptographic keys, export controls, and the Clipper Chip debate.",
+    "not_for": "General electronics, medical science, space exploration, or unrelated political discussions."
+   },
+   "talk.politics.misc": {
+    "what": "Posts discussing general political issues, social policies, or government actions not covered by specific regional or topic-focused political newsgroups.",
+    "not_for": "Discussions on guns, Middle East politics, or religion belong in their specific subcategories."
+   },
+   "rec.motorcycles": {
+    "what": "Posts discussing motorcycle mechanics, riding techniques, specific models, related films, or buying and selling motorcycles.",
+    "not_for": "Discussions about cars, general sports, or other vehicle types like bicycles or trucks."
+   },
+   "talk.religion.misc": {
+    "what": "Posts discussing general religious topics, beliefs, or controversies without focusing on a specific faith tradition.",
+    "not_for": "Discussions specifically about Christianity, atheism, or political issues unrelated to religion."
+   },
+   "talk.politics.mideast": {
+    "what": "Posts discussing political conflicts, policies, and events specifically involving Israel, Palestine, and the Middle East region.",
+    "not_for": "General political debates, other regional conflicts, or non-political discussions about the Middle East."
+   },
+   "rec.sport.baseball": {
+    "what": "Posts discussing baseball players, teams, statistics, injuries, trades, and game attendance.",
+    "not_for": "Discussions about other sports like hockey, motorcycles, or general automotive topics."
+   },
+   "rec.autos": {
+    "what": "Posts discussing car features, performance, maintenance, insurance, and driving experiences.",
+    "not_for": "Motorcycle discussions, general sports topics, or non-vehicle sales."
+   },
+   "comp.sys.mac.hardware": {
+    "what": "Posts discussing Macintosh computer hardware issues, upgrades, peripherals, and technical specifications.",
+    "not_for": "Windows hardware, general graphics, or non-hardware Mac software questions."
+   },
+   "alt.atheism": {
+    "what": "Posts debating the existence of God, religious contradictions, or atheistic arguments against faith.",
+    "not_for": "Discussions about specific religious laws, practices, or interfaith comparisons without atheistic focus."
+   },
+   "comp.os.ms-windows.misc": {
+    "what": "Posts discussing Microsoft Windows operating system usage, development, troubleshooting, and related software tools.",
+    "not_for": "Hardware issues, other operating systems, or general computer graphics topics."
+   },
+   "talk.politics.guns": {
+    "what": "Posts discussing gun control laws, firearm ownership rights, and the activities of the ATF or similar agencies.",
+    "not_for": "General political debates, religious discussions, or non-political gun sales and technical hardware questions."
+   },
+   "misc.forsale": {
+    "what": "Posts advertising items, real estate, or services for sale, including prices and contact details for potential buyers.",
+    "not_for": "General discussions about products, technical reviews, or news unrelated to direct sales."
+   },
+   "sci.space": {
+    "what": "Posts discussing space exploration, spacecraft operations, orbital mechanics, and related NASA missions or technologies.",
+    "not_for": "General electronics, medical science, or cryptography discussions unrelated to spaceflight."
+   },
+   "sci.med": {
+    "what": "Posts discussing medical conditions, treatments, patient care, and interactions with healthcare professionals.",
+    "not_for": "General science, electronics, or space topics unrelated to human health and medicine."
+   },
+   "soc.religion.christian": {
+    "what": "Posts discussing Christian theology, church practices, scripture, or specific denominational beliefs and controversies.",
+    "not_for": "General religious debates, non-Christian faiths, or political discussions involving religion."
+   },
+   "comp.graphics": {
+    "what": "Posts discussing graphics software, image viewers, plotting tools, and display modes on various computer systems.",
+    "not_for": "Hardware discussions, operating system issues, or general programming unrelated to visual output."
+   },
+   "comp.windows.x": {
+    "what": "Posts discussing technical issues, programming, and configuration related to the X Window System on Unix-like operating systems.",
+    "not_for": "Windows OS support, general graphics, or hardware questions unrelated to X11."
+   }
+  }
+ },
+ "rte": {
+  "Does text 1 entail text 2?": {
+   "no, not entailment": {
+    "what": "Text 1 does not support Text 2 because the facts contradict, are unrelated, or lack sufficient evidence to prove the claim.",
+    "not_for": "Inputs where Text 1 clearly proves Text 2 true or where the meaning is identical."
+   },
+   "yes, entailment": {
+    "what": "Text 1 logically guarantees the truth of Text 2, making the second statement a necessary consequence of the first.",
+    "not_for": "Inputs where Text 2 adds new info, contradicts Text 1, or is unrelated."
+   }
+  }
+ },
+ "dbpedia": {
+  "What kind of entity does this encyclopedia text describe?": {
+   "NaturalPlace": {
+    "what": "This category includes natural geographical features like rivers, mountains, craters, and creeks found on Earth or other celestial bodies.",
+    "not_for": "Man-made structures, villages, companies, or specific animals and plants."
+   },
+   "Village": {
+    "what": "Small rural settlements with defined populations, administrative districts, and geographic locations within specific countries.",
+    "not_for": "Cities, towns, counties, provinces, or natural places like mountains and rivers."
+   },
+   "Film": {
+    "what": "Inputs describing motion pictures, including feature films, documentaries, and short subjects with directors and cast.",
+    "not_for": "Written scripts, music albums, or books that share the same title as a film."
+   },
+   "MeanOfTransportation": {
+    "what": "This category includes vehicles designed for transporting people or goods, such as aircraft, ships, and trains.",
+    "not_for": "Do not include buildings, natural places, or companies that manufacture these vehicles."
+   },
+   "Artist": {
+    "what": "This category includes musicians, composers, singers, and creative writers known for their artistic works.",
+    "not_for": "Do not include athletes, office holders, or authors of non-fiction or academic texts."
+   },
+   "Plant": {
+    "what": "This category includes species of flowering plants, trees, grasses, shrubs, and herbs described by their scientific names and botanical characteristics.",
+    "not_for": "Animals, buildings, vehicles, or non-living natural places like mountains or rivers."
+   },
+   "EducationalInstitution": {
+    "what": "Organizations dedicated to teaching, training, or academic research, including schools, colleges, and universities.",
+    "not_for": "Companies, artists, athletes, office holders, or buildings not primarily used for education."
+   },
+   "Album": {
+    "what": "Inputs describing a collection of recorded music tracks released by an artist or band.",
+    "not_for": "Written works, films, or individual songs not part of a full album release."
+   },
+   "Building": {
+    "what": "This category includes man-made structures like churches, hotels, historic homes, and statues designed for specific uses or commemoration.",
+    "not_for": "Natural places, villages, or transportation means, which are distinct from constructed buildings."
+   },
+   "OfficeHolder": {
+    "what": "Individuals who have held elected or appointed positions in government, diplomacy, or public administration.",
+    "not_for": "Politicians who are primarily known as artists, athletes, or educators without holding office."
+   },
+   "Animal": {
+    "what": "This category includes living organisms such as birds, insects, fish, and other non-human species.",
+    "not_for": "Plants, fictional creatures, or extinct species described in written works."
+   },
+   "WrittenWork": {
+    "what": "This category includes novels, plays, comic books, and other written literary works created by authors.",
+    "not_for": "Films, albums, or educational institutions, which are distinct creative or organizational entities."
+   },
+   "Company": {
+    "what": "This category includes commercial organizations, firms, and corporations engaged in business activities, publishing, or manufacturing.",
+    "not_for": "Educational institutions, government offices, artists, athletes, or natural places."
+   },
+   "Athlete": {
+    "what": "Individuals who compete professionally or internationally in sports, winning medals or playing for teams.",
+    "not_for": "Coaches, referees, sports journalists, or fictional characters involved in sports."
+   }
+  }
+ },
+ "bias_in_bios": {
+  "Which pronoun set is used for this person?": {
+   "she/her": {
+    "what": "Inputs describing individuals using female pronouns like she, her, and hers to refer to their roles or achievements.",
+    "not_for": "Inputs using male pronouns like he, him, or his to describe a person."
+   },
+   "he/him": {
+    "what": "Inputs describing a male person using pronouns like he, him, his, or male titles such as Mr. or Dr.",
+    "not_for": "Inputs describing a female person using she, her, or Mrs."
+   }
+  },
+  "What is this person's profession?": {
+   "physician": {
+    "what": "Inputs describing individuals who practice medicine, hold an M.D. degree, or are affiliated with hospitals as medical doctors.",
+    "not_for": "Nurses, surgeons, dentists, or psychologists who are not general medical practitioners."
+   },
+   "comedian": {
+    "what": "Inputs describing individuals who perform stand-up, appear on comedy shows, or write humorous content for entertainment.",
+    "not_for": "Actors, writers, or performers in non-comedy genres like drama or music."
+   },
+   "composer": {
+    "what": "Inputs describing individuals who create original musical scores, soundtracks, or orchestral pieces for films, operas, and performances.",
+    "not_for": "Musicians who perform, sing, or play instruments without creating original compositions."
+   },
+   "model": {
+    "what": "Inputs describing individuals who pose for photographs, appear in magazines, or walk runways for fashion and media brands.",
+    "not_for": "Actors, musicians, or athletes whose primary fame comes from performance rather than posing."
+   },
+   "personal trainer": {
+    "what": "Inputs describing professionals who design fitness programs, lead physical training sessions, and coach clients on strength and conditioning.",
+    "not_for": "Yoga teachers, dietitians, or physicians focusing on medical treatment rather than fitness coaching."
+   },
+   "yoga teacher": {
+    "what": "Inputs describing individuals who lead yoga classes, workshops, or wellness sessions focused on poses, breathing, and meditation.",
+    "not_for": "Personal trainers, massage therapists, or health coaches who do not specifically teach yoga."
+   },
+   "dj": {
+    "what": "Inputs describing individuals who select and mix recorded music for live audiences, radio shows, or events.",
+    "not_for": "Musicians who perform instruments, songwriters, or radio hosts who only speak without mixing tracks."
+   },
+   "surgeon": {
+    "what": "Inputs describing medical doctors who perform surgical operations, often mentioning surgical residencies, board certifications, or specific surgical specialties.",
+    "not_for": "General physicians, dentists, or other medical professionals who do not perform surgery."
+   },
+   "interior designer": {
+    "what": "Inputs describing professionals who plan, research, coordinate, and manage projects to create functional and aesthetically pleasing interior spaces.",
+    "not_for": "Architects designing building structures, or furniture makers creating individual pieces."
+   },
+   "accountant": {
+    "what": "Inputs describing professionals who manage finances, audit statements, handle taxes, or hold CPA credentials.",
+    "not_for": "Financial directors, business consultants, or bankers without specific accounting or tax expertise."
+   },
+   "paralegal": {
+    "what": "Inputs describing individuals who assist attorneys with legal research, document preparation, and case management without practicing law independently.",
+    "not_for": "Attorneys, judges, or law students who practice law or are still studying."
+   },
+   "dietitian": {
+    "what": "Inputs describing professionals with nutrition degrees who create dietary plans and advise on healthy food choices.",
+    "not_for": "Physicians, psychologists, or personal trainers who do not specialize in nutrition science."
+   },
+   "chiropractor": {
+    "what": "Inputs describing medical professionals specializing in spinal manipulation, pain relief, and musculoskeletal health, often mentioning NPI numbers or insurance.",
+    "not_for": "Physicians, surgeons, or dentists treating general medical conditions, oral health, or performing surgery."
+   },
+   "rapper": {
+    "what": "Inputs describing individuals who create and perform rhythmic spoken lyrics over musical beats as their primary profession.",
+    "not_for": "Singers, songwriters, or musicians who do not primarily perform rap music."
+   },
+   "dentist": {
+    "what": "Inputs describing medical professionals who diagnose and treat oral health issues, perform dental surgeries, and hold dental degrees like BDS or MDS.",
+    "not_for": "Physicians, surgeons, or other medical doctors who do not specialize in teeth and oral care."
+   },
+   "journalist": {
+    "what": "Inputs describing individuals who investigate, report, or write news stories for newspapers, magazines, or broadcast media.",
+    "not_for": "Authors of fiction, poets, or academics teaching journalism without reporting experience."
+   },
+   "software engineer": {
+    "what": "Inputs describing individuals who design, develop, or maintain software systems, applications, or operating systems through coding and engineering.",
+    "not_for": "IT managers, data analysts, or computer science professors without direct software development roles."
+   },
+   "pastor": {
+    "what": "Inputs describing individuals who lead religious congregations, preach sermons, or hold ordained ministerial titles like Reverend.",
+    "not_for": "Religious writers, theologians, or church staff without ordained leadership roles."
+   },
+   "photographer": {
+    "what": "Inputs describing individuals who create visual images using cameras for artistic, commercial, or documentary purposes.",
+    "not_for": "Painters, graphic designers, or curators who do not primarily capture images with cameras."
+   },
+   "attorney": {
+    "what": "Inputs describing individuals who practice law, handle litigation, draft legal documents, or provide legal counsel to clients.",
+    "not_for": "Paralegals, legal assistants, or judges who do not practice law as attorneys."
+   },
+   "professor": {
+    "what": "Inputs describing individuals who teach academic subjects, conduct research, or hold faculty positions at universities or colleges.",
+    "not_for": "K-12 teachers, medical doctors, or other professionals who do not hold university faculty roles."
+   },
+   "painter": {
+    "what": "Inputs describing individuals who create visual artworks on canvas or paper using mediums like oil, pastel, or acrylic.",
+    "not_for": "Photographers, filmmakers, or interior designers who work with images, video, or spatial design."
+   },
+   "poet": {
+    "what": "Inputs describing individuals who write, publish, or perform original poetry collections and win literary awards for verse.",
+    "not_for": "Writers of novels, plays, or non-fiction books, or those who only teach literature."
+   },
+   "architect": {
+    "what": "Inputs describing individuals who design buildings, manage construction projects, or hold formal architecture degrees and certifications.",
+    "not_for": "Engineers, contractors, interior designers, or real estate agents who do not design structures."
+   },
+   "nurse": {
+    "what": "Inputs describing individuals providing direct patient care, often with titles like nurse practitioner or working in hospitals and clinics.",
+    "not_for": "Physicians, surgeons, or other doctors who diagnose and treat patients independently."
+   },
+   "teacher": {
+    "what": "Inputs describing individuals who educate students in schools, universities, or specialized learning environments through formal instruction.",
+    "not_for": "Yoga teachers, pastors, or personal trainers who focus on spiritual or physical guidance rather than academic education."
+   },
+   "filmmaker": {
+    "what": "Inputs describing individuals who write, direct, produce, or edit motion pictures and video content for distribution.",
+    "not_for": "Actors, writers, or directors who work exclusively in theater, television, or radio."
+   },
+   "psychologist": {
+    "what": "Inputs describing professionals with psychology degrees who provide counseling, conduct mental health research, or study human behavior.",
+    "not_for": "Inputs about psychiatrists, social workers, or general health researchers without psychology specialization."
+   }
+  }
+ },
+ "enron_spam": {
+  "Is this email spam?": {
+   "spam": {
+    "what": "Unsolicited messages promoting cheap software, prescription drugs, or adult content with urgent calls to action.",
+    "not_for": "Legitimate personal emails, official business correspondence, or expected newsletters from known senders."
+   },
+   "ham (legitimate)": {
+    "what": "Legitimate work emails containing specific project updates, internal announcements, or direct colleague coordination requests.",
+    "not_for": "Unsolicited promotional messages, phishing attempts, or bulk advertisements from unknown senders."
+   }
+  }
+ },
+ "wiki_qa": {
+  "Does the candidate sentence answer the question?": {
+   "yes": {
+    "what": "Inputs where the candidate sentence directly provides the specific information requested by the question.",
+    "not_for": "Sentences that mention the topic but fail to answer the specific question asked."
+   },
+   "no": {
+    "what": "Inputs where the candidate sentence fails to directly answer the specific question asked by the user.",
+    "not_for": "Sentences that clearly and directly provide the answer to the specific question asked."
+   }
+  }
+ },
+ "boolq": {
+  "Based on the passage, what is the answer?": {
+   "no": {
+    "what": "Inputs where the passage explicitly contradicts the question or provides no evidence to support the claim.",
+    "not_for": "Inputs where the passage directly confirms the question's premise or provides clear supporting evidence."
+   },
+   "yes": {
+    "what": "Passages containing factual information, definitions, or descriptions of real-world entities, laws, or concepts.",
+    "not_for": "Passages that are fictional stories, opinions, or lack verifiable factual content."
+   }
+  }
+ },
+ "helpsteer2": {
+  "How coherent and clear is the response?": {
+   "4: perfectly coherent": {
+    "what": "Inputs where the response is logically structured, fully addresses the prompt, and flows without confusion or gaps.",
+    "not_for": "Responses with logical gaps, unclear phrasing, or failure to address the prompt."
+   },
+   "0: incoherent": {
+    "what": "Responses that are nonsensical, cut off mid-sentence, or contain severe logical errors making them impossible to understand.",
+    "not_for": "Responses that are mostly clear but contain minor errors or slight confusion."
+   },
+   "3: mostly coherent": {
+    "what": "Inputs where the response is largely clear and logical but contains minor errors, abrupt endings, or slight structural inconsistencies.",
+    "not_for": "Inputs that are completely incoherent, perfectly flawless, or only partially understandable."
+   },
+   "1: mostly incoherent": {
+    "what": "Inputs where the response starts logically but quickly devolves into gibberish, truncation, or nonsensical content.",
+    "not_for": "Fully coherent answers, completely random text, or responses with minor clarity issues."
+   },
+   "2: partially coherent": {
+    "what": "Inputs where the response starts logically but becomes fragmented, cuts off mid-sentence, or fails to fully address the prompt.",
+    "not_for": "Fully complete answers, completely nonsensical text, or responses that are mostly clear with minor errors."
+   }
+  },
+  "How verbose is the response relative to what the prompt asks for?": {
+   "2: adequate length": {
+    "what": "Inputs where the response length perfectly matches the prompt's complexity, providing complete answers without unnecessary brevity or excessive detail.",
+    "not_for": "Responses that are too brief to be useful or excessively long with irrelevant filler."
+   },
+   "4: far too long": {
+    "what": "Inputs where the response significantly exceeds the prompt's length constraints or provides excessive, unnecessary detail.",
+    "not_for": "Adequate responses, concise answers, or prompts requesting detailed explanations."
+   },
+   "0: far too short": {
+    "what": "Responses that fail to address the prompt's core request or provide insufficient detail, examples, or steps required by the user.",
+    "not_for": "Short but complete answers, or responses that are merely concise without missing required elements."
+   },
+   "3: somewhat long": {
+    "what": "Responses that provide complete answers but include unnecessary elaboration, extra context, or redundant details beyond the prompt's core request.",
+    "not_for": "Inputs that are concise, perfectly matched in length, or excessively verbose with irrelevant filler."
+   },
+   "1: somewhat short": {
+    "what": "Responses that address the prompt but lack sufficient detail, examples, or elaboration to fully satisfy the request.",
+    "not_for": "Inputs needing minimal answers, or those with excessive, irrelevant, or overly detailed content."
+   }
+  },
+  "How helpful is the response to the prompt?": {
+   "0: not helpful": {
+    "what": "Inputs where the response is cut off mid-sentence, fails to answer the question, or provides factually incorrect information.",
+    "not_for": "Responses that are complete but only partially address the user's specific request."
+   },
+   "3: mostly helpful": {
+    "what": "Inputs where the response accurately addresses the core request with minor omissions or slight lack of depth.",
+    "not_for": "Responses that are completely wrong, barely relevant, or perfectly comprehensive with no flaws."
+   },
+   "1: slightly helpful": {
+    "what": "Inputs where the response attempts the task but fails significantly due to incomplete execution, missing key constraints, or poor quality.",
+    "not_for": "Inputs where the response is completely irrelevant, fully correct, or only partially addresses the core request."
+   },
+   "2: partially helpful": {
+    "what": "Responses that address the core request but fail to meet specific constraints, contain minor errors, or lack necessary detail.",
+    "not_for": "Inputs that are completely wrong, fully accurate, or only slightly relevant to the prompt."
+   },
+   "4: extremely helpful": {
+    "what": "Inputs where the response fully answers the prompt with accurate, actionable, and comprehensive information tailored to the user's specific needs.",
+    "not_for": "Responses that are incomplete, vague, partially correct, or fail to address the core request."
+   }
+  },
+  "What level of expertise does the response's content require?": {
+   "1: simple": {
+    "what": "Inputs requiring straightforward factual recall, basic definitions, or simple creative tasks accessible to general audiences.",
+    "not_for": "Complex analysis, specialized technical expertise, or highly nuanced professional strategies."
+   },
+   "3: advanced": {
+    "what": "Inputs requiring specialized technical knowledge, complex system design, or deep domain-specific analysis to solve effectively.",
+    "not_for": "Basic facts, simple tutorials, or expert-level research requiring novel discovery."
+   },
+   "2: intermediate": {
+    "what": "Inputs requiring specific technical knowledge, business strategy, or tool integration beyond general common sense.",
+    "not_for": "Basic facts, simple tasks, or highly specialized expert-level research requiring deep domain mastery."
+   },
+   "4: expert-level": {
+    "what": "Inputs requiring deep, specialized knowledge in niche fields like advanced mathematics, constructed languages, or complex system architecture.",
+    "not_for": "General queries, basic facts, or intermediate tasks solvable with standard professional experience."
+   },
+   "0: basic, anyone could write it": {
+    "what": "Inputs requiring only common knowledge, simple storytelling, or basic factual recall without specialized training or complex analysis.",
+    "not_for": "Tasks needing technical expertise, nuanced reasoning, or deep domain-specific knowledge."
+   }
+  },
+  "How correct and accurate is the response?": {
+   "3: mostly correct": {
+    "what": "Inputs where the response is accurate and addresses the core query but contains minor omissions or lacks full completeness.",
+    "not_for": "Inputs with major factual errors, partial correctness, or perfect, fully detailed answers."
+   },
+   "1: mostly incorrect": {
+    "what": "Responses that fail to address the core request, provide irrelevant details, or contain significant factual errors despite minor correct elements.",
+    "not_for": "Inputs with minor errors, partial correctness, or completely accurate answers belong to other categories."
+   },
+   "2: partially correct": {
+    "what": "Inputs where the response contains some accurate information but also includes significant errors, omissions, or irrelevant content.",
+    "not_for": "Inputs with fully correct answers, mostly correct minor errors, or completely wrong responses."
+   },
+   "4: completely correct": {
+    "what": "Inputs where the response fully addresses the prompt with accurate, complete, and contextually appropriate information.",
+    "not_for": "Responses that are incomplete, contain factual errors, or only partially address the user's request."
+   },
+   "0: completely incorrect": {
+    "what": "Inputs where the response is factually wrong, fails the core task, or provides irrelevant information entirely.",
+    "not_for": "Responses that are partially correct, mostly correct, or contain minor factual errors."
+   }
+  }
+ },
+ "msmarco_rel": {
+  "Does the passage answer the query?": {
+   "no": {
+    "what": "Inputs where the passage fails to directly answer the specific question asked by the user.",
+    "not_for": "Passages that clearly provide the specific information requested in the query."
+   },
+   "yes": {
+    "what": "Inputs where the passage directly provides the specific information requested by the query.",
+    "not_for": "Passages that are irrelevant, incomplete, or fail to address the specific question asked."
+   }
+  }
+ },
+ "multirc": {
+  "Is the candidate answer correct according to the paragraph?": {
+   "no": {
+    "what": "Inputs where the candidate answer is factually incorrect or unsupported by the provided paragraph text.",
+    "not_for": "Inputs where the candidate answer is explicitly confirmed by the paragraph."
+   },
+   "yes": {
+    "what": "Inputs where the candidate answer is factually supported by the provided paragraph text.",
+    "not_for": "Inputs where the answer contradicts the text or cannot be verified from it."
+   }
+  }
+ },
+ "imdb": {
+  "What is the sentiment of this movie review?": {
+   "negative": {
+    "what": "Reviews expressing strong dislike, disappointment, or criticism regarding the movie's quality, plot, or execution.",
+    "not_for": "Reviews praising the film, highlighting enjoyable aspects, or recommending it to others."
+   },
+   "positive": {
+    "what": "Inputs expressing approval, enjoyment, or praise for the movie's plot, acting, or overall experience.",
+    "not_for": "Reviews criticizing the film, calling it boring, or expressing disappointment."
+   }
+  }
+ },
+ "liar2": {
+  "How truthful is this political statement, as rated by fact-checkers?": {
+   "2: barely true": {
+    "what": "Statements containing a small kernel of fact but relying on misleading context, exaggeration, or omission to distort the overall truth.",
+    "not_for": "Completely false claims, accurate statements, or those that are equally true and false."
+   },
+   "1: false": {
+    "what": "Statements that are factually incorrect, misrepresenting events, data, or rulings without any basis in truth.",
+    "not_for": "Absurdly false claims, partially true statements, or mostly accurate assertions with minor errors."
+   },
+   "5: true": {
+    "what": "Statements that fact-checkers confirm are entirely accurate with no significant misleading elements or omissions.",
+    "not_for": "Claims that are partially false, misleading, or contain significant inaccuracies."
+   },
+   "3: half true": {
+    "what": "Statements containing a mix of accurate facts and significant misleading claims or omissions that distort the overall truth.",
+    "not_for": "Inputs that are entirely false, completely accurate, or only slightly inaccurate."
+   },
+   "4: mostly true": {
+    "what": "Statements where the core claim is accurate but contains minor errors, omissions, or lacks full context.",
+    "not_for": "Claims that are completely false, half true, or entirely accurate without any caveats."
+   },
+   "0: pants on fire (absurdly false)": {
+    "what": "Statements that are completely fabricated, contradict established facts, or rely on absurd claims with no basis in reality.",
+    "not_for": "Statements that are merely misleading, partially true, or false but plausible."
+   }
+  }
+ }
+}

@@ -1,68 +1,13 @@
 """Stage 1: proper-scoring-rule fine-tune (CE, optionally + Brier) on the multi-task decision mixture."""
 import argparse, json, math, os, pickle, random, time
 import numpy as np, torch, torch.nn.functional as F
-from .model import DecisionModel, collate
-from .prompt import build
-from .evaluate import run_eval, aggregate
-from . import data as D
-from . import data2  # noqa: F401  (registers v2 tasks)
-from . import data3  # noqa: F401  (registers v4 tasks)
+from decider.model import DecisionModel, collate
+from decider.prompt import build
+from decider.evaluate import run_eval, aggregate
+from decider import data as D
 
 
-NONE_OPT = "none of the above"
-ABSTAIN_WORDINGS = ["none of the above", "none of these", "not listed here", "other", "something else", "unsure",
-                    "does not apply", "no suitable option", "neither of these", "cannot tell from the text",
-                    "none of the above (out of scope)", "other / not covered"]
-NONE_GOLD_RATE = 0.25
-
-
-from .prompt import is_abstain_option
-
-
-_LABEL_POOL = None
-
-
-def _label_pool(rng):
-    """Option strings from many tasks, used to build clearly off-topic option lists."""
-    global _LABEL_POOL
-    if _LABEL_POOL is None:
-        _LABEL_POOL = {}
-    return _LABEL_POOL
-
-
-def none_augment(e, rng, p, pool=None):
-    """With prob p, for a question with >=3 options and no abstain-style option:
-       75%: add an abstain option (random wording), gold unchanged  -> "an abstain option present does not mean abstain"
-       25%: replace ALL options by labels drawn from other tasks + an abstain option, gold = abstain
-            -> abstain when nothing on offer fits, not when the exact label is merely missing."""
-    if p <= 0 or pool is None:
-        return e
-    qs = []
-    for q in e.qs:
-        if len(q.options) >= 3 and rng.random() < p and not any(is_abstain_option(o) for o in q.options):
-            w = rng.choice(ABSTAIN_WORDINGS)
-            if rng.random() < NONE_GOLD_RATE:
-                others = [t for t in pool if t != e.task.split('+')[0]]
-                src = pool[rng.choice(others)]
-                k = min(len(q.options), len(src)); opts = rng.sample(src, k) + [w]
-                qs.append(D.Q(q.text, opts, len(opts) - 1))
-            else:
-                qs.append(D.Q(q.text, list(q.options) + [w], q.gold))
-        else:
-            qs.append(q)
-    return D.Example(e.context, qs, e.task)
-
-
-def build_label_pool(train):
-    """task -> sorted distinct option strings (only tasks with a fixed label set of 3..60 options)."""
-    pool = {}
-    for e in train:
-        if "+" in e.task:                      # v6 re-renderings (descriptions, padding, JSON states): not a clean label set
-            continue
-        for q in e.qs:
-            if 3 <= len(q.options) <= 60:
-                pool.setdefault(e.task, set()).update(q.options)
-    return {t: sorted(v) for t, v in pool.items() if 3 <= len(v) <= 200}
+from decider.data.augment import none_augment, build_label_pool
 
 
 def make_items(train, tok, rng, max_ctx, none_prob=0.0, max_options=10, schema_first_prob=0.0):

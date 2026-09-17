@@ -5,8 +5,8 @@ mask is needed and every (B, T) bucket can be captured once and replayed.  The g
 option-letter logits for all positions [B, T, K]; slots are gathered outside.
 """
 import time, torch, torch._dynamo, torch.nn.functional as F
-from .model import DecisionModel, collate
-from .prompt import build, MAX_OPTIONS
+from decider.model import DecisionModel, collate
+from decider.prompt import build, MAX_OPTIONS
 
 T_BUCKETS = [64, 128, 192, 256, 320, 384, 512, 640, 768, 1024, 1280, 1536, 2048]
 B_BUCKETS = [1, 2, 4, 8, 16, 32, 64]
@@ -74,7 +74,7 @@ class Engine:
         self.core, self.W = self.m.lm.model, self.m.lm.lm_head.weight[self.m.letters].detach().clone()
         self.cfg = dict(compile=compile, fp8=fp8, conv_patch=conv_patch, graphs=use_graphs)
         if fp8:
-            from .fp8 import convert_to_fp8
+            from decider.fp8 import convert_to_fp8
             self.cfg["fp8_layers"] = convert_to_fp8(self.core)
         if compile:
             torch._dynamo.config.cache_size_limit = 128
@@ -163,8 +163,8 @@ class Engine:
 
 if __name__ == "__main__":
     import sys, random, numpy as np
-    from . import data as D
-    from .infer import Decider
+    from decider import data as D
+    from decider.infer import Decider
     path = sys.argv[1] if len(sys.argv) > 1 else "runs/r3_v2/model"
     cfg = dict(compile="nocompile" not in sys.argv[2:], fp8="fp8" in sys.argv[2:], conv_patch="noconv" not in sys.argv[2:])
     _, evals = D.load_cache("data/tasks.pkl")

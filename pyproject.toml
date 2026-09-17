@@ -1,0 +1,15 @@
+[project]
+name = "decider"
+version = "0.8.0"
+description = "One-pass typed decisions with calibrated probabilities (a System One style model on Qwen3.5-2B)"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+dependencies = ["torch", "transformers>=5", "flash-linear-attention", "numpy<2", "huggingface_hub"]
+
+[project.optional-dependencies]
+serve = ["fastapi", "uvicorn[standard]", "httpx"]
+train = ["datasets", "accelerate", "scikit-learn", "pillow"]
+games = ["gymnasium", "gym-super-mario-bros", "nes-py", "minigrid", "ale-py", "imageio"]
+
+[tool.setuptools.packages.find]
+include = ["decider*"]

@@ -11,8 +11,8 @@ every batch and every graph.
     probs = se.score(h, ["state 1", "state 2", ...])          # list of [n_questions, MAX_OPTIONS] tensors
 """
 import time, types, torch, torch.nn.functional as F
-from .prompt import schema_prefix_ids, schema_suffix_ids, MAX_OPTIONS
-from .engine import read_slots, fill_ids
+from decider.prompt import schema_prefix_ids, schema_suffix_ids, MAX_OPTIONS
+from decider.engine import read_slots, fill_ids
 
 TS_BUCKETS = [32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024]
 B_BUCKETS = [1, 2, 4, 8, 16, 32, 64]

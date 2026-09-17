@@ -1,6 +1,6 @@
 """Compare runs: python -m decider.report runs/zs_2b runs/zs_4b runs/r1_200k/final ..."""
 import json, pickle, sys, numpy as np
-from .metrics import summarize
+from decider.metrics import summarize
 
 
 def load(run):

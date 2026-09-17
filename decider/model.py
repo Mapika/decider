@@ -1,7 +1,7 @@
 """Backbone -> slot hidden states -> restricted logits over option letters."""
 import torch, torch.nn as nn, torch.nn.functional as F
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from .prompt import letter_ids, MAX_OPTIONS
+from decider.prompt import letter_ids, MAX_OPTIONS
 
 
 class DecisionModel(nn.Module):

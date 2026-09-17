@@ -9,10 +9,10 @@ Requests arriving within `max_wait_ms` are scored in one forward pass (grouped b
 import asyncio, os, random, time, threading
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from .engine import Engine, T_BUCKETS, _bucket
-from .prompt import build, MAX_OPTIONS
-from .infer import Decider, Example, Q, neutralize_options
-from . import systemone as S1
+from decider.engine import Engine, T_BUCKETS, _bucket
+from decider.prompt import build, MAX_OPTIONS
+from decider.infer import Decider, Example, Q, neutralize_options
+from decider import systemone as S1
 
 MODEL = os.environ.get("DECIDER_MODEL", "runs/r3_v2/model")
 MAX_BATCH = int(os.environ.get("DECIDER_MAX_BATCH", "32"))
@@ -132,7 +132,7 @@ async def _start():
     ISOLATED = bool(cfg.get("isolated_levels", False))
     SCHEMA_FIRST = bool(cfg.get("schema_first", False)) and os.environ.get("DECIDER_SCHEMA_CACHE", "1") == "1"
     if SCHEMA_FIRST:
-        from .schema_engine import SchemaEngine
+        from decider.schema_engine import SchemaEngine
         se = SchemaEngine(eng); squeue = asyncio.Queue(); asyncio.create_task(schema_batcher()); print("[serve] schema cache on", flush=True)
         pre = os.environ.get("DECIDER_SCHEMAS")             # JSON file: [{"questions": {...}, "independent": true, "batch_sizes": [1, 8, 32], "state_tokens": [64, 256]}]
         for spec in (json.load(open(pre)) if pre else []):  # known schemas: prefix computed, graphs compiled and captured before traffic

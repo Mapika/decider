@@ -1,6 +1,8 @@
 .venv*/
-runs/
-data/
-logs/
+data
+runs
+logs
 __pycache__/
 *.pkl
+*.egg-info/
+.ipynb_checkpoints/
