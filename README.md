@@ -1,5 +1,9 @@
 # decider: one-pass typed decisions with calibrated probabilities
 
+[![tests](https://github.com/Mapika/decider/actions/workflows/tests.yml/badge.svg)](https://github.com/Mapika/decider/actions/workflows/tests.yml)
+[![weights](https://img.shields.io/badge/%F0%9F%A4%97%20weights-Mapika%2Fdecider--2b-yellow)](https://huggingface.co/Mapika/decider-2b)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 ![the model playing ten games from text state descriptions, plus Mario with the RL checkpoint](media/montage.gif)
 
 A language model that does not generate text. It reads a **state** and a set of **typed questions** and returns, from a
@@ -7,9 +11,13 @@ single forward pass, a probability distribution for every question: no decoding,
 options you defined. It is an open reproduction of the "System One" model class (TypeSafe AI's *Jev*), built on
 `Qwen/Qwen3.5-2B-Base` and trained on one GH200. Weights: https://huggingface.co/Mapika/decider-2b
 
+```bash
+pip install git+https://github.com/Mapika/decider          # or: git clone ... && pip install -e ".[serve]"
+```
+
 ```python
 from decider.infer import Decider
-d = Decider("Mapika/decider-2b")
+d = Decider("Mapika/decider-2b")                             # one CUDA GPU, bf16, about 6 GB; downloads the weights on first use
 d.system_one(
     {"ticket": {"messages": [{"from": "customer", "text": "I was charged twice for order A-104. Please refund the duplicate."}]},
      "refund_policy": "Duplicate charges are eligible for a refund."},
@@ -19,7 +27,13 @@ d.system_one(
      "frustration": {"type": "score", "instructions": "How frustrated is the customer?", "criteria": ["calm", "frustrated", "very frustrated"]}})
 # {"answers": {"department": {"choice": "billing", "confidence": 0.97, "certainty": ..., "probabilities": {...}},
 #              "refund_requested": {"noul": 0.93}, "frustration": {"score": 1.2, "probabilities": {...}, "level_fit": {...}}}}
+
+d.decide("My card was charged twice.", [{"question": "Which team?", "options": ["billing", "technical", "sales"]}])
+# [{"choice": "billing", "confidence": 0.97, "probs": {...}}]                 the plain form: a state and option lists
 ```
+
+`examples/` has three complete programs (confidence-gated routing, composite scoring, a hierarchical beam over Choice
+probabilities); `python examples/routing_with_confidence.py` runs against the released weights.
 
 ## What it does
 
@@ -69,7 +83,8 @@ decider/vision/          the vision-language variant (decisions from pixels)
 teacher_data/            the teacher-written data the mixture needs (label descriptions, custom questions, routing messages, situations)
 scripts/                 train.sh, evaluate.sh, serve.sh, stage_release.py, upload_hf.py
 examples/                routing with confidence gates, composite scoring, hierarchical beam over Choice probabilities
-docs/HISTORY.md          how the released weights were actually produced (v1 to v8) and what was measured at each stage
+tests/                   unit tests for the request/answer layer and the prompt layouts (no GPU; `python -m pytest tests`)
+docs/HISTORY.md          how the released weights were actually produced (v1 to v9) and what was measured at each stage
 ```
 
 ## Train
@@ -99,7 +114,7 @@ before traffic. In process: `s = d.schema(questions, compile=True); s(state); s.
 ## Results
 
 All numbers are for the v8 weights (`runs/r13_v8`; v9 = v8 plus the terse-bucket and command data, same numbers on the 94 tasks), measured on one GH200. "Held-out" means no example of that dataset was trained on.
-`docs/HISTORY.md` has the per-stage measurements (v1 to v8) and the v5/v6 baselines quoted here.
+`docs/HISTORY.md` has the per-stage measurements (v1 to v9) and the v5/v6 baselines quoted here.
 
 **94 public tasks, original protocol** (large label sets sub-sampled to 10 options; one temperature fitted on in-task data)
 
@@ -201,3 +216,14 @@ with the schema cache 352 req/s at 64 clients (p50 8 ms at one client); independ
 * The vision variant (`decider/vision`) is still on v5 text weights.
 * `scripts/train.sh full` (one run from the base model over the whole mixture) is the reference recipe but has not been run end to
   end; the released weights were produced by the staged continuation runs described in `docs/HISTORY.md`.
+
+## Citation
+
+```bibtex
+@software{marosi2026decider,
+  author = {Marosi, Mark},
+  title  = {decider: one-pass typed decisions with calibrated probabilities},
+  year   = {2026},
+  url    = {https://github.com/Mapika/decider}
+}
+```

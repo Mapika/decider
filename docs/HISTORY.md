@@ -1,6 +1,6 @@
 # Development history
 
-How the released weights were produced, stage by stage (v1 to v8), with the measurements taken at each stage. The reference
+How the released weights were produced, stage by stage (v1 to v9), with the measurements taken at each stage. The reference
 implementation in this repository folds all of it into one data pipeline and one training recipe (see the README); module and
 script names mentioned below are the ones used at the time and no longer exist.
 
@@ -247,6 +247,34 @@ DECIDER_MODEL=runs/r11_v6/model .venv312/bin/uvicorn decider.serve:app --port 80
 TYPESAFE_BASE_URL=http://localhost:8000 TYPESAFE_API_KEY=local python your_typesafe_sdk_script.py     # typesafe-sdk 0.6.0, unchanged
 ```
 
+## v7 to v9: generic options, isolated levels, terse buckets
+
+Each stage is one continuation epoch on the previous weights over the new data plus a replay sample of everything before
+(`runs/r12_v7`, `r13_v8`, `r15_v9b`; 2-3 h each). The 94-task regression set did not move across them (in-task 0.811-0.813,
+held-out 0.736-0.741).
+
+**v7: the generic option next to a catch-all.** v6 sent "the app logs me out every time, fix it" to `other` when `support`
+was also offered, at high confidence: every catch-all in its training data had been the answer whenever nothing specific
+matched. v7 adds teacher-written data for exactly this case (Qwen3.5-27B writes messages for a domain, labels them over
+option lists that contain both a generic bucket and a catch-all, then re-checks its own labels from letter logits; labels it
+disagreed with are kept only under the trust rules in `decider/data/mixture.py`). Hand battery, generic right / catch-all
+right: 0.60 / 0.90 to 0.85 / 0.95; teacher-written routing, held-out domains, generic: 0.50 to 0.94. Free-form custom
+questions (noul / choice / score over teacher-written situations) went 0.94 / 0.96 / 0.74 to 0.96 / 0.98 / 0.83.
+
+**v8: isolated Score levels.** Jev judges every Score level on its own. Done naively on v7 (one yes/no row per level,
+"Proposed answer: <level>. Does the proposed answer fit?") the fits summed to 1.4-3.5 and accuracy fell up to 20 points, because
+the model had only ever seen levels in a list. v8 trains the isolated form (`augment.isolated`, half of the Score data) and
+matches listwise scoring within about a point with fits summing to 0.99-1.12. The same run trained the schema-first layout
+50/50 with state-first, which is what makes the schema cache possible; its accuracy cost is in the README.
+
+**v9: terse buckets and shell commands.** v8 needed the generic option to look like a bucket (`general_support`); a plain
+`support` next to `other` still lost. v9 adds teacher-written messages over terse option lists (`support`, `help`, `account`,
+no descriptions; lists kept only when the bucket name is a real bucket word) and labelled shell commands (safe / caution /
+destructive). Held-out terse-bucket messages, generic: 0.59 to 0.86, catch-all 0.93 to 0.88. A first version that up-weighted
+the generic option over-reached into the buckets on the catch-all side and was dropped in favour of weighting the catch-all
+examples 3x (`r15_v9b`, released as v9). Three zero-shot application probes (model router, command safety, browser agent) are
+in `decider/probes/applications.py` and the README.
+
 ## Vision: decisions from pixels
 
 Qwen3.5-2B is a vision-language model; `decider/vision.py` uses the full model with the same
@@ -382,5 +410,5 @@ decider/bench_latency.py  decisions/s and latency of the one-pass interface (eag
 data/tasks.pkl    cached examples (python -m decider.data)
 runs/             zs_2b, zs_4b (zero-shot baselines), r1_200k, ...
 ```
-Model weights: https://huggingface.co/Mapika/decider-2b (v5; v6 is staged locally in `runs/release/decider-2b-v6`, not uploaded).
+Model weights: https://huggingface.co/Mapika/decider-2b (each release is staged with `scripts/stage_release.py` and uploaded with `scripts/upload_hf.py`).
 Setup: `uv venv --python 3.12 .venv312 && uv pip install -p .venv312/bin/python torch transformers peft accelerate datasets pillow "numpy<2" scikit-learn flash-linear-attention fastapi "uvicorn[standard]" httpx`.
