@@ -22,7 +22,7 @@ examples (agent trajectories, web element choice, synthetic situations, game sta
 with a replay of the general mixture (v4). v6 to v8 continue on the input shapes of TypeSafe's Jev API (described options, up to
 255 options, JSON states with path references, long inputs, questions scored independently), on teacher-written custom questions
 (free-form yes/no, user-named options, a generic option next to a catch-all), on a second, cacheable prompt layout, and on
-isolated Score levels. This card describes v8.
+isolated Score levels. This card describes v9 (v8 plus teacher-written terse-bucket routing messages and shell-command safety data).
 
 ## Usage
 
@@ -139,6 +139,8 @@ replaced by labels from an unrelated task, making the abstain option correct.
 | **this model (v6, T=1.15)** | held-out (24) | 0.736 | 0.664 | 0.358 | 0.084 | 0.145 | 0.793 |
 | **this model (v8, T=1.30)** | in-task (69) | 0.811 | 0.460 | | 0.037 | | |
 | **this model (v8, T=1.30)** | held-out (24) | 0.741 | 0.655 | | 0.088 | | |
+| **this model (v9, T=1.36)** | in-task (69) | 0.812 | 0.464 | | 0.041 | | |
+| **this model (v9, T=1.36)** | held-out (24) | 0.741 | 0.655 | | 0.087 | | |
 | v8, questions-first layout (schema cache), T=1.18 | held-out (24) | 0.707 | 0.757 | | 0.104 | | |
 
 
@@ -298,8 +300,9 @@ less than the evaluation noise (18-task check: accuracy 0.833 vs 0.835, ECE equa
   the catch-all (0.60 on a hand-written battery, 0.50 on held-out teacher-written routing messages). v8: 0.85 and 0.94, with the
   catch-all cases at 0.95 and 0.90. Question wordings far from the training data (public datasets plus 24k teacher-written
   questions) remain the main risk; verify on your own examples.
-* The catch-all fix depends on the generic option looking generic (`general IT help`, `customer_service`, `general_query`). With the bare
-  label `support` next to `other`, a plain app complaint still goes to `other` at 0.99. Name or describe the generic option as a bucket.
+* Generic buckets with plain names (`support`, `help`, `account`) next to a catch-all: v9 picks the bucket when it should (held-out
+  terse-bucket messages 0.59 to 0.86; the `check_balance / approve_transfer / support / other` case that v8 got wrong now goes to
+  `support` at 0.79-0.85) at a small cost on the catch-all side (0.93 to 0.88 on that probe; 0.62 to 0.58 on the abstention probe).
 * Isolated Score levels match listwise scoring within about a point (LIAR2: 3 points lower). Levels should describe situations,
   not degrees.
 * One in-task dataset, `tweet_hate` (SemEval-2019 HatEval), stays near chance on its

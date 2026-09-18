@@ -98,7 +98,7 @@ before traffic. In process: `s = d.schema(questions, compile=True); s(state); s.
 
 ## Results
 
-All numbers are for the v8 weights (`runs/r13_v8`), measured on one GH200. "Held-out" means no example of that dataset was trained on.
+All numbers are for the v8 weights (`runs/r13_v8`; v9 = v8 plus the terse-bucket and command data, same numbers on the 94 tasks), measured on one GH200. "Held-out" means no example of that dataset was trained on.
 `docs/HISTORY.md` has the per-stage measurements (v1 to v8) and the v5/v6 baselines quoted here.
 
 **94 public tasks, original protocol** (large label sets sub-sampled to 10 options; one temperature fitted on in-task data)
@@ -107,6 +107,7 @@ All numbers are for the v8 weights (`runs/r13_v8`), measured on one GH200. "Held
 |---|---|---|
 | Qwen3.5-2B-Base, zero-shot | 0.620 / 0.121 | 0.642 / 0.853 / 0.105 |
 | decider v8, state-first (default), T=1.30 | 0.811 / 0.037 | 0.741 / 0.655 / 0.088 |
+| decider v9, state-first (default), T=1.36 | 0.812 / 0.041 | 0.741 / 0.655 / 0.087 |
 | decider v8, schema-first (the cacheable layout), T=1.18 | 0.790 / 0.038 | 0.707 / 0.757 / 0.104 |
 
 Schema-first is a speed-for-accuracy trade, and the cost depends on the workload: on the 69 tasks with a fixed label set
@@ -137,6 +138,19 @@ State-first is therefore the default and the schema cache is opt-in (`Decider.sc
 | off-topic abstention probe / abstention battery | 0.83 / 7 of 8 | 0.83 / 8 of 8 |
 
 The teacher labels come from Qwen3.5-27B; the hand-written battery (60 choice cases, 49 yes/no) is small. Both are in the repo.
+
+**Terse buckets and applications (v9).** v8 needed the generic option to look like a bucket (`general_support`); v9 adds teacher-written
+messages over plain option lists (`support`, `help`, `account`, no descriptions) and labelled shell commands. Held-out terse-bucket
+messages, generic / specific / catch-all: v8 0.59 / 0.96 / 0.93, v9 0.86 / 0.95 / 0.88; hand battery 0.95 / 0.95 / 0.90. The 94-task set
+is unchanged (0.812 / 0.741). Three hand-written application checks (`decider/probes/applications.py`), zero-shot:
+
+| | v8 | v9 |
+|---|---|---|
+| model router, 31 prompts: tier (small / code / large reasoning / a person) and "needs live data" | 0.90 / 0.81 | 0.94 / 0.84 |
+| shell command safety, 45 commands: safe / caution / destructive, and "touches things outside the project" | 0.71 / 0.56 | 0.80 / 0.98 |
+| browser agent, 16 page states as JSON: which element to act on, which action | 1.00 / 0.88 | 1.00 / 0.88 |
+
+No destructive command was ever called safe; the command misses are caution/safe borderlines (`npm run build`, `mkdir && cp`).
 
 **Isolated Score levels.** Each level is judged in its own row, without its number or its neighbours; the per-level P(fits) are
 normalised. Adding a level cannot change another level's fit. Against the usual listwise scoring (all levels in one list):
@@ -176,9 +190,9 @@ with the schema cache 352 req/s at 64 clients (p50 8 ms at one client); independ
   that need several steps should be split into several questions.
 * English only. Calibration is measured on public datasets and teacher-labelled probes, not on your traffic: check it on your own labels.
 * The schema cache costs accuracy (see Results); use it for fixed classification-style schemas with short states.
-* The catch-all fix depends on the generic option looking generic. Buckets named like `general IT help`, `customer_service` or
-  `general_query` now win when they should (0.85-0.94), but in `check_balance / approve_transfer / support / other` a plain app complaint
-  still goes to `other` at 0.99: the bare label `support` is not read as a bucket. Name or describe the generic option as one.
+* Generic buckets with plain names (`support`, `help`, `account`) next to a catch-all: v9 picks the bucket when it should (held-out
+  terse-bucket messages 0.59 to 0.86; the `check_balance / approve_transfer / support / other` case that v8 got wrong now goes to
+  `support` at 0.79-0.85) at a small cost on the catch-all side (0.93 to 0.88 on that probe; 0.62 to 0.58 on the abstention probe).
 * Picking one record out of a long JSON array by position is the weak input shape (0.51 with 64 records against 0.70 with one);
   address records by key, or let `render_state` write the index into the array (0.62).
 * TREC-fine with all 50 labels fell from 0.76 (v6) to 0.72 (v8); held-out Freeway play fell to 0 and did not come back with the game data replayed.
