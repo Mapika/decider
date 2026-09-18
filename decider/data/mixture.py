@@ -14,6 +14,8 @@
               and routing_terse.jsonl: the bucket carries a plain name such as `support`, no descriptions)
   commands    shell commands labelled safe / caution / destructive and "touches things outside the project"  (teacher_data/commands.jsonl)
   isolated    one yes/no row per Score level (and per option of some Choice questions)
+  rules       rule-conditioned decisions over JSON records, every example with a state twin and a rule twin whose label flips
+              (decider.data.rules: programmatic, exact labels; three domains and two rule families held out for the probes)
 
 mode=full  is the single-run recipe: train Qwen3.5-2B-Base on it for one epoch (scripts/train.sh).
 mode=delta keeps only a replay sample of `general`; it is what a continuation from an existing decider checkpoint uses
@@ -26,9 +28,10 @@ from decider import data as D
 from decider import systemone as S1
 from decider.data.augment import Builder, is_scale, narrow, indexed, isolated
 from decider.data.teacher_questions import to_example, DOMAINS
+from decider.data import rules as R
 
 MIX = dict(wide_per_task=8000, padded=25000, described=40000, json=32000, json_indexed=20000, single=30000, isolated_scale=26000, isolated_choice=9000,
-           isolated_routing=1200, replay=200000)
+           isolated_routing=1200, rules=90000, replay=200000)
 HELD_DOMAINS = set(DOMAINS[-6:])
 SCALE_TASKS = ["helpsteer2", "helpsteer3_pref", "hate_speech_scales", "liar2", "prosocial_safety", "stsb"]
 TEACHER = "teacher_data"
@@ -183,6 +186,7 @@ def probes(train, evals, desc, recs, routes):
     for r in routes:
         if r["domain"] in HELD_DOMAINS:
             ex = to_example(r, D, S1, "routing"); k = f"routing_{'terse_' if r['recipe'] == 'routing_terse' else ''}{r['group']}"; out.setdefault(k, []).append(D.Example(ex.context, ex.qs, k))
+    out.update(R.probe_sets())
     for k, v in out.items():
         for e in v: e.task = k
     return out
@@ -197,6 +201,7 @@ def main():
         evals["abstain_probe"], evals["offtopic_probe"] = abstention_probes(evals, random.Random(7))
     B = Builder(train, evals, desc, seed=a.seed); parts = formats(train, evals, B, rng)
     parts.update(teacher_sets(recs, routes, rng, commands)); parts["isolated"] += isolated_sets(train, rng)
+    parts["rules"] = R.build(MIX["rules"], seed=a.seed + 11)
     general = [narrow(e, rng) for e in train]
     if a.mode == "delta": rng.shuffle(general); general = general[:MIX["replay"]]
     parts["general"] = general; out = [e for v in parts.values() for e in v]; rng.shuffle(out)
