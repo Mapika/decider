@@ -175,6 +175,14 @@ is unchanged (0.812 / 0.741). Three hand-written application checks (`decider/pr
 
 No destructive command was ever called safe; the command misses are caution/safe borderlines (`npm run build`, `mkdir && cp`).
 
+**Form filling, against a specialist (`decider/probes/cua_s1_forms.py`).** Cua's CUA-S1-FORMS (2026-09-18) is a 0.7M-parameter
+byte-level System One model for one task: for each form element, pick the document value to fill in, or check / click / skip. On
+its synthetic test split (14,254 decisions, forms disjoint from its training forms) it scores 0.9995; its card puts Jev's hosted
+API at 0.836. decider v9, zero-shot, scores 0.41 with their bare strings (it almost never chooses a bare `skip`), 0.67 with a
+one-sentence question and `skip (leave this element alone)`, and 0.24 when every rule is spelled out in the question. Entities are
+rarely confused (wrong target on 229 of 6,018 fills); the misses are the action conventions, above all re-filling an already filled
+field. See Limitations.
+
 **Isolated Score levels.** Each level is judged in its own row, without its number or its neighbours; the per-level P(fits) are
 normalised. Adding a level cannot change another level's fit. Against the usual listwise scoring (all levels in one list):
 
@@ -216,6 +224,9 @@ with the schema cache 352 req/s at 64 clients (p50 8 ms at one client); independ
 * Generic buckets with plain names (`support`, `help`, `account`) next to a catch-all: v9 picks the bucket when it should (held-out
   terse-bucket messages 0.59 to 0.86; the `check_balance / approve_transfer / support / other` case that v8 got wrong now goes to
   `support` at 0.79-0.85) at a small cost on the catch-all side (0.93 to 0.88 on that probe; 0.62 to 0.58 on the abstention probe).
+* Rules written into the question ("fill if empty, otherwise skip; check only if required and unchecked") are not followed at
+  this size: on the form-filling probe a one-sentence question scores 0.67 and a paragraph of rules 0.24. State the decision as
+  a plain question with described options; a task with a fixed convention wants examples of it in the mixture, not a rulebook.
 * Picking one record out of a long JSON array by position is the weak input shape (0.51 with 64 records against 0.70 with one);
   address records by key, or let `render_state` write the index into the array (0.62).
 * TREC-fine with all 50 labels fell from 0.76 (v6) to 0.72 (v8); held-out Freeway play fell to 0 and did not come back with the game data replayed.
