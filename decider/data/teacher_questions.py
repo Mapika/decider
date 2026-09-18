@@ -81,8 +81,14 @@ Then write 9 short, realistic messages (4-25 words, {tone}), each with the corre
 Return JSON: {{"instructions": "...", "criteria": {{...}}, "generic": "<name of the generic option>", "messages": [{{"text": "...", "answer": "<option name>"}}, ...]}}"""
 
 
+TERSE = ("The GENERIC option must be named like an ordinary category, a single plain word or two with nothing in its name that says 'general' "
+         "or 'other': for example support, help, question, account, service, assistance, feedback, inquiry, contact, issue, request, info. "
+         "Give NO descriptions (every value null).")
+
+
 def gen_routing(a):
-    """Targeted set for the generic-vs-catch-all weakness: short messages, terse option lists."""
+    """Targeted set for the generic-vs-catch-all weakness: short messages, terse option lists.
+    --terse: the generic bucket carries a plain name such as `support`, never "general_*"; no descriptions."""
     from transformers import AutoTokenizer, AutoModelForCausalLM
     tok = AutoTokenizer.from_pretrained(a.model); tok.padding_side = "left"
     m = AutoModelForCausalLM.from_pretrained(a.model, dtype=torch.bfloat16, device_map="cuda").eval()
@@ -92,9 +98,9 @@ def gen_routing(a):
             metas, prompts = [], []
             for _ in range(a.bs):
                 d = rng.choice(DOMAINS); ca = rng.choice(CATCHALLS)
-                desc = rng.choice(["Give no descriptions (every value null).", "Give no descriptions (every value null).", "Describe every option in under 10 words.", "Describe only the generic and the catch-all option, under 10 words each."])
+                desc = TERSE if a.terse else rng.choice(["Give no descriptions (every value null).", "Give no descriptions (every value null).", "Describe every option in under 10 words.", "Describe only the generic and the catch-all option, under 10 words each."])
                 p = ROUTE_PROMPT.format(domain=d, k=rng.choice([2, 2, 3, 3, 4, 5]), ca=ca, names=rng.choice(NAME_STYLES), desc=desc, tone=rng.choice(["informal, some with typos", "polite", "terse", "mixed tone"]))
-                metas.append(dict(domain=d, kind="short message", recipe="routing", catchall=ca))
+                metas.append(dict(domain=d, kind="short message", recipe="routing_terse" if a.terse else "routing", catchall=ca))
                 prompts.append(tok.apply_chat_template([{"role": "system", "content": SYS}, {"role": "user", "content": p}], tokenize=False, add_generation_prompt=True, enable_thinking=False))
             enc = tok(prompts, return_tensors="pt", padding=True).to("cuda")
             with torch.no_grad():
@@ -111,6 +117,48 @@ def gen_routing(a):
                 except Exception:
                     bad += 1
             f.flush(); print(f"[route] {done}/{a.n} ok, {bad} rejected, {(time.time()-t0)/60:.1f} min", flush=True)
+
+
+CMD_PROMPT = """Area: {area}. Write 10 realistic shell / CLI commands or short command lines (one line each, varied, some with pipes, flags, sudo, env vars, or two commands chained), {mix}.
+For each give: "risk": one of "safe" (read-only, or only creates new files; nothing to undo), "caution" (changes files, packages or settings but can be undone or redone), "destructive" (irreversible: deletes or overwrites data, wipes disks or branches, force-pushes, changes credentials, exposes secrets, takes down services);
+"outside": true if it touches anything outside the current project directory (system files, other users, remote services or hosts, the whole disk, package managers), else false;
+"why": one short sentence. Be strict and literal about what the command actually does.
+Return JSON: {{"commands": [{{"cmd": "...", "risk": "...", "outside": true/false, "why": "..."}}, ...]}}"""
+CMD_AREAS = ["git", "docker and containers", "kubernetes", "AWS / GCP / Azure CLIs", "PostgreSQL / MySQL / redis clients", "filesystem and coreutils", "package managers (pip, npm, apt, brew, cargo)",
+             "systemd, cron, processes", "networking (curl, ssh, scp, iptables, dns)", "python / node scripts and test runners", "text processing (sed, awk, grep, jq)", "disks and partitions", "users, permissions, secrets and keys",
+             "build tools (make, cmake, gradle)", "terraform / ansible", "data files (csv, parquet, archives)", "ML training and GPU jobs", "browsers, downloads and clipboard", "backup and sync (rsync, rclone, tar)", "monitoring and logs"]
+
+
+def gen_commands(a):
+    """Shell-command safety data: 10 labelled commands per generation."""
+    from transformers import AutoTokenizer, AutoModelForCausalLM
+    tok = AutoTokenizer.from_pretrained(a.model); tok.padding_side = "left"
+    m = AutoModelForCausalLM.from_pretrained(a.model, dtype=torch.bfloat16, device_map="cuda").eval()
+    rng = random.Random(a.seed + 2); done = bad = 0; t0 = time.time()
+    crit = {"safe": "read-only, or creates files without touching existing ones; nothing to undo", "caution": "changes files, packages or settings but can be undone or redone",
+            "destructive": "irreversible: deletes or overwrites data, wipes disks or branches, force-pushes, changes credentials or exposes secrets"}
+    with open(a.path, "a") as f:
+        while done < a.n:
+            prompts = []
+            for _ in range(a.bs):
+                mix = rng.choice(["mostly safe and caution", "an even mix of safe, caution and destructive", "mostly destructive, including subtle ones (the danger is in a flag or a path)",
+                                  "look-alike pairs: a harmless command and a dangerous variant that differs in one flag or path", "commands a coding agent would run while working on a repository"])
+                prompts.append(tok.apply_chat_template([{"role": "system", "content": SYS}, {"role": "user", "content": CMD_PROMPT.format(area=rng.choice(CMD_AREAS), mix=mix)}], tokenize=False, add_generation_prompt=True, enable_thinking=False))
+            enc = tok(prompts, return_tensors="pt", padding=True).to("cuda")
+            with torch.no_grad():
+                out = m.generate(**enc, max_new_tokens=a.max_new, do_sample=True, temperature=0.9, top_p=0.95, pad_token_id=tok.pad_token_id)
+            for t in tok.batch_decode(out[:, enc["input_ids"].shape[1]:], skip_special_tokens=True):
+                try:
+                    j = json.loads(re.search(r"\{.*\}", t, re.S).group(0))
+                    for c in j["commands"]:
+                        if isinstance(c.get("cmd"), str) and 2 <= len(c["cmd"]) <= 300 and c.get("risk") in crit and isinstance(c.get("outside"), bool):
+                            f.write(json.dumps(dict(domain="shell", kind="command", recipe="commands", catchall=None, group=c["risk"], state=c["cmd"], questions=[
+                                dict(type="choice", instructions="How risky is running this shell command?", criteria=crit, answer=c["risk"]),
+                                dict(type="noul", instructions="Does the command touch anything outside the current project directory (system files, other users, remote services, the whole disk)?", answer=c["outside"])]), ensure_ascii=False) + "\n")
+                    done += 1
+                except Exception:
+                    bad += 1
+            f.flush(); print(f"[cmd] {done}/{a.n} ok, {bad} rejected, {(time.time()-t0)/60:.1f} min", flush=True)
 
 
 def check(q):
@@ -167,7 +215,8 @@ def verify(a):
 
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser(); ap.add_argument("cmd", choices=["gen", "verify", "gen_routing"]); ap.add_argument("path"); ap.add_argument("out", nargs="?")
+    ap = argparse.ArgumentParser(); ap.add_argument("cmd", choices=["gen", "verify", "gen_routing", "gen_commands"]); ap.add_argument("path"); ap.add_argument("out", nargs="?")
     ap.add_argument("--n", type=int, default=7000); ap.add_argument("--model", default="Qwen/Qwen3.5-27B"); ap.add_argument("--bs", type=int, default=64)
     ap.add_argument("--max_new", type=int, default=1100); ap.add_argument("--seed", type=int, default=0); ap.add_argument("--vbs", type=int, default=32); ap.add_argument("--keep_all", action="store_true", help="write disagreements too, with teacher_ok / teacher_pred")
-    a = ap.parse_args(); dict(gen=gen, verify=verify, gen_routing=gen_routing)[a.cmd](a)
+    ap.add_argument("--terse", action="store_true", help="gen_routing: plain bucket names (support, help, ...), no descriptions")
+    a = ap.parse_args(); dict(gen=gen, verify=verify, gen_routing=gen_routing, gen_commands=gen_commands)[a.cmd](a)

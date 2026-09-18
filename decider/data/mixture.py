@@ -10,7 +10,9 @@
   json        JSON states with several records, questions by path; half of them with "_index" written into long arrays
   single      multi-question examples asked one question at a time or as a reordered subset
   custom      teacher-written states with free-form noul / choice / score questions        (teacher_data/custom_questions.jsonl)
-  routing     short messages over terse option lists with a generic bucket and a catch-all  (teacher_data/routing_messages.jsonl)
+  routing     short messages over terse option lists with a generic bucket and a catch-all  (teacher_data/routing_messages.jsonl,
+              and routing_terse.jsonl: the bucket carries a plain name such as `support`, no descriptions)
+  commands    shell commands labelled safe / caution / destructive and "touches things outside the project"  (teacher_data/commands.jsonl)
   isolated    one yes/no row per Score level (and per option of some Choice questions)
 
 mode=full  is the single-run recipe: train Qwen3.5-2B-Base on it for one epoch (scripts/train.sh).
@@ -43,7 +45,24 @@ def load_teacher():
     # The zero-shot checker shares the bias being fixed (it sends generic cases to the catch-all), so a generic label written at
     # generation time is kept unless the checker chose a SPECIFIC option (real ambiguity). Everything else needs agreement.
     routes = [r for r in routes if r["questions"][0]["teacher_ok"] or (r["group"] == "generic" and r["questions"][0]["teacher_pred"] == r["catchall"])]
-    return recs, routes
+    import re, os
+    BUCKET = re.compile(r"(support|help|question|account|service|assist|feedback|inquir|enquir|contact|issue|request|info|general|misc|other|else|query|queries|concern|complaint|problem|advice|guidance|topics?|customer|care|desk|admin|office|reception)", re.I)
+    if os.path.exists(f"{TEACHER}/routing_terse.jsonl"):
+        terse = [json.loads(l) for l in open(f"{TEACHER}/routing_terse.jsonl")]
+        for r in terse: r["questions"][0]["criteria"] = {k: (None if v in ("null", "", None) else v) for k, v in r["questions"][0]["criteria"].items()}
+        gname = {}                                                                 # the bucket the teacher named, per option list
+        for r in terse:
+            if r["group"] == "generic": gname[r["questions"][0]["instructions"] + json.dumps(list(r["questions"][0]["criteria"]))] = r["questions"][0]["answer"]
+        keep = lambda r: BUCKET.search(gname.get(r["questions"][0]["instructions"] + json.dumps(list(r["questions"][0]["criteria"])), "") or "")   # the teacher sometimes calls a specific option the bucket
+        routes += [r for r in terse if keep(r) and (r["questions"][0]["teacher_ok"] or (r["group"] == "generic" and r["questions"][0]["teacher_pred"] == r["catchall"]))]
+    commands = []
+    if os.path.exists(f"{TEACHER}/commands.jsonl"):
+        order = ["safe", "caution", "destructive"]
+        for r in (json.loads(l) for l in open(f"{TEACHER}/commands.jsonl")):
+            q = r["questions"][0]; pred = q.get("teacher_pred")
+            if q["teacher_ok"] or (pred in order and abs(order.index(pred) - order.index(q["answer"])) == 1):      # the "outside" flag keeps its written label: the checker is weak there
+                commands.append(r)
+    return recs, routes, commands
 
 
 def formats(train, evals, B, rng):
@@ -83,7 +102,7 @@ def formats(train, evals, B, rng):
     return out
 
 
-def teacher_sets(recs, routes, rng):
+def teacher_sets(recs, routes, rng, commands=()):
     out = collections.defaultdict(list)
     for r in recs:
         if r["domain"] in HELD_DOMAINS: continue
@@ -97,6 +116,9 @@ def teacher_sets(recs, routes, rng):
         for q, m in zip(ex.qs, r["questions"]):
             if m["type"] == "score": out["isolated"] += isolated(ex, q, "custom+iso") * 2
             elif m["type"] == "choice" and rng.random() < 0.5: out["isolated"] += isolated(ex, q, "custom+iso")
+    for r in commands:
+        ex = to_example(r, D, S1, "commands+fmt"); out["commands"].append(ex)                    # both questions packed
+        out["commands"].append(D.Example(ex.context, [rng.choice(ex.qs)], "commands+fmt"))       # and one alone
     tr_routes = [r for r in routes if r["domain"] not in HELD_DOMAINS]
     out["routing"] = [to_example(r, D, S1, "routing+fmt") for r in tr_routes]
     for r in rng.sample([r for r in tr_routes if r["questions"][0]["teacher_ok"]], min(MIX["isolated_routing"], len(tr_routes))):
@@ -160,7 +182,7 @@ def probes(train, evals, desc, recs, routes):
             out.setdefault(f"custom_{m['type']}" + (f"_{r['recipe']}" if special else ""), []).append(D.Example(ex.context, [q], "custom"))
     for r in routes:
         if r["domain"] in HELD_DOMAINS:
-            ex = to_example(r, D, S1, "routing"); out.setdefault(f"routing_{r['group']}", []).append(D.Example(ex.context, ex.qs, "routing"))
+            ex = to_example(r, D, S1, "routing"); k = f"routing_{'terse_' if r['recipe'] == 'routing_terse' else ''}{r['group']}"; out.setdefault(k, []).append(D.Example(ex.context, ex.qs, k))
     for k, v in out.items():
         for e in v: e.task = k
     return out
@@ -170,11 +192,11 @@ def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--base", default="data/tasks.pkl"); ap.add_argument("--out", default="data/mixture.pkl"); ap.add_argument("--probes", default="data/probes.pkl")
     ap.add_argument("--mode", default="full", choices=["full", "delta"]); ap.add_argument("--seed", type=int, default=6)
     a = ap.parse_args(); rng = random.Random(a.seed)
-    train, evals = D.load_cache(a.base); desc = json.load(open(f"{TEACHER}/label_descriptions.json")); recs, routes = load_teacher()
+    train, evals = D.load_cache(a.base); desc = json.load(open(f"{TEACHER}/label_descriptions.json")); recs, routes, commands = load_teacher()
     if "abstain_probe" not in evals or "offtopic_probe" not in evals or not evals["offtopic_probe"]:
         evals["abstain_probe"], evals["offtopic_probe"] = abstention_probes(evals, random.Random(7))
     B = Builder(train, evals, desc, seed=a.seed); parts = formats(train, evals, B, rng)
-    parts.update(teacher_sets(recs, routes, rng)); parts["isolated"] += isolated_sets(train, rng)
+    parts.update(teacher_sets(recs, routes, rng, commands)); parts["isolated"] += isolated_sets(train, rng)
     general = [narrow(e, rng) for e in train]
     if a.mode == "delta": rng.shuffle(general); general = general[:MIX["replay"]]
     parts["general"] = general; out = [e for v in parts.values() for e in v]; rng.shuffle(out)
