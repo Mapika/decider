@@ -12,7 +12,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install (no torch: these tests cover the request/answer layer and prompt rendering only)
+      - name: Install without torch (the tests cover the request layer and prompt rendering only)
         run: pip install pytest "transformers>=5" numpy
       - run: python -m pytest -q tests
         env:
