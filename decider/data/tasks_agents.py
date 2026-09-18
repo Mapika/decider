@@ -125,9 +125,20 @@ def _games():
     return out[n_ev:], out[:n_ev]
 
 
+@task("mario")
+def _mario():
+    """Teacher-labelled Super Mario Bros states (decider.games.mario_data writes data/mario.pkl; needs the emulator)."""
+    import os
+    from decider.data.core import load_cache
+    if not os.path.exists("data/mario.pkl"):
+        print("[mario] data/mario.pkl not found: run `python -m decider.games.mario_data data/mario.pkl` first; skipping", flush=True); return [], []
+    tr, ev = load_cache("data/mario.pkl")
+    return [e for e in tr if e.task == "mario"], ev["mario"]
+
+
 @task("offtopic_probe", heldout=True)
 def _offtopic():
     return [], []       # built by decider.data.mixture.abstention_probes: held-out tasks with an abstain option; half have off-topic option lists
 
 
-NEW_TASKS = ["agenttraj", "mind2web", "synth", "games"]
+NEW_TASKS = ["agenttraj", "mind2web", "synth", "games", "mario"]
