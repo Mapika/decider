@@ -674,7 +674,8 @@ def load_all(names=None, verbose=True):
             train.extend(tr)
         evals[n] = ev
         if verbose:
-            print(f"[data] {n:22s} train={len(tr):6d} eval={len(ev):5d} heldout={held} nq={len(tr[0].qs) if tr else len(ev[0].qs)} nopt={len((tr or ev)[0].qs[0].options)}")
+            ex = (tr or ev or [None])[0]
+            print(f"[data] {n:22s} train={len(tr):6d} eval={len(ev):5d} heldout={held}" + (f" nq={len(ex.qs)} nopt={len(ex.qs[0].options)}" if ex else " (built later by decider.data.mixture)"))
     return train, evals
 
 
