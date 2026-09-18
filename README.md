@@ -17,7 +17,7 @@ pip install git+https://github.com/Mapika/decider          # or: git clone ... &
 
 ```python
 from decider.infer import Decider
-d = Decider("Mapika/decider-2b")                             # one CUDA GPU, bf16, about 6 GB; downloads the weights on first use
+d = Decider("Mapika/decider-2b")                             # one CUDA GPU, bf16, about 4 GB; downloads the weights on first use
 d.system_one(
     {"ticket": {"messages": [{"from": "customer", "text": "I was charged twice for order A-104. Please refund the duplicate."}]},
      "refund_policy": "Duplicate charges are eligible for a refund."},
@@ -25,11 +25,13 @@ d.system_one(
                     "criteria": {"returns": "Exchanges, refunds, wrong or damaged items", "billing": {"what": "Charges, invoices", "not_for": "delivery"}, "other": None}},
      "refund_requested": {"type": "noul", "instructions": "Does `ticket.messages[0].text` request a refund?"},
      "frustration": {"type": "score", "instructions": "How frustrated is the customer?", "criteria": ["calm", "frustrated", "very frustrated"]}})
-# {"answers": {"department": {"choice": "billing", "confidence": 0.97, "certainty": ..., "probabilities": {...}},
-#              "refund_requested": {"noul": 0.93}, "frustration": {"score": 1.2, "probabilities": {...}, "level_fit": {...}}}}
+# {"answers": {"department": {"choice": "billing", "confidence": 0.65, "certainty": ..., "probabilities": {"returns": 0.33, "billing": 0.65, "other": 0.02}},
+#              "refund_requested": {"noul": 0.99},
+#              "frustration": {"score": 0.72, "probabilities": {...}, "level_fit": {"0": 0.39, "1": 0.55, "2": 0.10}, "fit_mass": 1.04}}}
+#                                                             (v8 weights; "returns" also mentions refunds, hence the split)
 
 d.decide("My card was charged twice.", [{"question": "Which team?", "options": ["billing", "technical", "sales"]}])
-# [{"choice": "billing", "confidence": 0.97, "probs": {...}}]                 the plain form: a state and option lists
+# [{"choice": "billing", "confidence": 0.77, "probs": {"billing": 0.77, "technical": 0.19, "sales": 0.04}}]      the plain form
 ```
 
 `examples/` has three complete programs (confidence-gated routing, composite scoring, a hierarchical beam over Choice
