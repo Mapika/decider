@@ -98,7 +98,12 @@ scripts/train.sh delta runs/some/model      # or: continue an existing decider c
 ```
 
 `decider/data/mixture.py` lists every component of the mixture with its size. The released weights were produced in stages
-(`delta` runs on top of each other, see `docs/HISTORY.md`); `full` is the same data as a single run.
+(`delta` runs on top of each other, see `docs/HISTORY.md`); `full` is the same data as a single run, and it reproduces them:
+one epoch (1.47M examples, 455M tokens, 5.3 h on a GH200 plus 45 min of evaluation) gives a model that matches v9 on the 94-task
+set (in-task 0.809 vs 0.812, held-out 0.739 vs 0.741 on the shared tasks) and on every probe family below within noise, with a
+fitted temperature of 1.03 instead of 1.36 (better calibrated before scaling: in-task ECE 0.030 vs 0.056). Held-out terse-bucket
+routing came out higher (generic / specific / catch-all 0.91 / 0.94 / 0.92) and held-out Freeway play returned (9 against the
+teacher's 5); the 16-page browser probe came out lower (0.75 / 0.69). The `Results` numbers are still the staged v8/v9 weights.
 
 ## Serve
 
@@ -126,6 +131,7 @@ All numbers are for the v8 weights (`runs/r13_v8`; v9 = v8 plus the terse-bucket
 | decider v8, state-first (default), T=1.30 | 0.811 / 0.037 | 0.741 / 0.655 / 0.088 |
 | decider v9, state-first (default), T=1.36 | 0.812 / 0.041 | 0.741 / 0.655 / 0.087 |
 | decider v8, schema-first (the cacheable layout), T=1.18 | 0.790 / 0.038 | 0.707 / 0.757 / 0.104 |
+| **`scripts/train.sh full`**, one run from the base model, T=1.03 | 0.809 / 0.030 | 0.739 / 0.620 / 0.079 |
 
 Schema-first is a speed-for-accuracy trade, and the cost depends on the workload: on the 69 tasks with a fixed label set
 (classification, routing, scales: what a cached schema is for) it loses 1.5 points on average (median 0.7, calibration equal); on the 24
@@ -216,8 +222,8 @@ with the schema cache 352 req/s at 64 clients (p50 8 ms at one client); independ
 * The custom-question data is labelled by a 27B teacher that shares some of the biases it is meant to fix (it agreed with only 72%
   of its own generic-option labels); see `decider/data/mixture.py` for how those labels are filtered.
 * The vision variant (`decider/vision`) is still on v5 text weights.
-* `scripts/train.sh full` (one run from the base model over the whole mixture) is the reference recipe but has not been run end to
-  end; the released weights were produced by the staged continuation runs described in `docs/HISTORY.md`.
+* The released weights were produced by staged continuation runs (`docs/HISTORY.md`); `scripts/train.sh full` reproduces them in
+  one run (see Train) but is not byte-identical to them, and the hand-written probes with 16-60 cases move by a few cases either way.
 
 ## Citation
 
