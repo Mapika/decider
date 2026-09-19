@@ -275,6 +275,27 @@ the generic option over-reached into the buckets on the catch-all side and was d
 examples 3x (`r15_v9b`, released as v9). Three zero-shot application probes (model router, command safety, browser agent) are
 in `decider/probes/applications.py` and the README.
 
+## v10: calibration-aware RL on live browser tasks and exact games
+
+v10 continues the v8 weights (the ones on the Hub; v9 was described in the README but the Hub weights were v8) for 384 steps of
+reinforcement learning. The rewards are outcomes only: whether a live MiniWoB++ click task's own checker reports success, whether
+a 4x4 minesweeper board, a slippery 5x5 grid or a bag-draw game is won, and how well the model's stated belief about the next
+outcome of its action matches the exact law (a proper log score). A KL limit to v8 on replayed supervised rows (0.01 nats mean,
+0.05 max per step, otherwise the step follows only the KL gradient) and a rendering-consistency term hold the original tasks in
+place. No gold labels. `docs/RL.md` has the recipe and the gates.
+
+On the same rows and seeds as v8: live browser tasks 83.0% to 93.2% sampled success (six never-rewarded tasks 72.9% to 91.7%),
+belief excess over the exact laws 0.47 to 0.22 nats, click-outcome log score −0.35 to −0.03, Mind2Web 81.1% to 82.7%, bag-draw
+wins +6 points; TypeSafe rows +2 points within noise, 847 in-task validation rows and Bespoke's suite unchanged, OpenJev
+64.1% to 63.3%. Greedy browser play barely moved (90.3% to 90.9%): the gain is in the served distribution. Tic-tac-toe, grid
+and minesweeper play did not change. Recordings: `media/v10_browser_*.gif`.
+
+Two earlier attempts at this stage did not produce a checkpoint that passed every gate: at peak learning rate 2e-6 the model
+drifted on short replayed rows after step 384, and an equal-weight win gate over the four environments could not be reached
+because grid and bag play does not move at this size. v10 comes from the run with the rate halved, the consistency term in every
+arm and the win gate weighted toward the browser (0.5 browser, 0.25 minesweeper, 0.125 grid, 0.125 bags); all four arms of that
+run produced an eligible checkpoint and the one with the highest weighted sampled win was released.
+
 ## Vision: decisions from pixels
 
 Qwen3.5-2B is a vision-language model; `decider/vision.py` uses the full model with the same

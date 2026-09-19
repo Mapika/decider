@@ -6,39 +6,39 @@ pipeline_tag: text-classification
 tags: [decision-model, calibrated, structured-output, multi-task, system-one, one-pass]
 ---
 
-# decider-decider-2B: typed decisions with calibrated probabilities in one forward pass
+# decider-2b: typed decisions with calibrated probabilities in one forward pass
 
-An open replication of the "System One model" idea: a language model that does not
-generate text. It reads a context plus one or more typed questions, each with an
-explicit option list, and returns a probability distribution over the options for
-every question from a single forward pass. No decoding, no JSON parsing, no
-schema violations. It is meant to be called from software, not chatted with.
+A language model that does not generate text. It reads a state and one or more typed questions, each with an explicit option
+list, and returns a probability distribution over the options for every question from one forward pass. There is no decoding,
+no parsing and no output outside the options you defined. It is called from software, not chatted with. It is an open
+reproduction of the "System One" model class (TypeSafe AI's Jev).
 
-Base model: [Qwen/Qwen3.5-2B-Base](https://huggingface.co/Qwen/Qwen3.5-2B-Base) (1.9B parameters),
-fully fine-tuned for one epoch (942k examples, 183M tokens, 2.5 hours on one
-NVIDIA GH200) with cross-entropy, a proper scoring rule, on a mixture of 64
-public decision datasets, then continued for one epoch on 45k situation-to-action
-examples (agent trajectories, web element choice, synthetic situations, game states)
-with a replay of the general mixture (v4). v6 to v8 continue on the input shapes of TypeSafe's Jev API (described options, up to
-255 options, JSON states with path references, long inputs, questions scored independently), on teacher-written custom questions
-(free-form yes/no, user-named options, a generic option next to a catch-all), on a second, cacheable prompt layout, and on
-isolated Score levels. This card describes v9 (v8 plus teacher-written terse-bucket routing messages and shell-command safety data).
+Base model: [Qwen/Qwen3.5-2B-Base](https://huggingface.co/Qwen/Qwen3.5-2B-Base) (1.9B parameters). The supervised stages
+(v1 to v8) fine-tune it with cross-entropy, a proper scoring rule, on a mixture of about 95 public decision datasets, agent
+trajectories, web element choice, game states and teacher-written custom questions, in two prompt layouts and with isolated
+Score levels. **This repository holds v10**: the v8 weights continued for 384 steps of calibration-aware reinforcement learning
+whose only rewards are outcomes (live browser task checkers and the exact probability laws of games), with a hard KL limit to
+the v8 weights on replayed training rows. Code, data registry, training scripts and the recipe are at
+https://github.com/Mapika/decider; `decider/` in this repository is the inference subset of that package.
+
+What changed from v8, measured on the same rows: live browser click tasks 83% to 93% sampled success (held-out tasks 73% to
+92%), stated beliefs about action outcomes 0.47 to 0.22 nats above the exact law, Mind2Web +1.5 points, general accuracy and
+Bespoke's public suite unchanged, OpenJev −0.8 points. Details under Evaluation.
 
 ## Usage
 
 ```python
 from decider.infer import Decider          # decider/ is included in this repo
-d = Decider("<this repo>")
+d = Decider("Mapika/decider-2b")
 d.decide("My card was charged twice for the same purchase.",
          [{"question": "Which department should handle this?", "options": ["billing", "technical support", "sales"]},
           {"question": "Does this need a refund action?", "options": ["no", "yes"]}])
 # [{'choice': 'billing', 'confidence': 0.99, 'probs': {...}}, {'choice': 'yes', 'confidence': 0.99, 'probs': {...}}]
 ```
 
-`decide_batch` scores many contexts, each with many questions, in one call.
-Set `abstain_below=t` to return `None` for decisions with confidence under `t`
-(route to a human). 2 to 255 options per question (v6; more than 10 options use one label token per
-option, see `decider/prompt.py`).
+`decide_batch` scores many states, each with many questions, in one call. `abstain_below=t` returns `None` for decisions with
+confidence under `t`. A question can have 2 to 255 options (more than 10 options use one label token per option, see
+`decider/prompt.py`).
 
 The same request shape as TypeSafe's Jev (`POST /v1/systemone`), in process or over HTTP:
 
@@ -50,26 +50,25 @@ d.system_one({"ticket": {"messages": [{"from": "customer", "text": "I was charge
                                           "billing": {"what": "Charges, invoices", "not_for": "delivery"}, "other": None}},
               "refund_requested": {"type": "noul", "instructions": "Does `ticket.messages[0].text` request a refund?"},
               "frustration": {"type": "score", "instructions": "How frustrated is the customer?", "criteria": ["calm", "frustrated", "very frustrated"]}})
-# {"model": "decider-v6", "answers": {"department": {"type": "choice", "choice": "billing", "confidence": ..., "certainty": ..., "probabilities": {...}},
+# {"model": "decider-v10", "answers": {"department": {"type": "choice", "choice": "billing", "confidence": ..., "certainty": ..., "probabilities": {...}},
 #  "refund_requested": {"type": "noul", "noul": ...}, "frustration": {"type": "score", "score": ..., "legend": {...}, ...}}, "usage": {...}}
 ```
 
-State may be a string, object or array (up to 32k tokens with the questions); `instructions` and every option
-description may be a string or any JSON value; question ids are never shown to the model. Each question is scored in
-its own row, so answers do not depend on which other questions are asked (`independent=False` packs them into one row,
-about half the latency for short states). Each Score level is likewise judged in its own row, without its number or its
-neighbours, and the per-level fits are normalised (`"isolated": false` on a question restores listwise scoring); the answer
-also reports `level_fit` and their sum `fit_mass` (near 1 when exactly one level fits).
+The state may be a string, object or array (up to 32k tokens with the questions). `instructions` and every option
+description may be a string or any JSON value. Question ids are never shown to the model. Each question is scored in its own
+row, so an answer does not depend on which other questions are asked (`independent=False` packs them into one row, about half
+the latency for short states). Each Score level is likewise judged in its own row, without its number or its neighbours, and the
+per-level fits are normalised (`"isolated": false` restores listwise scoring). The answer also reports `level_fit` and their
+sum `fit_mass`, which is near 1 when exactly one level fits.
 
 For a fixed set of questions, `s = d.schema(questions)` computes the question prefix once and `s(state)` / `s.batch(states)`
-then run only the state (1.2-2.4x faster per request, up to 19x per batch). It uses a questions-first prompt layout that costs
-accuracy: about 1.5 points on fixed label sets, 5 on per-example options, more on 50+ options and multi-thousand-token states. `decider.serve` exposes the same thing as `POST /v1/systemone`; the official
-`typesafe-sdk` works against it unchanged with `TYPESAFE_BASE_URL` pointing at the server.
+then run only the state (1.2 to 2.4x faster per request, up to 19x per batch). It uses a questions-first prompt layout that
+costs accuracy: about 1.5 points on fixed label sets, 5 on per-example options, more on 50 or more options and on states of
+several thousand tokens. `decider.serve` exposes the same thing as `POST /v1/systemone`; the official `typesafe-sdk` works
+against it unchanged with `TYPESAFE_BASE_URL` pointing at the server.
 
-Requirements: `torch`, `transformers>=5`, and `flash-linear-attention` (Triton
-kernels for the Qwen3.5 linear-attention layers; the model runs without it but
-several times slower). Python 3.11+ recommended so those kernels can use
-`torch.compile`.
+Requirements: `torch`, `transformers>=5`, and `flash-linear-attention` (Triton kernels for the Qwen3.5 linear-attention
+layers; the model runs without it but several times slower). Python 3.11 or newer lets those kernels use `torch.compile`.
 
 Without the helper package, the same computation in plain `transformers`:
 
@@ -83,233 +82,177 @@ ids = tok(prompt, return_tensors="pt").to("cuda")
 with torch.no_grad():
     logits = m(**ids).logits[0, -1]
 letters = [tok.encode(L, add_special_tokens=False)[0] for L in "ABC"]
-probs = torch.softmax(logits[letters].float(), -1)      # -> P(billing), P(technical support), P(sales)
+probs = torch.softmax(logits[letters].float() / 1.30, -1)      # -> P(billing), P(technical support), P(sales); 1.30 is the stored temperature
 ```
 
-For several questions in one pass, append further `Question k: ... Answer k: (`
-blocks and read the logits at each `(` position (see `decider/prompt.py`).
+For several questions in one pass, append further `Question k: ... Answer k: (` blocks and read the logits at each `(`
+position (see `decider/prompt.py`).
 
 ## How it works
 
-Prompt: `Context: ...` followed by, for each question, the question text, the
-numbered options `(A) ... (B) ...`, and an answer slot `Answer k: (`. The hidden
-state at each slot is projected with the option-letter rows of the LM head and
-softmaxed over the valid letters. Letters are never generated, so all slots are
-read from one pass. Large label sets were sub-sampled to at most 10 options per
-training example (gold always kept, order shuffled), so the model conditions on
-the supplied candidates rather than a fixed head.
+The prompt is `Context: ...` followed by, for each question, the question text, the lettered options `(A) ... (B) ...` and an
+answer slot `Answer k: (`. The hidden state at each slot is projected with the option-letter rows of the LM head and softmaxed
+over the valid letters, divided by the temperature in `decider_config.json`. Letters are never generated, so all slots are read
+from one pass. Large label sets were sub-sampled to at most 10 options per training example (gold always kept, order shuffled),
+so the model conditions on the supplied candidates rather than on a fixed head.
 
 ## Field types
 
-* **bool** (`noul`): probability of "yes".
-* **choice**: argmax option, its probability, and the full distribution.
-* Jev names: `noul` (bool), `choice` with `criteria` {name: description | JSON | null}, `score` with `criteria`
-  [level descriptions]. Choice and score answers carry `confidence` (top probability, the calibrated number) and
-  `certainty` (1 - normalised entropy of the distribution).
-* **scale**: an ordered legend (e.g. 0: none ... 3: high); returns the expected
-  level (`score`), the probability of the most likely level, and the distribution.
+* **noul**: probability of "yes".
+* **choice** with `criteria` {name: description | JSON | null}: the argmax option, its probability (`confidence`, the calibrated
+  number), `certainty` (1 minus the normalised entropy) and the full distribution.
+* **score** with `criteria` [level descriptions]: the expected level, the probability of the most likely level, the
+  distribution, and the per-level fits.
 
-## Training data
+## Training
 
-69 public datasets plus synthetic situations, up to 20k examples each (`decider/data.py`, `decider/data2.py`, `decider/data3.py`):
-intent detection, ticket routing, topic classification, sentiment, emotion,
-moderation (toxicity, hate, spam, jailbreak, safety), NLI, paraphrase, fact
-verification, passage relevance, reading comprehension, multiple-choice QA,
-ordinal rating scales (HelpSteer2 attributes, STS-B, hate-speech intensity,
-LIAR2 truthfulness), pairwise response preference (HelpSteer3, UltraFeedback,
-SHP, HH-RLHF) and tool selection (Glaive, ToolACE).
-v4 adds next-action choice from agent trajectories (AgentGym AgentTraj-L), web element
-choice (Mind2Web), 1.5k synthetic situations written by Qwen3.5-27B, and teacher-labelled
-states from Pong, Breakout, CliffWalking, MiniGrid and Super Mario Bros.
-Abstention augmentation: in 10% of questions with three or more options an abstain
-option with one of twelve wordings is added; in a quarter of those the whole option list is
-replaced by labels from an unrelated task, making the abstain option correct.
+**Supervised stages (v1 to v8).** One epoch on a mixture of public decision datasets (intent detection, ticket routing, topic
+classification, sentiment, emotion, moderation, NLI, paraphrase, fact verification, passage relevance, reading comprehension,
+multiple-choice QA, ordinal rating scales, pairwise response preference, tool selection), then continuation epochs that added
+next-action choice from agent trajectories (AgentGym), web element choice (Mind2Web), teacher-written situations and game states,
+the input shapes of the Jev API (described options, up to 255 options, JSON states with path references, long inputs), teacher-
+written custom questions with a generic option next to a catch-all, a second cacheable prompt layout, and isolated Score levels.
+In 10% of questions with three or more options an abstain option is added; in a quarter of those the option list is replaced by
+labels from an unrelated task so that the abstain option is correct. The full list of components with sizes is in
+`decider/data/mixture.py` of the GitHub repository; `scripts/train.sh full` reproduces the supervised stages in one run.
+
+**Reinforcement learning stage (v8 to v10).** 384 optimizer steps at a peak learning rate of 1e-6 (cosine, 16 warm-up steps),
+selected among the checkpoints of a 576-step run. Each of the 48 iterations plays 4 live MiniWoB++ click tasks, 4 minesweeper
+boards and 4 game boards (a 5x5 grid with a slippery move, draws from bags of known composition), 4 repeats each, through the
+same one-pass readout that serves requests. Three loss terms use those rollouts: a PPO clipped surrogate (clip 0.2) on the
+terminal outcome with a leave-one-replicate-out baseline; a proper log score of the model's stated belief about the immediate
+outcome of its action against the exact law (games, minesweeper) or the realised outcome (browser); and a rendering-consistency
+term that pulls the model's answer in the other prompt layout and the reversed option order toward its served answer. A fourth
+term keeps the model where it was: on 8 replayed supervised rows per step, KL(v8 ‖ student) on the served distribution must
+stay under 0.01 nats on average and 0.05 on any row, otherwise the step drops the reward terms and follows only the KL
+gradient. Six browser tasks were held out from reward and used for validation only. No gold labels were used. The recipe and
+every measurement are in `docs/RL.md` of the GitHub repository.
 
 ## Evaluation
 
-| Model | Split | Acc | NLL | Brier | ECE | AURC | Acc@80% |
-|---|---|---|---|---|---|---|---|
-| Qwen3.5-2B-Base, zero-shot | in-task (64) | 0.620 | 0.908 | 0.493 | 0.121 | 0.280 | 0.663 |
-| Qwen3.5-2B-Base, zero-shot | held-out (23) | 0.642 | 0.853 | 0.460 | 0.105 | 0.242 | 0.685 |
-| Qwen3.5-4B-Base, zero-shot | in-task (64) | 0.695 | 0.768 | 0.405 | 0.090 | 0.206 | 0.742 |
-| Qwen3.5-4B-Base, zero-shot | held-out (23) | 0.711 | 0.734 | 0.390 | 0.089 | 0.169 | 0.761 |
-| **this model (v5)** | in-task (69) | 0.815 | 0.445 | 0.248 | 0.028 | 0.093 | 0.866 |
-| **this model (v5)** | held-out (24) | 0.738 | 0.678 | 0.360 | 0.084 | 0.145 | 0.793 |
-| **this model (v6, T=1.15)** | in-task (69) | 0.813 | 0.450 | 0.251 | 0.032 | 0.094 | 0.864 |
-| **this model (v6, T=1.15)** | held-out (24) | 0.736 | 0.664 | 0.358 | 0.084 | 0.145 | 0.793 |
-| **this model (v8, T=1.30)** | in-task (69) | 0.811 | 0.460 | | 0.037 | | |
-| **this model (v8, T=1.30)** | held-out (24) | 0.741 | 0.655 | | 0.088 | | |
-| **this model (v9, T=1.36)** | in-task (69) | 0.812 | 0.464 | | 0.041 | | |
-| **this model (v9, T=1.36)** | held-out (24) | 0.741 | 0.655 | | 0.087 | | |
-| v8, questions-first layout (schema cache), T=1.18 | held-out (24) | 0.707 | 0.757 | | 0.104 | | |
+**94 public tasks, original protocol.** Large label sets sub-sampled to 10 options; one temperature fitted on in-task data
+and stored in `decider_config.json`. "In-task" means the test splits of the training datasets; "held-out" means datasets never
+seen in training (TREC, BBC news, PAWS, SciQ, Social IQa, StrategyQA, PubMedQA, TruthfulQA, tweet irony, financial sentiment,
+ADE, MASSIVE scenario, student question categories, Dolly categories, CR reviews, Financial PhraseBank, CommitmentBank,
+QuALITY, XStoryCloze, RewardBench, Arena preferences, Hermes tool selection, and an abstention probe). ECE is the expected
+calibration error with 15 bins.
 
+| model | in-task (69 tasks) acc / NLL / ECE | held-out (24 tasks) acc / NLL / ECE |
+|---|---|---|
+| Qwen3.5-2B-Base, zero-shot | 0.620 / 0.908 / 0.121 | 0.642 / 0.853 / 0.105 |
+| decider-2b v8, T=1.30 | 0.811 / 0.460 / 0.037 | 0.741 / 0.655 / 0.088 |
+| decider-2b v9, T=1.36 | 0.812 / 0.464 / 0.041 | 0.741 / 0.655 / 0.087 |
+| decider-2b v8, rebuilt set (67 / 28 tasks, see note), T=1.30 | 0.806 / 0.473 / 0.038 | 0.757 / 0.622 / 0.083 |
+| **decider-2b v10 (this repository), rebuilt set, T=1.30** | 0.805 / 0.474 / 0.037 | 0.755 / 0.622 / 0.084 |
+| v8, questions-first layout (schema cache), T=1.18 | 0.790 / 0.500 / 0.038 | 0.707 / 0.757 / 0.104 |
 
-Per-task accuracy / ECE on the held-out datasets:
+The two "rebuilt set" rows were measured after the data pipeline was rebuilt on another machine: two datasets no longer download
+(TREC-fine, the game states) and the current mixture adds held-out probes, so that set has 67 in-task and 28 held-out tasks. Its
+numbers are comparable to each other, not to the rows above. v10 matches v8 on it.
 
-| Task | Qwen3.5-2B-Base, zero-shot | Qwen3.5-4B-Base, zero-shot | this model |
+Per-task accuracy / ECE on the held-out datasets of the rebuilt set, v8 against v10:
+
+| task | v8 acc / ECE | v10 acc / ECE |
+|---|---|---|
+| abstain_probe | 0.633 / 0.112 | 0.606 / 0.134 |
+| ade | 0.811 / 0.044 | 0.817 / 0.038 |
+| arena_pref | 0.487 / 0.173 | 0.483 / 0.189 |
+| bbc_news | 0.924 / 0.014 | 0.927 / 0.013 |
+| cb | 0.911 / 0.090 | 0.857 / 0.093 |
+| cr_reviews | 0.900 / 0.027 | 0.903 / 0.031 |
+| dbpedia_l2 | 0.948 / 0.017 | 0.950 / 0.018 |
+| dbpedia_l3 | 0.989 / 0.007 | 0.987 / 0.005 |
+| dolly_category | 0.291 / 0.209 | 0.299 / 0.203 |
+| fin_phrasebank | 0.684 / 0.043 | 0.694 / 0.042 |
+| fin_sentiment | 0.794 / 0.069 | 0.793 / 0.058 |
+| hermes_tools | 0.718 / 0.209 | 0.723 / 0.208 |
+| hwu64 | 0.964 / 0.031 | 0.961 / 0.030 |
+| massive_scenario | 0.766 / 0.040 | 0.756 / 0.041 |
+| offtopic_probe | 0.841 / 0.033 | 0.841 / 0.027 |
+| paws | 0.707 / 0.169 | 0.724 / 0.145 |
+| pubmedqa | 0.752 / 0.083 | 0.756 / 0.085 |
+| quality | 0.495 / 0.236 | 0.494 / 0.233 |
+| quality_full | 0.505 / 0.205 | 0.508 / 0.198 |
+| reward_bench | 0.825 / 0.042 | 0.819 / 0.045 |
+| sciq | 0.982 / 0.022 | 0.982 / 0.024 |
+| social_iqa | 0.698 / 0.072 | 0.708 / 0.077 |
+| strategyqa | 0.559 / 0.123 | 0.552 / 0.138 |
+| student_questions | 0.927 / 0.036 | 0.925 / 0.045 |
+| trec | 0.792 / 0.057 | 0.784 / 0.066 |
+| truthfulqa | 0.529 / 0.102 | 0.537 / 0.090 |
+| tweet_irony | 0.801 / 0.048 | 0.795 / 0.052 |
+| xstory_cloze | 0.962 / 0.017 | 0.962 / 0.017 |
+
+**v10 against v8 on the same rows.** Every row below is scored by both models on identical inputs and seeds. Intervals are
+95% bootstrap or paired intervals.
+
+| | v8 | v10 | difference |
 |---|---|---|---|
-| abstain_probe | 0.377 / 0.193 | 0.453 / 0.242 | 0.785 / 0.037 |
-| ade | 0.794 / 0.117 | 0.746 / 0.101 | 0.808 / 0.038 |
-| arena_pref | 0.382 / 0.228 | 0.434 / 0.159 | 0.474 / 0.144 |
-| bbc_news | 0.910 / 0.010 | 0.927 / 0.024 | 0.941 / 0.016 |
-| cb | 0.554 / 0.115 | 0.696 / 0.087 | 0.893 / 0.115 |
-| cr_reviews | 0.882 / 0.073 | 0.923 / 0.015 | 0.902 / 0.020 |
-| dolly_category | 0.269 / 0.137 | 0.351 / 0.149 | 0.318 / 0.211 |
-| fin_phrasebank | 0.560 / 0.032 | 0.713 / 0.050 | 0.660 / 0.082 |
-| fin_sentiment | 0.345 / 0.335 | 0.437 / 0.303 | 0.769 / 0.031 |
-| hermes_tools | 0.704 / 0.067 | 0.702 / 0.160 | 0.737 / 0.155 |
-| massive_scenario | 0.706 / 0.094 | 0.707 / 0.032 | 0.815 / 0.023 |
-| paws | 0.759 / 0.123 | 0.834 / 0.018 | 0.691 / 0.221 |
-| pubmedqa | 0.728 / 0.042 | 0.768 / 0.082 | 0.790 / 0.063 |
-| quality | 0.457 / 0.205 | 0.519 / 0.184 | 0.513 / 0.137 |
-| reward_bench | 0.624 / 0.074 | 0.772 / 0.045 | 0.799 / 0.043 |
-| sciq | 0.978 / 0.011 | 0.988 / 0.019 | 0.982 / 0.017 |
-| social_iqa | 0.659 / 0.089 | 0.739 / 0.053 | 0.712 / 0.060 |
-| strategyqa | 0.566 / 0.029 | 0.646 / 0.037 | 0.613 / 0.069 |
-| student_questions | 0.903 / 0.059 | 0.933 / 0.021 | 0.927 / 0.030 |
-| trec | 0.696 / 0.062 | 0.822 / 0.050 | 0.766 / 0.036 |
-| truthfulqa | 0.460 / 0.111 | 0.591 / 0.113 | 0.497 / 0.091 |
-| tweet_irony | 0.511 / 0.158 | 0.676 / 0.073 | 0.779 / 0.059 |
-| xstory_cloze | 0.941 / 0.061 | 0.981 / 0.041 | 0.965 / 0.028 |
+| live MiniWoB++ click tasks, 22 tasks x 8 seeds, sampled play | 83.0% | 93.2% | +10.2 (+5.1 to +15.9) |
+| the 6 tasks never used for reward | 72.9% | 91.7% | +18.8 (+6.2 to +31.2) |
+| same tasks, greedy play | 90.3% | 90.9% | +0.6 |
+| Mind2Web element and action choice, 1,770 rows | 81.1% | 82.7% | +1.5 (+0.7 to +2.4) |
+| bag-draw games, win rate | | | +6.2 (+0.8 to +12.1) |
+| stated belief, nats above the exact law (lower is better) | 0.473 | 0.219 | |
+| click-outcome prediction, log score (higher is better) | −0.349 | −0.034 | |
+| TypeSafe workflow decisions, 102 rows, accuracy / NLL | 78.4% / 0.594 | 80.4% / 0.585 | +2.0 (−2.0 to +5.9) |
+| 847 in-task validation rows, accuracy / NLL | 83.6% / 0.443 | 83.2% / 0.444 | −0.4 (−1.3 to +0.6) |
+| Bespoke's public suite, 13 subsets, macro accuracy | 0.706 | 0.704 | |
+| OpenJev, 5,252 rows, accuracy / NLL | 64.1% / 0.906 | 63.3% / 0.916 | −0.8 (−1.3 to −0.3) |
 
-| Task | Qwen3.5-2B-Base, zero-shot | Qwen3.5-4B-Base, zero-shot | this model |
-|---|---|---|---|
-| abstain_probe | 0.377 / 0.193 | 0.453 / 0.242 | 0.785 / 0.037 |
-| ade | 0.794 / 0.117 | 0.746 / 0.101 | 0.808 / 0.038 |
-| arena_pref | 0.382 / 0.228 | 0.434 / 0.159 | 0.474 / 0.144 |
-| bbc_news | 0.910 / 0.010 | 0.927 / 0.024 | 0.941 / 0.016 |
-| cb | 0.554 / 0.115 | 0.696 / 0.087 | 0.893 / 0.115 |
-| cr_reviews | 0.882 / 0.073 | 0.923 / 0.015 | 0.902 / 0.020 |
-| dolly_category | 0.269 / 0.137 | 0.351 / 0.149 | 0.318 / 0.211 |
-| fin_phrasebank | 0.560 / 0.032 | 0.713 / 0.050 | 0.660 / 0.082 |
-| fin_sentiment | 0.345 / 0.335 | 0.437 / 0.303 | 0.769 / 0.031 |
-| hermes_tools | 0.704 / 0.067 | 0.702 / 0.160 | 0.737 / 0.155 |
-| massive_scenario | 0.706 / 0.094 | 0.707 / 0.032 | 0.815 / 0.023 |
-| paws | 0.759 / 0.123 | 0.834 / 0.018 | 0.691 / 0.221 |
-| pubmedqa | 0.728 / 0.042 | 0.768 / 0.082 | 0.790 / 0.063 |
-| quality | 0.457 / 0.205 | 0.519 / 0.184 | 0.513 / 0.137 |
-| reward_bench | 0.624 / 0.074 | 0.772 / 0.045 | 0.799 / 0.043 |
-| sciq | 0.978 / 0.011 | 0.988 / 0.019 | 0.982 / 0.017 |
-| social_iqa | 0.659 / 0.089 | 0.739 / 0.053 | 0.712 / 0.060 |
-| strategyqa | 0.566 / 0.029 | 0.646 / 0.037 | 0.613 / 0.069 |
-| student_questions | 0.903 / 0.059 | 0.933 / 0.021 | 0.927 / 0.030 |
-| trec | 0.696 / 0.062 | 0.822 / 0.050 | 0.766 / 0.036 |
-| truthfulqa | 0.460 / 0.111 | 0.591 / 0.113 | 0.497 / 0.091 |
-| tweet_irony | 0.511 / 0.158 | 0.676 / 0.073 | 0.779 / 0.059 |
-| xstory_cloze | 0.941 / 0.061 | 0.981 / 0.041 | 0.965 / 0.028 |
+The browser gain is in the served distribution rather than in the argmax: sampled play improves by ten points, greedy play by
+under one. Tic-tac-toe, grid and minesweeper play did not change; a 2B model without search loses most of those games either
+way. The one measured regression is OpenJev, under one point.
 
-| Task | Qwen3.5-2B-Base, zero-shot | Qwen3.5-4B-Base, zero-shot | this model |
-|---|---|---|---|
-| ade | 0.794 / 0.117 | 0.746 / 0.101 | 0.827 / 0.023 |
-| bbc_news | 0.910 / 0.010 | 0.927 / 0.024 | 0.919 / 0.025 |
-| cr_reviews | 0.882 / 0.073 | 0.923 / 0.015 | 0.911 / 0.019 |
-| dolly_category | 0.269 / 0.137 | 0.351 / 0.149 | 0.316 / 0.212 |
-| fin_phrasebank | 0.560 / 0.032 | 0.713 / 0.050 | 0.640 / 0.125 |
-| fin_sentiment | 0.345 / 0.335 | 0.437 / 0.303 | 0.773 / 0.029 |
-| massive_scenario | 0.706 / 0.094 | 0.707 / 0.032 | 0.822 / 0.017 |
-| paws | 0.759 / 0.123 | 0.834 / 0.018 | 0.693 / 0.189 |
-| pubmedqa | 0.728 / 0.042 | 0.768 / 0.082 | 0.768 / 0.043 |
-| sciq | 0.978 / 0.011 | 0.988 / 0.019 | 0.985 / 0.016 |
-| social_iqa | 0.659 / 0.089 | 0.739 / 0.053 | 0.712 / 0.055 |
-| strategyqa | 0.566 / 0.029 | 0.646 / 0.037 | 0.594 / 0.095 |
-| student_questions | 0.903 / 0.059 | 0.933 / 0.021 | 0.930 / 0.017 |
-| trec | 0.696 / 0.062 | 0.822 / 0.050 | 0.772 / 0.044 |
-| truthfulqa | 0.460 / 0.111 | 0.591 / 0.113 | 0.541 / 0.062 |
-| tweet_irony | 0.511 / 0.158 | 0.676 / 0.073 | 0.754 / 0.054 |
-
-| Task | Qwen3.5-2B-Base, zero-shot | Qwen3.5-4B-Base, zero-shot | this model (200k-example run) |
-|---|---|---|---|
-| ade | 0.794 / 0.117 | 0.746 / 0.101 | 0.808 / 0.046 |
-| bbc_news | 0.910 / 0.010 | 0.927 / 0.024 | 0.928 / 0.014 |
-| cr_reviews | 0.882 / 0.073 | 0.923 / 0.015 | 0.915 / 0.012 |
-| dolly_category | 0.269 / 0.137 | 0.351 / 0.149 | 0.325 / 0.193 |
-| fin_phrasebank | 0.560 / 0.032 | 0.713 / 0.050 | 0.652 / 0.108 |
-| fin_sentiment | 0.345 / 0.335 | 0.437 / 0.303 | 0.796 / 0.042 |
-| massive_scenario | 0.706 / 0.094 | 0.707 / 0.032 | 0.808 / 0.022 |
-| paws | 0.759 / 0.123 | 0.834 / 0.018 | 0.713 / 0.139 |
-| pubmedqa | 0.728 / 0.042 | 0.768 / 0.082 | 0.772 / 0.048 |
-| sciq | 0.978 / 0.011 | 0.988 / 0.019 | 0.983 / 0.021 |
-| social_iqa | 0.659 / 0.089 | 0.739 / 0.053 | 0.703 / 0.060 |
-| strategyqa | 0.566 / 0.029 | 0.646 / 0.037 | 0.597 / 0.089 |
-| student_questions | 0.903 / 0.059 | 0.933 / 0.021 | 0.927 / 0.029 |
-| trec | 0.696 / 0.062 | 0.822 / 0.050 | 0.816 / 0.039 |
-| truthfulqa | 0.460 / 0.111 | 0.591 / 0.113 | 0.529 / 0.058 |
-| tweet_irony | 0.511 / 0.158 | 0.676 / 0.073 | 0.769 / 0.048 |
-
-
-Probabilities use a temperature of 1.05 fitted on in-task data (stored in `decider_config.json`, applied by the helper).
-*In-task* = test splits of the training datasets (in-task rows for the zero-shot baselines cover the original 64). *Held-out* = 23 datasets never
-seen in training: TREC, BBC news, PAWS, SciQ, Social IQa, StrategyQA, PubMedQA,
-TruthfulQA, tweet irony, financial sentiment, ADE, MASSIVE scenario, student
-question categories, Dolly categories, CR reviews, Financial PhraseBank,
-CommitmentBank, QuALITY, XStoryCloze, RewardBench, Arena preferences (3-way),
-Hermes tool selection, and an abstention probe (held-out classification tasks
-where in half the cases the correct option is absent and "none of the above" is
-right). Chance accuracy is 0.33 on both sets. ECE = expected calibration error
-(15 bins), AURC = area under the risk-coverage curve, acc@80 = accuracy on
-the 80% most confident decisions.
+**Bespoke's public suite** (13 human-labelled subsets, 3,880 records in Jev's wire format, answered through `system_one` as
+shipped). decider-2b v10 macro 0.704 / micro 0.711; v9 0.701 / 0.711; Nimble-9B 0.748 / 0.759; Jev 1.13.0 0.760 / 0.773
+(the last two copied from Bespoke's report). Per-subset numbers are in the GitHub README.
 
 ## Speed
 
-One NVIDIA GH200, bf16. `decider.infer.Decider` uses shape-bucketed CUDA
-graphs (`decider/engine.py`); the micro-batching server is `decider/serve.py`
-in the GitHub repo. Support-ticket contexts of ~230 tokens with 3 to 5 typed
-questions each:
+One NVIDIA GH200, bf16, unchanged from v8 (same architecture, readout and temperature). `decider.infer.Decider` uses
+shape-bucketed CUDA graphs; the batching server is `decider/serve.py`. Support-ticket states of about 230 tokens with 3 to 5
+typed questions each:
 
 | setting | p50 latency | throughput |
 |---|---|---|
 | single request, eager PyTorch | 49 ms | |
 | single request, CUDA graphs + torch.compile (helper default) | 4.0 ms | |
-| batch of 32, in-process, bf16 | 70 ms | ~1370 decisions/s |
-| batch of 32, in-process, FP8 linears | 58 ms | ~1670 decisions/s |
+| batch of 32, in-process, bf16 | 70 ms | about 1,370 decisions/s |
+| batch of 32, in-process, FP8 linears | 58 ms | about 1,670 decisions/s |
 | HTTP server (FP8), 1 client | 6.8 ms | 134 req/s |
-| HTTP server (FP8), 64 clients | 126 ms | 431 req/s, 2152 decisions/s |
+| HTTP server (FP8), 64 clients | 126 ms | 431 req/s, 2,152 decisions/s |
 
-FP8 (e4m3 weights, per-token activation scales) changes accuracy and calibration by
-less than the evaluation noise (18-task check: accuracy 0.833 vs 0.835, ECE equal).
+With the schema cache (`Decider.schema`), 10 described questions on short chat messages run at 11,180 decisions/s in a batch,
+and one question with 151 options at 19x the full-forward rate. FP8 (e4m3 weights, per-token activation scales) changes
+accuracy and calibration by less than the evaluation noise.
 
 ## Limitations
 
-* English only. Options must be short phrases; free-text fields are not supported.
-* Calibration is measured on public datasets; verify it on your own labelled
-  data before using confidence for routing.
-* No reasoning: this is a fast pattern-matching decision model, not a chat model.
-* Inputs up to 32k tokens are accepted (v6 trained to 16k, probed to 30k). Plain long reading works (QuALITY, whole
-  5-8k-token article: 0.71, against 0.51 clipped). Picking one record out of a long JSON array by position is the weak
-  case: 0.70 with 4 records, 0.64 with 16, 0.49 with 64 (single-record ceiling 0.72); address records by key where
-  possible. The helper writes `"_index": i` into arrays of 8 or more elements, which recovers part of it (0.57 at 64).
-* Full label sets (v6): 0.84 on held-out HWU64 (64 options), 0.76 TREC-fine (50), 0.87 DBpedia level 3 (219), 0.70 DBpedia
-  level 2 (70, ECE 0.14: the least calibrated of these). In-task CLINC 151-way 0.88 against 0.98 with 10 sampled options.
-* Questions packed into one row (`independent=False`, or `decide` with several questions) still see earlier question
-  texts: reversing their order changes up to 12% of answers on multi-question tasks. The default `system_one` path
-  scores each question alone and has no such dependence.
-* Held-out text game Freeway fell from 6 (v4) to 3 (v5) to 0 (v6) over three episodes; trained games are unchanged.
-* Knowledge-heavy multiple choice (MMLU, MedQA, ARC) improves only modestly over the
-  base model; fine-tuning on decisions does not add world knowledge.
-* Compared with a run on the 47-dataset v1 mixture, adding the v2 datasets
-  raised held-out accuracy but lowered two held-out tasks: Hermes tool selection
-  (0.80 to 0.74) and TruthfulQA (0.54 to 0.50).
-* Scale fields are the least trained type; expect wider distributions there.
-* Abstention (v5): an option such as "none of the above", "other" or "unsure" is chosen when
-  nothing on offer fits the situation, not when the exact fine-grained label is merely absent
-  (it then takes the best available option). Trained with twelve abstain wordings and
-  off-topic option lists; on a held-out probe with off-topic option lists it scores 0.83
-  (v4: 0.68). Earlier versions (v4 and before) had learned the literal phrase as an abstain
-  signal; the bundled helper's rewrite for that is disabled for v5 via `decider_config.json`.
-* Catch-all options next to generic ones ("support" vs "other"): v6 sent in-scope messages that fit only the generic option to
-  the catch-all (0.60 on a hand-written battery, 0.50 on held-out teacher-written routing messages). v8: 0.85 and 0.94, with the
-  catch-all cases at 0.95 and 0.90. Question wordings far from the training data (public datasets plus 24k teacher-written
-  questions) remain the main risk; verify on your own examples.
-* Generic buckets with plain names (`support`, `help`, `account`) next to a catch-all: v9 picks the bucket when it should (held-out
-  terse-bucket messages 0.59 to 0.86; the `check_balance / approve_transfer / support / other` case that v8 got wrong now goes to
-  `support` at 0.79-0.85) at a small cost on the catch-all side (0.93 to 0.88 on that probe; 0.62 to 0.58 on the abstention probe).
-* Isolated Score levels match listwise scoring within about a point (LIAR2: 3 points lower). Levels should describe situations,
-  not degrees.
-* One in-task dataset, `tweet_hate` (SemEval-2019 HatEval), stays near chance on its
-  test split. That split is known to differ from its training split in collection
-  and label definition; the number is reported as measured.
+* A 2B model without reasoning. Knowledge-heavy multiple choice (MMLU, MedQA, ARC) improves little over the base model, and a
+  judgment that needs several steps should be split into several questions.
+* English only. Calibration is measured on public datasets and teacher-labelled probes, not on your traffic. Check it on your
+  own labels before using confidence for routing.
+* v10 continues the v8 weights. The v9 data for terse bucket names (`support`, `help`, `account` next to `other`) is not in it:
+  on held-out terse-bucket messages v8 chose the generic bucket correctly 59% of the time where v9 reached 86%. Name or
+  describe the generic option as a bucket (`general_support`, or a description).
+* Rules written into the question ("fill if empty, otherwise skip") are not followed at this size. State the decision as a
+  plain question with described options.
+* Picking one record out of a long JSON array by position is the least accurate input shape (0.51 with 64 records against
+  0.70 with one). Address records by key, or let the helper write the index into the array (0.62).
+* Full label sets cost accuracy against 10 sampled options: CLINC 151-way 0.88 against 0.98; DBpedia level 2 with 70 labels
+  is the least calibrated case (ECE 0.14).
+* Questions packed into one row (`independent=False`) see the earlier question texts, and reversing their order changes up to
+  12% of answers. The default path scores each question alone.
+* The v10 browser results are on 22 click-only MiniWoB++ tasks: small synthetic pages with the elements listed as text. Typing,
+  scrolling and real websites were not tested. OpenJev accuracy is 0.8 points lower than v8.
+* Abstention: a catch-all option ("none of the above", "other", "unsure") is chosen when nothing on offer fits, not when the
+  exact fine-grained label is merely absent. Wordings far from the training data remain the main risk.
+* One in-task dataset, `tweet_hate` (SemEval-2019 HatEval), stays near chance on its test split, whose collection and label
+  definition differ from the training split. The number is reported as measured.
 
 ## Reproduction
 
-Code, data registry, training and evaluation scripts: https://github.com/Mapika/decider
-(`decider/` in this model repo is the inference subset of that package).
+Code, data registry, training and evaluation scripts, the RL recipe and the per-version history:
+https://github.com/Mapika/decider. Each release is staged with `scripts/stage_release.py` and uploaded with
+`scripts/upload_hf.py`; the previous weights are kept under the tag `v8` in this repository.

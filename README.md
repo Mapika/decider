@@ -4,17 +4,20 @@
 [![weights](https://img.shields.io/badge/%F0%9F%A4%97%20weights-Mapika%2Fdecider--2b-yellow)](https://huggingface.co/Mapika/decider-2b)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-![the model playing ten games from text state descriptions, plus Mario with the RL checkpoint](media/montage.gif)
+![v8 (left) and v10 (right) solving live MiniWoB++ click tasks in Chrome; each frame shows the chosen element and its served probability](media/v10_browser_montage.gif)
 
-A language model that does not generate text. It reads a **state** and a set of **typed questions** and returns, from a
-single forward pass, a probability distribution for every question: no decoding, no parsing, no output outside the
-options you defined. It is an open reproduction of the "System One" model class (TypeSafe AI's *Jev*), built on
-`Qwen/Qwen3.5-2B-Base` and trained on one GH200.
+*decider-2b v8 (left) and v10 (right) on eight live browser tasks, same pages and seeds. Each click is one typed decision: the
+clickable elements on the page are the options, the model returns a probability for each, and the task's own checker grades the
+result. Six of the eight tasks were never used for training. Per-task recordings are in `media/v10_browser_*.gif`.*
 
-| model | | |
+A language model that does not generate text. It reads a **state** and a set of **typed questions** and returns, from one
+forward pass, a probability distribution for every question. There is no decoding, no parsing, and no output outside the options
+you defined. It is an open reproduction of the "System One" model class (TypeSafe AI's *Jev*), built on `Qwen/Qwen3.5-2B-Base`.
+
+| model | what it is | numbers |
 |---|---|---|
-| [decider-2b](https://huggingface.co/Mapika/decider-2b) | the main model: text and JSON states, up to 255 options, 32k tokens | in-task 0.81, held-out 0.74 on 93 public tasks |
-| [decider-0.8b](https://huggingface.co/Mapika/decider-0.8b) | same recipe from Qwen3.5-0.8B-Base, 1.5 GB | 0.78 / 0.71, same calibration; loses on knowledge tasks, not on the decision format |
+| [decider-2b](https://huggingface.co/Mapika/decider-2b) **v10** | the main model: text and JSON states, up to 255 options, 32k tokens; v8 plus 384 steps of calibration-aware RL on live browser tasks and exact games | live browser 93% (v8: 83%); the 95-task regression set rebuilt here, in-task / held-out 0.805 / 0.755 (v8 on the same rebuild: 0.806 / 0.757) |
+| [decider-0.8b](https://huggingface.co/Mapika/decider-0.8b) | the same supervised recipe from Qwen3.5-0.8B-Base, 1.5 GB | 0.78 / 0.71, same calibration; loses on knowledge tasks, not on the decision format |
 | [decider-2b-vision](https://huggingface.co/Mapika/decider-2b-vision) | decisions from an image plus the same prompt | [try it in the browser](https://huggingface.co/spaces/hugging-apps/decider-2b-vision-demo) (Space built by the Hugging Face team) |
 
 ```bash
@@ -31,10 +34,10 @@ d.system_one(
                     "criteria": {"returns": "Exchanges, refunds, wrong or damaged items", "billing": {"what": "Charges, invoices", "not_for": "delivery"}, "other": None}},
      "refund_requested": {"type": "noul", "instructions": "Does `ticket.messages[0].text` request a refund?"},
      "frustration": {"type": "score", "instructions": "How frustrated is the customer?", "criteria": ["calm", "frustrated", "very frustrated"]}})
-# {"answers": {"department": {"choice": "billing", "confidence": 0.65, "certainty": ..., "probabilities": {"returns": 0.33, "billing": 0.65, "other": 0.02}},
+# {"answers": {"department": {"choice": "billing", "confidence": 0.56, "certainty": 0.37, "probabilities": {"returns": 0.44, "billing": 0.56, "other": 0.00}},
 #              "refund_requested": {"noul": 0.99},
-#              "frustration": {"score": 0.72, "probabilities": {...}, "level_fit": {"0": 0.39, "1": 0.55, "2": 0.10}, "fit_mass": 1.04}}}
-#                                                             (v8 weights; "returns" also mentions refunds, hence the split)
+#              "frustration": {"score": 0.76, "probabilities": {"0": 0.34, "1": 0.55, "2": 0.10}, "level_fit": {"0": 0.34, "1": 0.55, "2": 0.10}, "fit_mass": 0.99}}}
+#                                                             (v10 weights; "returns" also mentions refunds, so the mass is split)
 
 d.decide("My card was charged twice.", [{"question": "Which team?", "options": ["billing", "technical", "sales"]}])
 # [{"choice": "billing", "confidence": 0.77, "probs": {"billing": 0.77, "technical": 0.19, "sales": 0.04}}]      the plain form
@@ -42,6 +45,45 @@ d.decide("My card was charged twice.", [{"question": "Which team?", "options": [
 
 `examples/` has three complete programs (confidence-gated routing, composite scoring, a hierarchical beam over Choice
 probabilities); `python examples/routing_with_confidence.py` runs against the released weights.
+
+## What v10 adds
+
+v10 is the v8 weights continued for 384 steps of reinforcement learning whose only rewards are outcomes: whether a browser task's
+own checker reports success, and how well the model's stated belief about the next outcome of an action matches the exact
+probability law of a game. No gold labels enter. A hard KL limit to the v8 weights on replayed training rows keeps the model's
+answers on its original tasks in place. The recipe is in [docs/RL.md](docs/RL.md).
+
+![v10 minus v8 on the same rows, with 95% intervals](media/v10_vs_v8.png)
+
+| on the same rows, v10 against v8 | v8 | v10 | difference (95% interval) |
+|---|---|---|---|
+| live MiniWoB++ click tasks, 22 tasks x 8 seeds, sampled play | 83.0% | 93.2% | +10.2 (+5.1 to +15.9) |
+| the 6 tasks never used for reward | 72.9% | 91.7% | +18.8 (+6.2 to +31.2) |
+| bag-draw games, win rate | | | +6.2 (+0.8 to +12.1) |
+| Mind2Web element and action choice, 1,770 rows | 81.1% | 82.7% | +1.5 (+0.7 to +2.4) |
+| TypeSafe workflow decisions, 102 rows, accuracy / NLL | 78.4% / 0.594 | 80.4% / 0.585 | +2.0 (−2.0 to +5.9) |
+| 847 in-task validation rows, accuracy / NLL | 83.6% / 0.443 | 83.2% / 0.444 | −0.4 (−1.3 to +0.6) |
+| Bespoke's public suite, 13 subsets, macro | 0.706 | 0.704 | |
+| OpenJev, 5,252 rows | 64.1% | 63.3% | −0.8 (−1.3 to −0.3) |
+| the regression set rebuilt here, 67 in-task / 28 held-out tasks, accuracy | 0.806 / 0.757 | 0.805 / 0.755 | within noise |
+
+The browser gain is in the served distribution: greedy play is 90.9% against 90.3%, sampled play is where the ten points are. The
+one measured regression is OpenJev, under one point.
+
+![belief excess over the exact laws, and click-outcome prediction, v8 against v10](media/v10_calibration.png)
+
+Calibration is what the RL objective trains directly. For every action in a game with a known probability law (a 5x5 grid with a
+slippery move, drawing from bags of known composition, revealing a cell on a 4x4 minesweeper board with the exact posterior), the
+model is asked what will happen next, and its answer is scored against the exact law with a log score. v10 is 0.22 nats above the
+law where v8 was 0.47. In the browser it predicts the outcome of its own click (success, failure, continue) at a log score of
+−0.03 against −0.35. The games themselves are still mostly lost by both versions (a 2B model does not plan), except that v10 wins
+6 points more of the bag draws.
+
+![per-task browser success, v8 against v10](media/v10_browser_tasks.png)
+
+What v10 does not change: general accuracy on its training tasks, calibration on Bespoke's suite, tic-tac-toe, grid and
+minesweeper play, and speed (same architecture, same readout, same temperature). v10 continues the v8 weights that were on the
+Hub; the v9 terse-bucket data described below is not in it.
 
 ## What it does
 
@@ -52,7 +94,7 @@ probabilities); `python examples/routing_with_confidence.py` runs against the re
 | independence | every question is scored on its own: adding, removing or reordering questions cannot change another answer |
 | isolated levels | every Score level is judged alone (it sees neither its number nor its neighbours); the per-level fits are normalised |
 | abstention | a catch-all option ("other", "none of the above", ...) is chosen when nothing on offer fits |
-| calibration | trained with a proper scoring rule; one temperature fitted on in-task data, checked on held-out tasks |
+| calibration | trained with a proper scoring rule; one temperature fitted on in-task data, checked on held-out tasks; v10 adds RL with a proper-score belief reward |
 | wire format | `POST /v1/systemone` is TypeSafe's format; their SDKs work unchanged with `TYPESAFE_BASE_URL` pointing at `decider.serve` |
 | speed | CUDA-graph engine, FP8, and a **schema cache**: a fixed question set is computed once, requests run only the state |
 
@@ -85,14 +127,16 @@ decider/data/            task registry (~95 public datasets), augment.py (all in
 decider/train.py         cross-entropy fine-tune, token-bucketed batches, random layout per example, abstain augmentation
 decider/evaluate.py      accuracy / NLL / Brier / ECE / AURC / selective accuracy per task;  report.py  comparisons, temperature fit
 decider/probes/          hand-written batteries, question independence, isolated levels
-decider/bench/           engine and schema-cache benchmarks, HTTP load test
+decider/bench/           engine and schema-cache benchmarks, HTTP load test, Bespoke's public suite
 decider/games/           ten text games + Super Mario Bros behind the same interface, imitation and PPO
 decider/vision/          the vision-language variant (decisions from pixels)
 teacher_data/            the teacher-written data the mixture needs (label descriptions, custom questions, routing messages, situations)
 scripts/                 train.sh, evaluate.sh, serve.sh, stage_release.py, upload_hf.py
 examples/                routing with confidence gates, composite scoring, hierarchical beam over Choice probabilities
 tests/                   unit tests for the request/answer layer and the prompt layouts (no GPU; `python -m pytest tests`)
-docs/HISTORY.md          how the released weights were actually produced (v1 to v9) and what was measured at each stage
+docs/HISTORY.md          how the released weights were produced (v1 to v10) and what was measured at each stage
+docs/RL.md               the calibration-aware RL stage that produced v10: rewards, retention, gates, what it changed
+media/                   recordings and figures
 ```
 
 ## Train
@@ -103,13 +147,16 @@ scripts/train.sh full                       # datasets -> data/tasks.pkl -> data
 scripts/train.sh delta runs/some/model      # or: continue an existing decider checkpoint on the new formats + a replay sample
 ```
 
-`decider/data/mixture.py` lists every component of the mixture with its size. The released weights were produced in stages
-(`delta` runs on top of each other, see `docs/HISTORY.md`); `full` is the same data as a single run, and it reproduces them:
-one epoch (1.47M examples, 455M tokens, 5.3 h on a GH200 plus 45 min of evaluation) gives a model that matches v9 on the 94-task
-set (in-task 0.809 vs 0.812, held-out 0.739 vs 0.741 on the shared tasks) and on every probe family below within noise, with a
-fitted temperature of 1.03 instead of 1.36 (better calibrated before scaling: in-task ECE 0.030 vs 0.056). Held-out terse-bucket
-routing came out higher (generic / specific / catch-all 0.91 / 0.94 / 0.92) and held-out Freeway play returned (9 against the
-teacher's 5); the 16-page browser probe came out lower (0.75 / 0.69). The `Results` numbers are still the staged v8/v9 weights.
+`decider/data/mixture.py` lists every component of the supervised mixture with its size. The released weights up to v9 were
+produced in stages (`delta` runs on top of each other, see `docs/HISTORY.md`); `full` is the same data as a single run, and it
+reproduces them: one epoch (1.47M examples, 455M tokens, 5.3 h on a GH200 plus 45 min of evaluation) gives a model that matches
+v9 on the 94-task set (in-task 0.809 vs 0.812, held-out 0.739 vs 0.741 on the shared tasks) and on every probe family below within
+noise, with a fitted temperature of 1.03 instead of 1.36 (better calibrated before scaling: in-task ECE 0.030 vs 0.056). Held-out
+terse-bucket routing came out higher (generic / specific / catch-all 0.91 / 0.94 / 0.92) and held-out Freeway play returned (9
+against the teacher's 5); the 16-page browser probe came out lower (0.75 / 0.69).
+
+The RL stage that turns v8 into v10 (`docs/RL.md`) needs a live Chrome with MiniWoB++, the exact game environments and the
+training loop of a separate research repository; it is not in this package yet.
 
 ## Serve
 
@@ -124,10 +171,11 @@ TYPESAFE_BASE_URL=http://localhost:8000 TYPESAFE_API_KEY=local python your_types
 A schema seen twice gets a cached prefix and its own graphs; `DECIDER_SCHEMAS=schemas.json` preloads and compiles known schemas
 before traffic. In process: `s = d.schema(questions, compile=True); s(state); s.batch(states)`.
 
-## Results
+## Results of the supervised stages (v5 to v9)
 
-All numbers are for the v8 weights (`runs/r13_v8`; v9 = v8 plus the terse-bucket and command data, same numbers on the 94 tasks), measured on one GH200. "Held-out" means no example of that dataset was trained on.
-`docs/HISTORY.md` has the per-stage measurements (v1 to v9) and the v5/v6 baselines quoted here.
+The numbers in this section were measured on the v8 weights on one GH200 unless a version is named (v9 = v8 plus the terse-bucket
+and command data; same numbers on the 94 tasks). "Held-out" means no example of that dataset was trained on. `docs/HISTORY.md`
+has the per-stage measurements and the v5/v6 baselines quoted here.
 
 **94 public tasks, original protocol** (large label sets sub-sampled to 10 options; one temperature fitted on in-task data)
 
@@ -136,14 +184,21 @@ All numbers are for the v8 weights (`runs/r13_v8`; v9 = v8 plus the terse-bucket
 | Qwen3.5-2B-Base, zero-shot | 0.620 / 0.121 | 0.642 / 0.853 / 0.105 |
 | decider v8, state-first (default), T=1.30 | 0.811 / 0.037 | 0.741 / 0.655 / 0.088 |
 | decider v9, state-first (default), T=1.36 | 0.812 / 0.041 | 0.741 / 0.655 / 0.087 |
+| decider v8, rebuilt set (67 / 28 tasks, see note), T=1.30 | 0.806 / 0.038 | 0.757 / 0.622 / 0.083 |
+| decider v10, rebuilt set (67 / 28 tasks, see note), T=1.30 | 0.805 / 0.037 | 0.755 / 0.622 / 0.084 |
 | decider v8, schema-first (the cacheable layout), T=1.18 | 0.790 / 0.038 | 0.707 / 0.757 / 0.104 |
-| **`scripts/train.sh full`**, one run from the base model, T=1.03 | 0.809 / 0.030 | 0.739 / 0.620 / 0.079 |
+| `scripts/train.sh full`, one run from the base model, T=1.03 | 0.809 / 0.030 | 0.739 / 0.620 / 0.079 |
 
-Schema-first is a speed-for-accuracy trade, and the cost depends on the workload: on the 69 tasks with a fixed label set
-(classification, routing, scales: what a cached schema is for) it loses 1.5 points on average (median 0.7, calibration equal); on the 24
-tasks whose options change per example (multiple-choice QA, tool choice) it loses 5, because the options are read before the
-question they belong to; on full label sets of 50-219 options and on states of several thousand tokens it loses 5-24 (table below).
-State-first is therefore the default and the schema cache is opt-in (`Decider.schema`, `DECIDER_SCHEMA_CACHE=1`).
+The two "rebuilt set" rows were measured on a different machine (B300) after the data pipeline was rebuilt: two datasets no longer
+download (TREC-fine, the game states) and the current mixture adds held-out probes, so that set has 67 in-task and 28 held-out
+tasks and its numbers are not comparable to the rows above it, only to each other. v10 matches v8 on it; the largest per-task
+moves are CommitmentBank −5 points (250 rows) and PAWS +2.
+
+Schema-first trades accuracy for speed, and the cost depends on the workload: on the 69 tasks with a fixed label set
+(classification, routing, scales, which is what a cached schema is for) it loses 1.5 points on average (median 0.7, calibration
+equal); on the 24 tasks whose options change per example (multiple-choice QA, tool choice) it loses 5, because the options are read
+before the question they belong to; on full label sets of 50-219 options and on states of several thousand tokens it loses 5-24
+(table below). State-first is therefore the default and the schema cache is opt-in (`Decider.schema`, `DECIDER_SCHEMA_CACHE=1`).
 
 **Input shapes** (accuracy; state-first unless noted)
 
@@ -168,10 +223,11 @@ State-first is therefore the default and the schema cache is opt-in (`Decider.sc
 
 The teacher labels come from Qwen3.5-27B; the hand-written battery (60 choice cases, 49 yes/no) is small. Both are in the repo.
 
-**Terse buckets and applications (v9).** v8 needed the generic option to look like a bucket (`general_support`); v9 adds teacher-written
-messages over plain option lists (`support`, `help`, `account`, no descriptions) and labelled shell commands. Held-out terse-bucket
-messages, generic / specific / catch-all: v8 0.59 / 0.96 / 0.93, v9 0.86 / 0.95 / 0.88; hand battery 0.95 / 0.95 / 0.90. The 94-task set
-is unchanged (0.812 / 0.741). Three hand-written application checks (`decider/probes/applications.py`), zero-shot:
+**Terse buckets and applications (v9).** v8 needed the generic option to look like a bucket (`general_support`); v9 adds
+teacher-written messages over plain option lists (`support`, `help`, `account`, no descriptions) and labelled shell commands.
+Held-out terse-bucket messages, generic / specific / catch-all: v8 0.59 / 0.96 / 0.93, v9 0.86 / 0.95 / 0.88; hand battery 0.95
+/ 0.95 / 0.90. The 94-task set is unchanged (0.812 / 0.741). Three hand-written application checks
+(`decider/probes/applications.py`), zero-shot:
 
 | | v8 | v9 |
 |---|---|---|
@@ -192,30 +248,30 @@ field. See Limitations.
 **Bespoke's public suite, against Nimble-9B and Jev (`decider/bench/public_suite.py`).** Bespoke Labs released
 [Nimble](https://github.com/bespokelabsai/nimble) (2026-09-19, Qwen3.5-9B + LoRA on 2,676 contrastive examples) with a suite of 13
 human-labelled subsets, 3,880 records in Jev's wire format, on which they measured both Nimble and Jev 1.13.0. The subsets rebuild
-byte-for-byte from their manifests; decider v9 answers them through `system_one` as shipped (T=1.36, isolated levels). "trained" marks
+byte-for-byte from their manifests; decider answers them through `system_one` as shipped (isolated levels). "trained" marks
 tasks whose *train* split is in decider's mixture (their records come from test/validation splits).
 
-| subset (type) | decider-2b v9 | Nimble-9B | Jev 1.13.0 |
-|---|---|---|---|
-| vitaminc-dev (choice, contrastive fact verification) | 0.651 | 0.766 | 0.801 |
-| massive-en-US (choice, 18 scenarios; trained) | 0.826 | 0.869 | 0.874 |
-| massive-de-DE (same utterances in German) | 0.794 | 0.834 | 0.869 |
-| boolq (noul; trained) | 0.803 | 0.860 | 0.897 |
-| squad2 (noul, answerability) | 0.786 | 0.806 | 0.829 |
-| paws (noul, paraphrase; trained) | 0.716 | 0.828 | 0.892 |
-| multinli (choice; trained) | 0.843 | 0.853 | 0.829 |
-| civil_comments (noul; trained) | 0.843 | 0.703 | 0.810 |
-| aegis2 (noul, prompt safety) | 0.720 | 0.812 | 0.804 |
-| helpsteer2 (score, 5 levels; trained) | 0.438 | 0.390 | 0.341 |
-| summeval-relevance (score) | 0.329 | 0.492 | 0.350 |
-| summeval-consistency (score) | 0.646 | 0.757 | 0.812 |
-| pubmedqa (choice; trained) | 0.720 | 0.756 | 0.772 |
-| **macro / micro** | **0.701 / 0.711** | 0.748 / 0.759 | 0.760 / 0.773 |
+| subset (type) | decider-2b v9 | decider-2b v10 | Nimble-9B | Jev 1.13.0 |
+|---|---|---|---|---|
+| vitaminc-dev (choice, contrastive fact verification) | 0.651 | 0.639 | 0.766 | 0.801 |
+| massive-en-US (choice, 18 scenarios; trained) | 0.826 | 0.823 | 0.869 | 0.874 |
+| massive-de-DE (same utterances in German) | 0.794 | 0.797 | 0.834 | 0.869 |
+| boolq (noul; trained) | 0.803 | 0.803 | 0.860 | 0.897 |
+| squad2 (noul, answerability) | 0.786 | 0.776 | 0.806 | 0.829 |
+| paws (noul, paraphrase; trained) | 0.716 | 0.720 | 0.828 | 0.892 |
+| multinli (choice; trained) | 0.843 | 0.856 | 0.853 | 0.829 |
+| civil_comments (noul; trained) | 0.843 | 0.840 | 0.703 | 0.810 |
+| aegis2 (noul, prompt safety) | 0.720 | 0.728 | 0.812 | 0.804 |
+| helpsteer2 (score, 5 levels; trained) | 0.438 | 0.426 | 0.390 | 0.341 |
+| summeval-relevance (score) | 0.329 | 0.354 | 0.492 | 0.350 |
+| summeval-consistency (score) | 0.646 | 0.660 | 0.757 | 0.812 |
+| pubmedqa (choice; trained) | 0.720 | 0.724 | 0.756 | 0.772 |
+| **macro / micro** | **0.701 / 0.711** | **0.704 / 0.711** | 0.748 / 0.759 | 0.760 / 0.773 |
 
-Nimble's and Jev's numbers are copied from their report. A 2B model sits 5 points under a 9B and 6 under Jev on the average; it is ahead on
-moderation (civil_comments) and on HelpSteer2, and behind most where a claim has to be checked against evidence that nearly matches it
-(VitaminC, PAWS, SummEval consistency) and on prompt-safety judgments (Aegis). Listwise instead of isolated levels moves the Score
-subsets both ways (relevance 0.43, consistency 0.49).
+Nimble's and Jev's numbers are copied from their report. A 2B model is 5 points under a 9B and 6 under Jev on the average; it is
+ahead on moderation (civil_comments) and on HelpSteer2, and behind most where a claim has to be checked against evidence that
+nearly matches it (VitaminC, PAWS, SummEval consistency) and on prompt-safety judgments (Aegis). Listwise instead of isolated
+levels moves the Score subsets both ways (relevance 0.43, consistency 0.49).
 
 **Isolated Score levels.** Each level is judged in its own row, without its number or its neighbours; the per-level P(fits) are
 normalised. Adding a level cannot change another level's fit. Against the usual listwise scoring (all levels in one list):
@@ -255,20 +311,22 @@ with the schema cache 352 req/s at 64 clients (p50 8 ms at one client); independ
   that need several steps should be split into several questions.
 * English only. Calibration is measured on public datasets and teacher-labelled probes, not on your traffic: check it on your own labels.
 * The schema cache costs accuracy (see Results); use it for fixed classification-style schemas with short states.
-* Generic buckets with plain names (`support`, `help`, `account`) next to a catch-all: v9 picks the bucket when it should (held-out
-  terse-bucket messages 0.59 to 0.86; the `check_balance / approve_transfer / support / other` case that v8 got wrong now goes to
-  `support` at 0.79-0.85) at a small cost on the catch-all side (0.93 to 0.88 on that probe; 0.62 to 0.58 on the abstention probe).
+* v10 continues the v8 weights, so the v9 results on terse buckets (generic 0.86) do not apply to it; v8's 0.59 does. A plain
+  `support` next to `other` sends an in-scope complaint to `other`. Name or describe the generic option as a bucket.
 * Rules written into the question ("fill if empty, otherwise skip; check only if required and unchecked") are not followed at
   this size: on the form-filling probe a one-sentence question scores 0.67 and a paragraph of rules 0.24. State the decision as
-  a plain question with described options; a task with a fixed convention wants examples of it in the mixture, not a rulebook.
-* Picking one record out of a long JSON array by position is the weak input shape (0.51 with 64 records against 0.70 with one);
-  address records by key, or let `render_state` write the index into the array (0.62).
+  a plain question with described options; a fixed convention has to be in the training data, not in the question.
+* Picking one record out of a long JSON array by position is the least accurate input shape (0.51 with 64 records against 0.70
+  with one); address records by key, or let `render_state` write the index into the array (0.62).
 * TREC-fine with all 50 labels fell from 0.76 (v6) to 0.72 (v8); held-out Freeway play fell to 0 and did not come back with the game data replayed.
 * The custom-question data is labelled by a 27B teacher that shares some of the biases it is meant to fix (it agreed with only 72%
   of its own generic-option labels); see `decider/data/mixture.py` for how those labels are filtered.
+* The v10 browser results are on the 22 click-only MiniWoB++ tasks: small synthetic pages, elements listed as text. Typing,
+  scrolling and real websites were not tested. OpenJev accuracy is 0.8 points lower than v8.
 * The vision variant (`decider/vision`) is still on v5 text weights, currently retraining.
-* The released weights were produced by staged continuation runs (`docs/HISTORY.md`); `scripts/train.sh full` reproduces them in
-  one run (see Train) but is not byte-identical to them, and the hand-written probes with 16-60 cases move by a few cases either way.
+* The released weights were produced by staged continuation runs (`docs/HISTORY.md`); `scripts/train.sh full` reproduces the
+  supervised stages in one run (see Train) but is not byte-identical to them, and the hand-written probes with 16-60 cases move
+  by a few cases either way.
 
 ## Citation
 
