@@ -192,21 +192,25 @@ Per-task accuracy / ECE on the held-out datasets of the rebuilt set, v8 against 
 | the 6 tasks never used for reward | 72.9% | 91.7% | +18.8 (+6.2 to +31.2) |
 | same tasks, greedy play | 90.3% | 90.9% | +0.6 |
 | Mind2Web element and action choice, 1,770 rows | 81.1% | 82.7% | +1.5 (+0.7 to +2.4) |
-| bag-draw games, win rate | | | +6.2 (+0.8 to +12.1) |
+| bag-draw games, win rate, 64 boards x 4 | 35.2% | 41.4% | +6.2 (+0.8 to +11.7) |
+| slippery-grid games, win rate, 64 boards x 4 | 14.1% | 18.8% | +4.7 (−2.0 to +11.3) |
 | stated belief, nats above the exact law (lower is better) | 0.473 | 0.219 | |
 | click-outcome prediction, log score (higher is better) | −0.349 | −0.034 | |
 | TypeSafe workflow decisions, 102 rows, accuracy / NLL | 78.4% / 0.594 | 80.4% / 0.585 | +2.0 (−2.0 to +5.9) |
 | 847 in-task validation rows, accuracy / NLL | 83.6% / 0.443 | 83.2% / 0.444 | −0.4 (−1.3 to +0.6) |
 | Bespoke's public suite, 13 subsets, macro accuracy | 0.706 | 0.704 | |
+| JevBench public items, easy / standard / hard accuracy | 1.000 / 0.861 / 0.459 | 1.000 / 0.847 / 0.459 | |
 | OpenJev, 5,252 rows, accuracy / NLL | 64.1% / 0.906 | 63.3% / 0.916 | −0.8 (−1.3 to −0.3) |
 
 The browser gain is in the served distribution rather than in the argmax: sampled play improves by ten points, greedy play by
-under one. Tic-tac-toe, grid and minesweeper play did not change; a 2B model without search loses most of those games either
+under one. Tic-tac-toe and minesweeper play did not change; a 2B model without search loses most of those games either
 way. The one measured regression is OpenJev, under one point.
 
 **Bespoke's public suite** (13 human-labelled subsets, 3,880 records in Jev's wire format, answered through `system_one` as
 shipped). decider-2b v10 macro 0.704 / micro 0.711; v9 0.701 / 0.711; Nimble-9B 0.748 / 0.759; Jev 1.13.0 0.760 / 0.773
-(the last two copied from Bespoke's report). Per-subset numbers are in the GitHub README.
+(the last two copied from Bespoke's report). Per-subset numbers, the JevBench public-item comparison (decider-2b v10 is at 1.000 / 0.847 / 0.459 on the easy / standard /
+hard public items, against Jev 1.13.0 at 1.000 / 0.986 / 0.730) and recordings of both versions on the same browser pages and
+game boards are in the GitHub README.
 
 ## Speed
 
