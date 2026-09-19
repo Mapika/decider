@@ -14,6 +14,8 @@
               and routing_terse.jsonl: the bucket carries a plain name such as `support`, no descriptions)
   commands    shell commands labelled safe / caution / destructive and "touches things outside the project"  (teacher_data/commands.jsonl)
   isolated    one yes/no row per Score level (and per option of some Choice questions)
+  contrastive teacher-written pairs: two states that differ in one fact, the answer flips (teacher_data/contrastive_pairs.jsonl,
+              decider.data.teacher_contrastive; held-out domains form the contrastive_* probes)
   rules       rule-conditioned decisions over JSON records, every example with a state twin and a rule twin whose label flips
               (decider.data.rules: programmatic, exact labels; three domains and two rule families held out for the probes)
 
@@ -29,9 +31,10 @@ from decider import systemone as S1
 from decider.data.augment import Builder, is_scale, narrow, indexed, isolated
 from decider.data.teacher_questions import to_example, DOMAINS
 from decider.data import rules as R
+from decider.data.teacher_contrastive import to_examples as contrastive_examples
 
 MIX = dict(wide_per_task=8000, padded=25000, described=40000, json=32000, json_indexed=20000, single=30000, isolated_scale=26000, isolated_choice=9000,
-           isolated_routing=1200, rules=90000, replay=200000)
+           isolated_routing=1200, rules=90000, contrastive_repeat=3, replay=200000)
 HELD_DOMAINS = set(DOMAINS[-6:])
 SCALE_TASKS = ["helpsteer2", "helpsteer3_pref", "hate_speech_scales", "liar2", "prosocial_safety", "stsb"]
 TEACHER = "teacher_data"
@@ -39,6 +42,12 @@ TEACHER = "teacher_data"
 
 def npad(rng):          # distractors to add: log-uniform, plus a heavy tail of very long lists
     return rng.randint(100, 250) if rng.random() < 0.25 else int(2 ** rng.uniform(0, 7.9))
+
+
+def load_contrastive():
+    import os
+    p = f"{TEACHER}/contrastive_pairs.jsonl"
+    return [json.loads(l) for l in open(p)] if os.path.exists(p) else []
 
 
 def load_teacher():
@@ -187,6 +196,9 @@ def probes(train, evals, desc, recs, routes):
         if r["domain"] in HELD_DOMAINS:
             ex = to_example(r, D, S1, "routing"); k = f"routing_{'terse_' if r['recipe'] == 'routing_terse' else ''}{r['group']}"; out.setdefault(k, []).append(D.Example(ex.context, ex.qs, k))
     out.update(R.probe_sets())
+    for r in load_contrastive():
+        if r["domain"] in HELD_DOMAINS:
+            for e in contrastive_examples(r, D, S1): out.setdefault(f"contrastive_{r['qtype']}", []).append(e)
     for k, v in out.items():
         for e in v: e.task = k
     return out
@@ -202,6 +214,7 @@ def main():
     B = Builder(train, evals, desc, seed=a.seed); parts = formats(train, evals, B, rng)
     parts.update(teacher_sets(recs, routes, rng, commands)); parts["isolated"] += isolated_sets(train, rng)
     parts["rules"] = R.build(MIX["rules"], seed=a.seed + 11)
+    parts["contrastive"] = [e for r in load_contrastive() if r["domain"] not in HELD_DOMAINS for e in contrastive_examples(r, D, S1)] * MIX["contrastive_repeat"]
     general = [narrow(e, rng) for e in train]
     if a.mode == "delta": rng.shuffle(general); general = general[:MIX["replay"]]
     parts["general"] = general; out = [e for v in parts.values() for e in v]; rng.shuffle(out)
