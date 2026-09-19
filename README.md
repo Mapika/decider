@@ -266,7 +266,7 @@ with the schema cache 352 req/s at 64 clients (p50 8 ms at one client); independ
 * TREC-fine with all 50 labels fell from 0.76 (v6) to 0.72 (v8); held-out Freeway play fell to 0 and did not come back with the game data replayed.
 * The custom-question data is labelled by a 27B teacher that shares some of the biases it is meant to fix (it agreed with only 72%
   of its own generic-option labels); see `decider/data/mixture.py` for how those labels are filtered.
-* The vision variant (`decider/vision`) is still on v5 text weights.
+* The vision variant (`decider/vision`) is still on v5 text weights, currently retraining.
 * The released weights were produced by staged continuation runs (`docs/HISTORY.md`); `scripts/train.sh full` reproduces them in
   one run (see Train) but is not byte-identical to them, and the hand-written probes with 16-60 cases move by a few cases either way.
 
