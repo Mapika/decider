@@ -40,7 +40,8 @@ class VisionDecisionModel(nn.Module):
             for i in range(2, len(row)):
                 if row[i] == self.slot_tok and row[i - 1] == self.colon and self.answer_tok in row[max(0, i - 5):i]:
                     found.append(i)
-            assert len(found) == nq[bi], (len(found), nq[bi], self.tok.decode(row[-40:]))
+            assert len(found) >= nq[bi], (len(found), nq[bi], self.tok.decode(row[-40:]))
+            found = found[-nq[bi]:]                 # a state may quote "Answer 1: (" itself (agent traces); the real slots come last
             slot_idx.extend(found); slot_batch.extend([bi] * len(found))
         inp["slot_idx"] = torch.tensor(slot_idx); inp["slot_batch"] = torch.tensor(slot_batch)
         inp["golds"] = torch.tensor(golds); inp["nopts"] = torch.tensor(nopts)
