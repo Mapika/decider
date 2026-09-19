@@ -7,7 +7,13 @@ candidate list rather than memorise a fixed head.
 """
 import random, re
 from dataclasses import dataclass, field
-from datasets import load_dataset
+
+
+def load_dataset(*args, **kw):
+    """Imported on first use: the generators and tests in this package must not need the `datasets` library."""
+    from datasets import load_dataset as _ld
+    return _ld(*args, **kw)
+
 
 MAX_OPTIONS = 10
 SEED = 0
