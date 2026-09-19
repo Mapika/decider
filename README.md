@@ -183,6 +183,34 @@ one-sentence question and `skip (leave this element alone)`, and 0.24 when every
 rarely confused (wrong target on 229 of 6,018 fills); the misses are the action conventions, above all re-filling an already filled
 field. See Limitations.
 
+**Bespoke's public suite, against Nimble-9B and Jev (`decider/bench/public_suite.py`).** Bespoke Labs released
+[Nimble](https://github.com/bespokelabsai/nimble) (2026-09-19, Qwen3.5-9B + LoRA on 2,676 contrastive examples) with a suite of 13
+human-labelled subsets, 3,880 records in Jev's wire format, on which they measured both Nimble and Jev 1.13.0. The subsets rebuild
+byte-for-byte from their manifests; decider v9 answers them through `system_one` as shipped (T=1.36, isolated levels). "trained" marks
+tasks whose *train* split is in decider's mixture (their records come from test/validation splits).
+
+| subset (type) | decider-2b v9 | Nimble-9B | Jev 1.13.0 |
+|---|---|---|---|
+| vitaminc-dev (choice, contrastive fact verification) | 0.651 | 0.766 | 0.801 |
+| massive-en-US (choice, 18 scenarios; trained) | 0.826 | 0.869 | 0.874 |
+| massive-de-DE (same utterances in German) | 0.794 | 0.834 | 0.869 |
+| boolq (noul; trained) | 0.803 | 0.860 | 0.897 |
+| squad2 (noul, answerability) | 0.786 | 0.806 | 0.829 |
+| paws (noul, paraphrase; trained) | 0.716 | 0.828 | 0.892 |
+| multinli (choice; trained) | 0.843 | 0.853 | 0.829 |
+| civil_comments (noul; trained) | 0.843 | 0.703 | 0.810 |
+| aegis2 (noul, prompt safety) | 0.720 | 0.812 | 0.804 |
+| helpsteer2 (score, 5 levels; trained) | 0.438 | 0.390 | 0.341 |
+| summeval-relevance (score) | 0.329 | 0.492 | 0.350 |
+| summeval-consistency (score) | 0.646 | 0.757 | 0.812 |
+| pubmedqa (choice; trained) | 0.720 | 0.756 | 0.772 |
+| **macro / micro** | **0.701 / 0.711** | 0.748 / 0.759 | 0.760 / 0.773 |
+
+Nimble's and Jev's numbers are copied from their report. A 2B model sits 5 points under a 9B and 6 under Jev on the average; it is ahead on
+moderation (civil_comments) and on HelpSteer2, and behind most where a claim has to be checked against evidence that nearly matches it
+(VitaminC, PAWS, SummEval consistency) and on prompt-safety judgments (Aegis). Listwise instead of isolated levels moves the Score
+subsets both ways (relevance 0.43, consistency 0.49).
+
 **Isolated Score levels.** Each level is judged in its own row, without its number or its neighbours; the per-level P(fits) are
 normalised. Adding a level cannot change another level's fit. Against the usual listwise scoring (all levels in one list):
 
