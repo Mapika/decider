@@ -9,7 +9,13 @@
 A language model that does not generate text. It reads a **state** and a set of **typed questions** and returns, from a
 single forward pass, a probability distribution for every question: no decoding, no parsing, no output outside the
 options you defined. It is an open reproduction of the "System One" model class (TypeSafe AI's *Jev*), built on
-`Qwen/Qwen3.5-2B-Base` and trained on one GH200. Weights: https://huggingface.co/Mapika/decider-2b
+`Qwen/Qwen3.5-2B-Base` and trained on one GH200.
+
+| model | | |
+|---|---|---|
+| [decider-2b](https://huggingface.co/Mapika/decider-2b) | the main model: text and JSON states, up to 255 options, 32k tokens | in-task 0.81, held-out 0.74 on 93 public tasks |
+| [decider-0.8b](https://huggingface.co/Mapika/decider-0.8b) | same recipe from Qwen3.5-0.8B-Base, 1.5 GB | 0.78 / 0.71, same calibration; loses on knowledge tasks, not on the decision format |
+| [decider-2b-vision](https://huggingface.co/Mapika/decider-2b-vision) | decisions from an image plus the same prompt | [try it in the browser](https://huggingface.co/spaces/hugging-apps/decider-2b-vision-demo) (Space built by the Hugging Face team) |
 
 ```bash
 pip install git+https://github.com/Mapika/decider          # or: git clone ... && pip install -e ".[serve]"
