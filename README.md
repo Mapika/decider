@@ -4,11 +4,10 @@
 [![weights](https://img.shields.io/badge/%F0%9F%A4%97%20weights-Mapika%2Fdecider--2b-yellow)](https://huggingface.co/Mapika/decider-2b)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-![v8 (left) and v10 (right) solving live MiniWoB++ click tasks in Chrome; each frame shows the chosen element and its served probability](media/v10_browser_montage.gif)
+![the model playing ten games from text state descriptions, plus Super Mario Bros with the RL checkpoint](media/montage.gif)
 
-*decider-2b v8 (left) and v10 (right) on eight live browser tasks, same pages and seeds. Each click is one typed decision: the
-clickable elements on the page are the options, the model returns a probability for each, and the task's own checker grades the
-result. Six of the eight tasks were never used for training. Per-task recordings: `media/v10_browser_*.gif`.*
+*Ten text games and Super Mario Bros, each move one typed decision over the legal actions; see `decider/games/` and
+`docs/HISTORY.md`.*
 
 A language model that does not generate text. It reads a **state** and a set of **typed questions** and returns, from one
 forward pass, a probability distribution for every question. There is no decoding, no parsing, and no output outside the options
@@ -65,6 +64,12 @@ matches the exact probability law of the game. No gold labels enter. A hard KL l
 keeps the model's answers on its original tasks in place. The recipe, gates and every measurement are in [docs/RL.md](docs/RL.md).
 
 ### Browser
+
+![v8 (left) and v10 (right) solving live MiniWoB++ click tasks in Chrome; each frame shows the chosen element and its served probability](media/v10_browser_montage.gif)
+
+*v8 (left) and v10 (right) on eight live browser tasks, same pages and seeds. Each click is one typed decision: the clickable
+elements on the page are the options, the model returns a probability for each, and the task's own checker grades the result.
+Six of the eight tasks were never used for training. Per-task recordings: `media/v10_browser_*.gif`.*
 
 The browser gain is in the served distribution: greedy play is 90.9% against 90.3%, sampled play is where the ten points are, and
 the six tasks that were never rewarded gain the most.
