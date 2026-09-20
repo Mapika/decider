@@ -19,15 +19,31 @@ gated delta-net linear attention). The supervised recipe of [decider-2b](https:/
 cross-entropy on the slot readout over the public decision mixture) was applied to it with the routed experts frozen and the
 Muon optimizer on the block matrices. **This repository holds v1**, the bf16 weights (65 GB). An NVFP4 checkpoint of the
 same weights for vLLM and TensorRT-LLM is at
-[Mapika/decider-35b-a3b-nvfp4](https://huggingface.co/Mapika/decider-35b-a3b-nvfp4). Code, data registry, training
-scripts and the recipe are at https://github.com/Mapika/decider; `decider/` in this repository is the inference subset of that
-package.
+[Mapika/decider-35b-a3b-nvfp4](https://huggingface.co/Mapika/decider-35b-a3b-nvfp4); the smaller models are listed under
+The decider family. `decider/` in this repository is the inference subset of the GitHub package.
 
 Against decider-2b v10 on the same rows: accuracy is higher on 93 of the 95 regression tasks (in-task 0.855 against 0.805,
 held-out 0.810 against 0.755), +6.7 points on the 847 validation rows, +5.0 on OpenJev, +6.9 on Mind2Web, +5.9 on the
 TypeSafe workflow rows, JevBench hard tier 0.676 against 0.459, Bespoke's public suite 0.774 against 0.704 macro. Negative
 log-likelihood drops by 0.12 to 0.24 nats on every fixture. The model was not RL-trained: on live browser tasks its greedy
 play beats v10 (97.2% against 90.9%) and its sampled play is behind (86.4% against 93.2%). Details under Evaluation.
+
+**Contents:** [The decider family](#the-decider-family) · [Usage](#usage) · [How it works](#how-it-works) · [Training](#training) · [Evaluation](#evaluation) · [Speed](#speed) · [Limitations](#limitations) · [Changelog](#changelog) · [Reproduction](#reproduction)
+
+## The decider family
+
+All five repositories share one interface (`decider.infer.Decider`, `POST /v1/systemone` in TypeSafe's format) and one
+readout: the letter logits at an answer slot, softmaxed over the options. Pick by size and input.
+
+| model | base | weights | use it for | numbers |
+|---|---|---|---|---|
+| [decider-2b](https://huggingface.co/Mapika/decider-2b) v10 | Qwen3.5-2B-Base | 3.5 GB bf16 | the default: routing, classification, judgments, browser agents; 4 ms per request with CUDA graphs on one GPU | regression set 0.805 in-task / 0.755 held-out; live browser 93%; Bespoke suite 0.704 |
+| [decider-35b-a3b](https://huggingface.co/Mapika/decider-35b-a3b) v1 | Qwen3.5-35B-A3B-Base (3B active) | 65 GB bf16 | when accuracy is worth 3 to 4 times the cost per decision: knowledge and multi-step questions, long policies | 0.855 / 0.810, above the 2B on 93 of 95 tasks; JevBench hard 0.676; Bespoke 0.774; no RL stage |
+| [decider-35b-a3b-nvfp4](https://huggingface.co/Mapika/decider-35b-a3b-nvfp4) | the 35B in NVFP4 | 19.6 GB | the 35B on Blackwell through vLLM or TensorRT-LLM | 1.0 to 1.5 points under bf16 on the measured fixtures |
+| [decider-0.8b](https://huggingface.co/Mapika/decider-0.8b) | Qwen3.5-0.8B-Base | 1.4 GB bf16 | the smallest: routing, yes/no and short-state lookups within 1 to 4 points of the 2B, 1.5x faster | 0.776 / 0.707 on the single-run protocol (2B: 0.809 / 0.739) |
+| [decider-2b-vision](https://huggingface.co/Mapika/decider-2b-vision) | Qwen3.5-2B vision-language, v5 text weights | 4.1 GB bf16 | decisions from an image plus a question; game frames | Visual7W 0.89; Breakout 41 from pixels |
+
+Code, data registry, training scripts, the changelog and the per-version history: https://github.com/Mapika/decider.
 
 ## Usage
 
@@ -115,6 +131,9 @@ Half the epoch reaches 99% of the final in-task accuracy; held-out accuracy is f
 93 of the 95 tasks and 0.6 points below on two (counterfactual detection, offensive-tweet detection). The largest gains are
 on knowledge and reasoning tasks: MedQA +31 points, MedMCQA +24, TruthfulQA +22, Winogrande +20, MMLU +19, StrategyQA +19.
 
+<details>
+<summary><b>Per-task accuracy / ECE on the 28 held-out datasets, decider-2b v10 against this model</b></summary>
+
 Per-task accuracy / ECE on the held-out datasets, v10 against this model:
 
 | task | decider-2b v10 | decider-35b-a3b |
@@ -147,6 +166,8 @@ Per-task accuracy / ECE on the held-out datasets, v10 against this model:
 | truthfulqa | 0.537 / 0.090 | 0.754 / 0.068 |
 | tweet_irony | 0.795 / 0.052 | 0.861 / 0.129 |
 | xstory_cloze | 0.962 / 0.017 | 0.995 / 0.016 |
+
+</details>
 
 **On the same rows as decider-2b.** Every row below is scored by both models on identical inputs and seeds. Intervals are
 95% paired bootstrap intervals.
@@ -233,6 +254,15 @@ workloads where the accuracy gain is worth 3 to 4 times the cost per decision, a
 * The routed experts are the base model's: the fine-tuning changed 2.45B of the 34.7B parameters.
 * Everything else in the decider-2b card's limitations (packed questions see each other, long JSON arrays by position, full
   label sets against sampled options, abstention wording) applies; those shapes were not re-measured at this size.
+
+## Changelog
+
+| version | what changed |
+|---|---|
+| **v1** (2026-09-20, these weights) | first release: one public-mixture epoch on Qwen3.5-35B-A3B-Base with the routed experts frozen and Muon on the block matrices; NVFP4 build in the sibling repository |
+
+The GitHub repository's [docs/CHANGELOG.md](https://github.com/Mapika/decider/blob/main/docs/CHANGELOG.md) lists every
+decider release.
 
 ## Reproduction
 

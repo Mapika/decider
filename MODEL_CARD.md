@@ -19,13 +19,24 @@ trajectories, web element choice, game states and teacher-written custom questio
 Score levels. **This repository holds v10**: the v8 weights continued for 384 steps of calibration-aware reinforcement learning
 whose only rewards are outcomes (live browser task checkers and the exact probability laws of games), with a hard KL limit to
 the v8 weights on replayed training rows. Code, data registry, training scripts and the recipe are at
-https://github.com/Mapika/decider; `decider/` in this repository is the inference subset of that package. A larger model with the same
-interface, the supervised recipe on Qwen3.5-35B-A3B-Base (3B active parameters, 65 GB), is at
-[Mapika/decider-35b-a3b](https://huggingface.co/Mapika/decider-35b-a3b): above v10 on 93 of 95 regression tasks, without the RL stage.
+https://github.com/Mapika/decider; `decider/` in this repository is the inference subset of that package. The other sizes and the vision variant are listed under The decider family.
 
-What changed from v8, measured on the same rows: live browser click tasks 83% to 93% sampled success (held-out tasks 73% to
-92%), stated beliefs about action outcomes 0.47 to 0.22 nats above the exact law, Mind2Web +1.5 points, general accuracy and
-Bespoke's public suite unchanged, OpenJev −0.8 points. Details under Evaluation.
+**Contents:** [The decider family](#the-decider-family) · [Usage](#usage) · [How it works](#how-it-works) · [Field types](#field-types) · [Training](#training) · [Evaluation](#evaluation) · [Speed](#speed) · [Limitations](#limitations) · [Changelog](#changelog) · [Reproduction](#reproduction)
+
+## The decider family
+
+All five repositories share one interface (`decider.infer.Decider`, `POST /v1/systemone` in TypeSafe's format) and one
+readout: the letter logits at an answer slot, softmaxed over the options. Pick by size and input.
+
+| model | base | weights | use it for | numbers |
+|---|---|---|---|---|
+| [decider-2b](https://huggingface.co/Mapika/decider-2b) v10 | Qwen3.5-2B-Base | 3.5 GB bf16 | the default: routing, classification, judgments, browser agents; 4 ms per request with CUDA graphs on one GPU | regression set 0.805 in-task / 0.755 held-out; live browser 93%; Bespoke suite 0.704 |
+| [decider-35b-a3b](https://huggingface.co/Mapika/decider-35b-a3b) v1 | Qwen3.5-35B-A3B-Base (3B active) | 65 GB bf16 | when accuracy is worth 3 to 4 times the cost per decision: knowledge and multi-step questions, long policies | 0.855 / 0.810, above the 2B on 93 of 95 tasks; JevBench hard 0.676; Bespoke 0.774; no RL stage |
+| [decider-35b-a3b-nvfp4](https://huggingface.co/Mapika/decider-35b-a3b-nvfp4) | the 35B in NVFP4 | 19.6 GB | the 35B on Blackwell through vLLM or TensorRT-LLM | 1.0 to 1.5 points under bf16 on the measured fixtures |
+| [decider-0.8b](https://huggingface.co/Mapika/decider-0.8b) | Qwen3.5-0.8B-Base | 1.4 GB bf16 | the smallest: routing, yes/no and short-state lookups within 1 to 4 points of the 2B, 1.5x faster | 0.776 / 0.707 on the single-run protocol (2B: 0.809 / 0.739) |
+| [decider-2b-vision](https://huggingface.co/Mapika/decider-2b-vision) | Qwen3.5-2B vision-language, v5 text weights | 4.1 GB bf16 | decisions from an image plus a question; game frames | Visual7W 0.89; Breakout 41 from pixels |
+
+Code, data registry, training scripts, the changelog and the per-version history: https://github.com/Mapika/decider.
 
 ## Usage
 
@@ -152,6 +163,9 @@ The two "rebuilt set" rows were measured after the data pipeline was rebuilt on 
 (TREC-fine, the game states) and the current mixture adds held-out probes, so that set has 67 in-task and 28 held-out tasks. Its
 numbers are comparable to each other, not to the rows above. v10 matches v8 on it.
 
+<details>
+<summary><b>Per-task accuracy / ECE on the 28 held-out datasets, v8 against v10</b></summary>
+
 Per-task accuracy / ECE on the held-out datasets of the rebuilt set, v8 against v10:
 
 | task | v8 acc / ECE | v10 acc / ECE |
@@ -184,6 +198,8 @@ Per-task accuracy / ECE on the held-out datasets of the rebuilt set, v8 against 
 | truthfulqa | 0.529 / 0.102 | 0.537 / 0.090 |
 | tweet_irony | 0.801 / 0.048 | 0.795 / 0.052 |
 | xstory_cloze | 0.962 / 0.017 | 0.962 / 0.017 |
+
+</details>
 
 **v10 against v8 on the same rows.** Every row below is scored by both models on identical inputs and seeds. Intervals are
 95% bootstrap or paired intervals.
@@ -256,6 +272,21 @@ accuracy and calibration by less than the evaluation noise.
   exact fine-grained label is merely absent. Wordings far from the training data remain the main risk.
 * One in-task dataset, `tweet_hate` (SemEval-2019 HatEval), stays near chance on its test split, whose collection and label
   definition differ from the training split. The number is reported as measured.
+
+## Changelog
+
+| version | what changed |
+|---|---|
+| **v10** (2026-09-19, these weights) | v8 plus 384 steps of calibration-aware RL on live browser tasks and exact games. Measured on the same rows: live browser click tasks 83% to 93% sampled success (held-out tasks 73% to 92%), stated beliefs about action outcomes 0.47 to 0.22 nats above the exact law, Mind2Web +1.5 points, general accuracy and Bespoke's public suite unchanged, OpenJev −0.8 points. |
+| v9 | terse-bucket routing messages and labelled shell commands in the data; described in the GitHub README, but the Hub weights stayed v8, so v10 does not contain it |
+| v8 (Hub tag `v8`) | isolated Score levels, teacher-written custom questions with a generic option next to a catch-all, the cacheable schema-first layout |
+| v6 to v7 | the input shapes Jev accepts: described options, up to 255 options, JSON states with path references, long inputs |
+| v4 to v5 | next-action choice from agent trajectories and game states; the proper abstention fix |
+| v1 to v3 | the one-pass readout on the public decision mixture, one fitted temperature |
+
+The full entries, with the browser and game recordings and the same-rows comparison against v8, are in
+[docs/CHANGELOG.md](https://github.com/Mapika/decider/blob/main/docs/CHANGELOG.md) of the GitHub repository;
+[docs/HISTORY.md](https://github.com/Mapika/decider/blob/main/docs/HISTORY.md) has how each stage was trained and measured.
 
 ## Reproduction
 
