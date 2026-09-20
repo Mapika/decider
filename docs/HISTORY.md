@@ -296,6 +296,76 @@ because grid and bag play does not move at this size. v10 comes from the run wit
 arm and the win gate weighted toward the browser (0.5 browser, 0.25 minesweeper, 0.125 grid, 0.125 bags); all four arms of that
 run produced an eligible checkpoint and the one with the highest weighted sampled win was released.
 
+## decider-35b-a3b: the supervised recipe on a 35B mixture-of-experts base
+
+Released 2026-09-20 as [Mapika/decider-35b-a3b](https://huggingface.co/Mapika/decider-35b-a3b) (bf16, 65 GB) and
+[Mapika/decider-35b-a3b-nvfp4](https://huggingface.co/Mapika/decider-35b-a3b-nvfp4) (NVFP4 for vLLM and TensorRT-LLM).
+Scripts in `moe/`.
+
+**Base and what is trained.** Qwen3.5-35B-A3B-Base: 34.7B parameters, 40 layers, 256 routed experts with 8 active plus a
+shared expert per layer, 10 full-attention and 30 gated delta-net layers, 3B active parameters per token. The routed experts
+(32.2B parameters) are frozen; the remaining 2.45B (attention, delta-net, shared experts, routers, norms, embeddings, LM head)
+are trained. Freezing the experts keeps optimizer state and gradients at 101 GB per GPU, so one B300 holds a full micro-batch;
+training the experts as well would need 133 GB with checkpointing and moves 13 times more optimizer state per step.
+
+**Throughput probe.** With `experts_implementation="grouped_mm"`
+(one grouped matrix multiplication per layer for all experts, `torch._grouped_mm`) one B300 trains the 35B at 12.1k tokens/s
+with gradient checkpointing and 16.2k without; the eager per-expert loop is 13 times slower and the batched implementation
+allocates over 500 GB. FP8 linears through torchao were slower than bf16 without `torch.compile`. The dense 4B model trains at
+21.2k tokens/s on the same GPU, so the 35B costs about 1.75x a 4B per token.
+
+**Data.** The public full mixture of this repository (`scripts/train.sh full` settings: max_ctx 16384, none_prob 0.1, max_options
+255, schema_first_prob 0.5), tokenized once: 1,543,567 items, 1,976,644 questions, 463M tokens. Every rank reads the same
+item order, so at any step every run has seen identical examples.
+
+**Optimizer comparison.** Two arms on two GPUs each, the public recipe (cross-entropy on the slot readout, peak learning rate
+1e-5, 150 warm-up steps, cosine, 32,768 tokens per step, clip 1.0, no weight decay, FP32 masters): AdamW (betas 0.9 / 0.95)
+on every trainable parameter against Muon on the 250 block matrices (1.41B parameters: momentum 0.95, Nesterov, 5
+Newton-Schulz steps, update scaled by 0.2 sqrt(max(rows, cols)) so the same learning rate applies) with AdamW on embeddings,
+head, norms, routers, shared-expert gates, convolutions and 1-D parameters (1.04B). The AdamW arm was stopped at step 1,880 (11%
+of the epoch) on the training-loss evidence: Muon's cross-entropy was lower in 75 of 94 logged windows, 0.537 against 0.605 at
+step 1,880 and 0.557 against 0.614 averaged over steps 1,500 to 1,880. The preregistered decision rule (regression-set accuracy
+at the 50% and 100% marks) was therefore not applied and there is no AdamW row in the tables below. Muon was then run from
+the base on all four GPUs with the same tokens per step: 16,287 steps, 394 minutes, 22,000 to 25,000 tokens/s, 100 GB peak per
+GPU. Training cross-entropy 0.93 over the first 200 steps, 0.50 at 25%, 0.46 at 50%, 0.43 over the last 300 steps.
+
+**Regression set** (rebuilt set, 67 in-task / 28 held-out tasks, temperature fitted on in-task data):
+
+| checkpoint | T | in-task acc / NLL / ECE | held-out acc / NLL / ECE |
+|---|---|---|---|
+| base, zero-shot | 1.27 | 0.732 / 0.693 / 0.096 | 0.749 / 0.650 / 0.082 |
+| 25% of the epoch | 0.96 | 0.839 / 0.399 / 0.032 | 0.803 / 0.522 / 0.073 |
+| 50% | 1.08 | 0.850 / 0.370 / 0.028 | 0.813 / 0.488 / 0.064 |
+| 100% (released) | 1.08 | 0.855 / 0.357 / 0.026 | 0.810 / 0.497 / 0.069 |
+| decider-2b v10 | 1.30 | 0.805 / 0.474 / 0.037 | 0.755 / 0.622 / 0.084 |
+
+Half the epoch gives 99% of the final in-task accuracy and all of the held-out accuracy. The released checkpoint is above v10
+on 93 of 95 tasks (0.6 points below on counterfactual detection and offensive-tweet detection); the largest gains are MedQA +31
+points, MedMCQA +24, TruthfulQA +22, Winogrande +20, MMLU +19, StrategyQA +19. Fixtures, external suites, browser and game
+results against v10 are in the README (section "decider-35b-a3b") and in the model card.
+
+**What the size does not buy.** The model was not RL-trained. On live browser tasks its greedy play is above v10 (97.2%
+against 90.9%) but its sampled play is below (86.4% against 93.2%, held-out tasks 79.2% against 91.7%): the argmax is right
+more often, the served distribution is less sharp. Game play under sampling is level with v10 (24.1% against 23.7% wins) while
+greedy play is 11 points higher. Hard-tier JevBench items are answered with a top-label ECE of 0.15.
+
+**Serving.** The merged checkpoint loads through the unchanged `decider` package (`config.json` carries
+`experts_implementation: grouped_mm`; `transformers>=5.17`, `torch>=2.14`); `use_graphs=False`, because the CUDA-graph engine and
+the FP8 path were not tested with this architecture. One B300, eager: 47 ms per request, 522 decisions/s in batches of 64
+support tickets with three questions, 575 short single-question states/s.
+
+**NVFP4 build.** `moe/ptq_nvfp4.py` quantizes the merged checkpoint with NVIDIA ModelOpt 0.46.1 (`NVFP4_DEFAULT_CFG`: 4-bit
+floating-point weights and activations with FP8 block scales, block 16, on the attention projections, the delta-net `in_proj_qkv`,
+`in_proj_z` and `out_proj`, the shared expert and all 256 routed experts of every layer; embeddings, head, routers, shared-expert
+gates, delta-net convolutions and `in_proj_a` / `in_proj_b` stay in bf16; KV cache unquantized), calibrated on 512 training prompts
+of at most 2,048 tokens, and exports the Hugging Face layout with `hf_quant_config.json` (19.6 GB, 5 shards). Fake quantization in
+PyTorch on a 150-row subset of every regression task: in-task accuracy 0.861 to 0.857, NLL 0.353 to 0.360; held-out 0.818 to 0.809,
+NLL 0.492 to 0.502; per task −0.55 points on average, the largest drops on the abstention probe (−6.0), StrategyQA (−5.3) and Social
+IQa (−4.7) at 150 rows each. `moe/vllm_check.py` serves a checkpoint through vLLM 0.29 with the label tokens as the only allowed
+ids and `processed_logits` as the logprob mode, which reproduces the package readout: the bf16 checkpoint through vLLM agrees with the
+in-process predictions on 99.0% of the TypeSafe rows and 99.8% of the validation rows (mean total variation 0.010 / 0.005), at 36
+TypeSafe packets/s and 498 validation rows/s on one B300. The NVFP4 export through the same vLLM path: TypeSafe accuracy 0.843 (bf16 in vLLM 0.853), argmax agreement with the in-process bf16 predictions 96.1%, mean total variation 0.051, 51 packets/s; validation rows 0.882 (0.897), agreement 96.7%, total variation 0.030, 274 rows/s. The loss of 1.0 to 1.5 points is larger than the fake-quant estimate; the throughput numbers are from single batches of a few seconds.
+
 ## Vision: decisions from pixels
 
 Qwen3.5-2B is a vision-language model; `decider/vision.py` uses the full model with the same

@@ -19,7 +19,9 @@ trajectories, web element choice, game states and teacher-written custom questio
 Score levels. **This repository holds v10**: the v8 weights continued for 384 steps of calibration-aware reinforcement learning
 whose only rewards are outcomes (live browser task checkers and the exact probability laws of games), with a hard KL limit to
 the v8 weights on replayed training rows. Code, data registry, training scripts and the recipe are at
-https://github.com/Mapika/decider; `decider/` in this repository is the inference subset of that package.
+https://github.com/Mapika/decider; `decider/` in this repository is the inference subset of that package. A larger model with the same
+interface, the supervised recipe on Qwen3.5-35B-A3B-Base (3B active parameters, 65 GB), is at
+[Mapika/decider-35b-a3b](https://huggingface.co/Mapika/decider-35b-a3b): above v10 on 93 of 95 regression tasks, without the RL stage.
 
 What changed from v8, measured on the same rows: live browser click tasks 83% to 93% sampled success (held-out tasks 73% to
 92%), stated beliefs about action outcomes 0.47 to 0.22 nats above the exact law, Mind2Web +1.5 points, general accuracy and

@@ -11,10 +11,11 @@
 
 A language model that does not generate text. It reads a **state** and a set of **typed questions** and returns, from one
 forward pass, a probability distribution for every question. There is no decoding, no parsing, and no output outside the options
-you defined. It is an open reproduction of the "System One" model class (TypeSafe AI's *Jev*), built on `Qwen/Qwen3.5-2B-Base`.
+you defined. It is an open reproduction of the "System One" model class (TypeSafe AI's *Jev*), released as a 2B model built on
+`Qwen/Qwen3.5-2B-Base` and a 35B mixture-of-experts model built on `Qwen/Qwen3.5-35B-A3B-Base`.
 
-**Contents:** [Models](#models) · [Quick start](#quick-start) · [What v10 adds](#what-v10-adds) · [What it does](#what-it-does) ·
-[How it works](#how-it-works) · [Results](#results) · [Train](#train) · [Serve](#serve) · [Repository layout](#repository-layout) ·
+**Contents:** [Models](#models) · [Quick start](#quick-start) · [What it does](#what-it-does) · [How it works](#how-it-works) ·
+[Results](#results) · [Train](#train) · [Serve](#serve) · [Repository layout](#repository-layout) · [Changelog](#changelog) ·
 [Limitations](#limitations)
 
 ## Models
@@ -22,6 +23,7 @@ you defined. It is an open reproduction of the "System One" model class (TypeSaf
 | model | what it is | numbers |
 |---|---|---|
 | [decider-2b](https://huggingface.co/Mapika/decider-2b) **v10** | the main model: text and JSON states, up to 255 options, 32k tokens; v8 plus 384 steps of calibration-aware RL on live browser tasks and exact games | live browser 93% (v8: 83%); belief 0.22 nats above the exact laws (v8: 0.47); same accuracy as v8 on the regression set |
+| [decider-35b-a3b](https://huggingface.co/Mapika/decider-35b-a3b) **v1** | the supervised recipe on Qwen3.5-35B-A3B-Base (3B active parameters, routed experts frozen, Muon); bf16, 65 GB; an NVFP4 build for vLLM is at [decider-35b-a3b-nvfp4](https://huggingface.co/Mapika/decider-35b-a3b-nvfp4) | above decider-2b v10 on 93 of 95 regression tasks (in-task / held-out 0.855 / 0.810 against 0.805 / 0.755); JevBench hard 0.676; Bespoke macro 0.774; no RL stage |
 | [decider-0.8b](https://huggingface.co/Mapika/decider-0.8b) | the same supervised recipe from Qwen3.5-0.8B-Base, 1.5 GB | 94 tasks in-task / held-out 0.78 / 0.71, same calibration; loses on knowledge tasks, not on the decision format |
 | [decider-2b-vision](https://huggingface.co/Mapika/decider-2b-vision) | decisions from an image plus the same prompt | [try it in the browser](https://huggingface.co/spaces/hugging-apps/decider-2b-vision-demo) (Space built by the Hugging Face team) |
 
@@ -56,77 +58,9 @@ d.decide("My card was charged twice.", [{"question": "Which team?", "options": [
 probabilities); `python examples/routing_with_confidence.py` runs against the released weights. Serving over HTTP in TypeSafe's
 wire format is under [Serve](#serve).
 
-## What v10 adds
-
-v10 is the v8 weights continued for 384 steps of reinforcement learning whose only rewards are outcomes: whether a browser task's
-own checker reports success, whether a game is won, and how well the model's stated belief about the next outcome of an action
-matches the exact probability law of the game. No gold labels enter. A hard KL limit to the v8 weights on replayed training rows
-keeps the model's answers on its original tasks in place. The recipe, gates and every measurement are in [docs/RL.md](docs/RL.md).
-
-### Browser
-
-![v8 (left) and v10 (right) solving live MiniWoB++ click tasks in Chrome; each frame shows the chosen element and its served probability](media/v10_browser_montage.gif)
-
-*v8 (left) and v10 (right) on eight live browser tasks, same pages and seeds. Each click is one typed decision: the clickable
-elements on the page are the options, the model returns a probability for each, and the task's own checker grades the result.
-Six of the eight tasks were never used for training. Per-task recordings: `media/v10_browser_*.gif`.*
-
-The browser gain is in the served distribution: greedy play is 90.9% against 90.3%, sampled play is where the ten points are, and
-the six tasks that were never rewarded gain the most.
-
-![per-task browser success, v8 against v10](media/v10_browser_tasks.png)
-
-### Games
-
-![v8 (left) and v10 (right) on the same grid, tic-tac-toe, bag-draw and minesweeper boards, with the served action distribution written on every cell](media/v10_games_montage.gif)
-
-*Same boards, same dice for both versions. The numbers on the cells are the probabilities the model serves for each move; in
-minesweeper the shading is the exact mine risk of each hidden cell, computed from all placements consistent with the revealed
-numbers. Per-game recordings: `media/v10_game_*.gif`.*
-
-A 2B model without search loses most of these games before and after RL. What moves is where the probability mass sits: in the
-bag draws v10 puts 67% on the best bag where v8 spread 7% across many, and it wins 6 points more of them. On the grid, v10 puts 90%
-on the right move where v8 put 37%, which helps when the move is right and hurts when the dice slip. Win rates on the same 234
-boards, sampled play, with 95% intervals over boards:
-
-| game | v8 | v10 | difference |
-|---|---|---|---|
-| bag draws (64 boards x 4) | 35.2% | 41.4% | +6.2 (+0.8 to +11.7) |
-| 5x5 slippery grid (64 x 4) | 14.1% | 18.8% | +4.7 (−2.0 to +11.3) |
-| tic-tac-toe against minimax with 25% random moves (74 x 4) | 23.6% | 23.0% | −0.7 (−4.7 to +3.0) |
-| 4x4 minesweeper, 4 mines (32 x 4) | 2.3% | 0.0% | −2.3 (−4.7 to 0.0) |
-
-### Calibration
-
-![belief excess over the exact laws, and click-outcome prediction, v8 against v10](media/v10_calibration.png)
-
-Calibration is what the RL objective trains directly. For every action in a game with a known probability law, the model is
-asked what will happen next, and its answer is scored against the exact law with a log score. v10 is 0.22 nats above the law
-where v8 was 0.47. In the browser it predicts the outcome of its own click (success, failure, continue) at a log score of −0.03
-against −0.35.
-
-### Everything on the same rows
-
-![v10 minus v8 on the same rows, with 95% intervals](media/v10_vs_v8.png)
-
-| on the same rows, v10 against v8 | v8 | v10 | difference (95% interval) |
-|---|---|---|---|
-| live MiniWoB++ click tasks, 22 tasks x 8 seeds, sampled play | 83.0% | 93.2% | +10.2 (+5.1 to +15.9) |
-| the 6 tasks never used for reward | 72.9% | 91.7% | +18.8 (+6.2 to +31.2) |
-| bag-draw games, win rate | 35.2% | 41.4% | +6.2 (+0.8 to +11.7) |
-| Mind2Web element and action choice, 1,770 rows | 81.1% | 82.7% | +1.5 (+0.7 to +2.4) |
-| TypeSafe workflow decisions, 102 rows, accuracy / NLL | 78.4% / 0.594 | 80.4% / 0.585 | +2.0 (−2.0 to +5.9) |
-| 847 in-task validation rows, accuracy / NLL | 83.6% / 0.443 | 83.2% / 0.444 | −0.4 (−1.3 to +0.6) |
-| Bespoke's public suite, 13 subsets, macro | 0.706 | 0.704 | |
-| JevBench public items, easy / standard / hard accuracy | 1.000 / 0.861 / 0.459 | 1.000 / 0.847 / 0.459 | |
-| the regression set rebuilt here, 67 in-task / 28 held-out tasks, accuracy | 0.806 / 0.757 | 0.805 / 0.755 | within noise |
-| OpenJev, 5,252 rows | 64.1% | 63.3% | −0.8 (−1.3 to −0.3) |
-
-What v10 does not change: general accuracy on its training tasks, calibration on Bespoke's suite, tic-tac-toe and minesweeper
-play, and speed (same architecture, same readout, same temperature). The one measured regression is OpenJev, under one point.
-v10 continues the v8 weights that were on the Hub; the v9 terse-bucket data described under Results is not in it.
-
 ## What it does
+
+Both released models take the same requests and return the same answer shape.
 
 | | |
 |---|---|
@@ -158,6 +92,34 @@ cache forked to every question, which is the delta-net equivalent of a block att
 Unless a version is named, the numbers in this section were measured on the v8 weights on one GH200; v9 is v8 plus the
 terse-bucket and command data, with the same numbers on the 94 tasks. "Held-out" means no example of that dataset was trained on.
 `docs/HISTORY.md` has the per-stage measurements.
+
+### decider-35b-a3b against decider-2b v10
+
+The same supervised recipe on Qwen3.5-35B-A3B-Base (34.7B parameters, 3B active per token), one epoch of the public mixture
+(463M tokens) with the routed experts frozen and Muon on the block matrices, 394 minutes on four B300s. No RL stage. Every row
+below is scored by both models on identical inputs; intervals are 95% paired bootstrap intervals. `docs/HISTORY.md` has the
+training details and the optimizer comparison, `moe/` the scripts.
+
+| on the same rows | decider-2b v10 | decider-35b-a3b v1 | difference |
+|---|---|---|---|
+| regression set, 67 in-task tasks, accuracy / NLL / ECE | 0.805 / 0.474 / 0.037 | 0.855 / 0.357 / 0.026 | higher accuracy on 93 of 95 tasks |
+| regression set, 28 held-out tasks | 0.755 / 0.622 / 0.084 | 0.810 / 0.497 / 0.069 | |
+| 847 in-task validation rows, accuracy / NLL | 83.2% / 0.444 | 90.0% / 0.329 | +6.7 (+4.5 to +9.0) |
+| OpenJev, 5,252 rows | 63.3% / 0.916 | 68.3% / 0.752 | +5.0 (+3.8 to +6.2) |
+| Mind2Web, 1,770 rows | 82.7% / 0.543 | 89.6% / 0.316 | +6.9 (+5.1 to +8.7) |
+| TypeSafe workflow decisions, 102 rows | 80.4% / 0.585 | 86.3% / 0.342 | +5.9 (−2.0 to +13.7) |
+| Bespoke's public suite, macro / micro | 0.704 / 0.711 | 0.774 / 0.787 | Jev 1.13.0: 0.760 / 0.773 |
+| JevBench public items, easy / standard / hard | 1.000 / 0.847 / 0.459 | 1.000 / 0.972 / 0.676 | Jev 1.13.0: 1.000 / 0.986 / 0.730 |
+| live MiniWoB++ click tasks, greedy play | 90.9% | 97.2% | +6.2 (+1.7 to +10.8) |
+| live MiniWoB++ click tasks, sampled play | 93.2% | 86.4% | −6.8 (−12.5 to −1.7) |
+| zero-shot games, win rate, greedy / sampled | 26.5% / 23.7% | 37.2% / 24.1% | +10.7 (+5.6 to +15.8) / +0.4 |
+
+The largest gains are on knowledge and reasoning tasks (MedQA +31 points, MedMCQA +24, TruthfulQA +22, Winogrande +20, MMLU
++19). The browser rows show what v10's RL stage does and this model lacks: its argmax is right more often, but its served
+distribution still puts mass on wrong elements, so sampled play is behind v10 and 3 points ahead of v8. Serving cost is 3 to 4
+times that of decider-2b per decision (47 ms per request eager, about 520 decisions/s in batches of 64 on one B300).
+The NVFP4 build (19.6 GB, ModelOpt) served by vLLM loses 1.0 to 1.5 accuracy points against bf16 in the same engine on the TypeSafe
+and validation rows and changes the argmax on 3 to 4% of rows; `moe/vllm_check.py` is the readout through vLLM.
 
 ### The 94 public tasks
 
@@ -198,6 +160,7 @@ adds speed and cost measured from the operator's server, so this table is a part
 |---|---|---|---|
 | GPT-5.6 Luna, low reasoning (verbalized probabilities) | 1.000 | 0.972 | 0.964 |
 | Jev 1.13.0 (TypeSafe AI) | 1.000 | 0.986 | 0.730 |
+| **decider-35b-a3b v1** (34.7B, 3B active) | 1.000 | 0.972 | 0.676 |
 | djev (Maisa, diffusion-gemma) | 1.000 | 0.986 | 0.676 |
 | OpenJev (DiffusionGemma 26B-A4B) | 1.000 | 0.972 | 0.640 |
 | SemIf (Qwen3.5-4B) | 1.000 | 0.986 | 0.613 |
@@ -219,30 +182,32 @@ contrastive examples, with 13 human-labelled subsets, 3,880 records in Jev's wir
 1.13.0). The subsets rebuild byte-for-byte from their manifests; decider answers them through `system_one` as shipped
 (`decider/bench/public_suite.py`). "trained" marks tasks whose *train* split is in decider's mixture.
 
-| subset (type) | decider-2b v9 | decider-2b v10 | Nimble-9B | Jev 1.13.0 |
-|---|---|---|---|---|
-| vitaminc-dev (choice, contrastive fact verification) | 0.651 | 0.639 | 0.766 | 0.801 |
-| massive-en-US (choice, 18 scenarios; trained) | 0.826 | 0.823 | 0.869 | 0.874 |
-| massive-de-DE (same utterances in German) | 0.794 | 0.797 | 0.834 | 0.869 |
-| boolq (noul; trained) | 0.803 | 0.803 | 0.860 | 0.897 |
-| squad2 (noul, answerability) | 0.786 | 0.776 | 0.806 | 0.829 |
-| paws (noul, paraphrase; trained) | 0.716 | 0.720 | 0.828 | 0.892 |
-| multinli (choice; trained) | 0.843 | 0.856 | 0.853 | 0.829 |
-| civil_comments (noul; trained) | 0.843 | 0.840 | 0.703 | 0.810 |
-| aegis2 (noul, prompt safety) | 0.720 | 0.728 | 0.812 | 0.804 |
-| helpsteer2 (score, 5 levels; trained) | 0.438 | 0.426 | 0.390 | 0.341 |
-| summeval-relevance (score) | 0.329 | 0.354 | 0.492 | 0.350 |
-| summeval-consistency (score) | 0.646 | 0.660 | 0.757 | 0.812 |
-| pubmedqa (choice; trained) | 0.720 | 0.724 | 0.756 | 0.772 |
-| **macro / micro** | **0.701 / 0.711** | **0.704 / 0.711** | 0.748 / 0.759 | 0.760 / 0.773 |
+| subset (type) | decider-2b v9 | decider-2b v10 | decider-35b-a3b | Nimble-9B | Jev 1.13.0 |
+|---|---|---|---|---|---|
+| vitaminc-dev (choice, contrastive fact verification) | 0.651 | 0.639 | 0.795 | 0.766 | 0.801 |
+| massive-en-US (choice, 18 scenarios; trained) | 0.826 | 0.823 | 0.880 | 0.869 | 0.874 |
+| massive-de-DE (same utterances in German) | 0.794 | 0.797 | 0.869 | 0.834 | 0.869 |
+| boolq (noul; trained) | 0.803 | 0.803 | 0.887 | 0.860 | 0.897 |
+| squad2 (noul, answerability) | 0.786 | 0.776 | 0.749 | 0.806 | 0.829 |
+| paws (noul, paraphrase; trained) | 0.716 | 0.720 | 0.768 | 0.828 | 0.892 |
+| multinli (choice; trained) | 0.843 | 0.856 | 0.910 | 0.853 | 0.829 |
+| civil_comments (noul; trained) | 0.843 | 0.840 | 0.907 | 0.703 | 0.810 |
+| aegis2 (noul, prompt safety) | 0.720 | 0.728 | 0.808 | 0.812 | 0.804 |
+| helpsteer2 (score, 5 levels; trained) | 0.438 | 0.426 | 0.478 | 0.390 | 0.341 |
+| summeval-relevance (score) | 0.329 | 0.354 | 0.483 | 0.492 | 0.350 |
+| summeval-consistency (score) | 0.646 | 0.660 | 0.757 | 0.757 | 0.812 |
+| pubmedqa (choice; trained) | 0.720 | 0.724 | 0.768 | 0.756 | 0.772 |
+| **macro / micro** | **0.701 / 0.711** | **0.704 / 0.711** | **0.774 / 0.787** | 0.748 / 0.759 | 0.760 / 0.773 |
 
-Nimble's and Jev's numbers are copied from their report. A 2B model is 5 points under a 9B and 6 under Jev on the average; it is
+Nimble's and Jev's numbers are copied from their report. decider-35b-a3b is above both on the average (0.774 against 0.748 and 0.760) and behind Jev on PAWS, SummEval consistency and SQuAD2. A 2B model is 5 points under a 9B and 6 under Jev on the average; it is
 ahead on moderation (civil_comments) and on HelpSteer2, and behind most where a claim has to be checked against evidence that
 nearly matches it (VitaminC, PAWS, SummEval consistency) and on prompt-safety judgments (Aegis).
 
 ### Speed
 
-GH200, bf16 + torch.compile + CUDA graphs; support tickets are about 230 tokens, chat messages about 12. v10 is unchanged.
+decider-2b on one GH200, bf16 + torch.compile + CUDA graphs; support tickets are about 230 tokens, chat messages about 12. v10 is
+unchanged. decider-35b-a3b runs eager (`use_graphs=False`) at 47 ms per request and about 520 decisions/s in batches of 64 on one
+B300; its CUDA-graph and FP8 paths are untested.
 
 | in-process, per forward | full forward | schema cache | |
 |---|---|---|---|
@@ -377,18 +342,36 @@ decider/games/           ten text games + Super Mario Bros behind the same inter
 decider/vision/          the vision-language variant (decisions from pixels)
 teacher_data/            the teacher-written data the mixture needs (label descriptions, custom questions, routing messages, situations)
 scripts/                 train.sh, evaluate.sh, serve.sh, stage_release.py, upload_hf.py
+moe/                     the frozen-expert Muon training, evaluation and NVFP4 quantization scripts of decider-35b-a3b
 examples/                routing with confidence gates, composite scoring, hierarchical beam over Choice probabilities
 tests/                   unit tests for the request/answer layer and the prompt layouts (no GPU; `python -m pytest tests`)
-docs/HISTORY.md          how the released weights were produced (v1 to v10) and what was measured at each stage
+docs/CHANGELOG.md        what changed in every release, newest first, with the v10 recordings and figures
+docs/HISTORY.md          how the released weights were produced (v1 to v10 and the 35B) and what was measured at each stage
 docs/RL.md               the calibration-aware RL stage that produced v10: rewards, retention, gates, what it changed
 media/                   browser and game recordings, figures
 ```
 
+## Changelog
+
+| version | date | what changed |
+|---|---|---|
+| decider-35b-a3b v1, and its NVFP4 build | 2026-09-20 | the supervised recipe on Qwen3.5-35B-A3B-Base, routed experts frozen, Muon; above the 2B on 93 of 95 tasks, no RL stage |
+| decider-2b v10 | 2026-09-19 | v8 plus 384 steps of calibration-aware RL on live browser tasks and exact games: browser 83% to 93% sampled, belief 0.47 to 0.22 nats above the exact laws, everything else unchanged |
+| decider-2b v9 | | terse buckets and command safety in the data; the Hub weights stayed v8 |
+| decider-2b v8 | | isolated Score levels, generic options next to a catch-all, the cacheable prompt layout; kept under the Hub tag `v8` |
+| decider-2b v6 to v7 | | the input shapes Jev accepts: described options, 255 options, JSON states, the `/v1/systemone` request |
+| decider-2b v4 to v5 | | situation-to-action data, ten games, the proper abstention fix |
+
+[docs/CHANGELOG.md](docs/CHANGELOG.md) has the full v10 entry with the browser and game recordings, the calibration figures and
+the same-rows comparison against v8. [docs/HISTORY.md](docs/HISTORY.md) is the long form: how each stage was trained and measured.
+[docs/RL.md](docs/RL.md) is the RL recipe.
+
 ## Limitations
 
-* A 2B model without reasoning: knowledge-heavy multiple choice (MMLU, MedQA) improves little over the base model, judgments
-  that need several steps should be split into several questions, and on JevBench's hard tier (long policies, multi-hop,
-  temporal arithmetic) it is at 0.46 with a top-label ECE of 0.30.
+* decider-2b is a 2B model without reasoning: knowledge-heavy multiple choice (MMLU, MedQA) improves little over the base
+  model, judgments that need several steps should be split into several questions, and on JevBench's hard tier (long policies,
+  multi-hop, temporal arithmetic) it is at 0.46 with a top-label ECE of 0.30. decider-35b-a3b closes part of that gap (hard tier
+  0.68, MMLU +19 points) at 3 to 4 times the cost per decision, without the RL stage, and with a hard-tier ECE of 0.15.
 * English only. Calibration is measured on public datasets and teacher-labelled probes, not on your traffic: check it on your own labels.
 * The schema cache costs accuracy (see Results); use it for fixed classification-style schemas with short states.
 * v10 continues the v8 weights, so the v9 results on terse buckets (generic 0.86) do not apply to it; v8's 0.59 does. A plain
