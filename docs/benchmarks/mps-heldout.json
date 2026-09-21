@@ -1,0 +1,42 @@
+{
+  "results": {
+    "massive_scenario": {
+      "n": 1500,
+      "acc": 0.7553333333333333,
+      "nll": 0.6979675889015198,
+      "brier": 0.3348042070865631,
+      "ece": 0.043757498661677025,
+      "aurc": 0.08389327558743383,
+      "acc_at_80": 0.845,
+      "acc_at_50": 0.936,
+      "chance": 0.1,
+      "mean_conf": 0.7968708276748657,
+      "sec": 210.7,
+      "heldout": true
+    }
+  },
+  "agg": {
+    "in_task": {},
+    "heldout": {
+      "acc": 0.7553333333333333,
+      "nll": 0.6979675889015198,
+      "brier": 0.3348042070865631,
+      "ece": 0.043757498661677025,
+      "aurc": 0.08389327558743383,
+      "acc_at_80": 0.845,
+      "chance": 0.1
+    },
+    "n_in": 0,
+    "n_heldout": 1
+  },
+  "model": "Mapika/decider-2b",
+  "engine": "",
+  "device": "mps",
+  "dtype": "torch.float16",
+  "snapshot_revision": "b37f7e1ba3fbc9238004cf531fabbee2619973fd",
+  "published_bf16_massive_scenario": {
+    "accuracy": 0.756,
+    "ece": 0.041,
+    "source": "MODEL_CARD.md per-task held-out table"
+  }
+}

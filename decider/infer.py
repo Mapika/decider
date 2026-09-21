@@ -7,6 +7,8 @@
                     {"question": "How urgent is this?", "options": ["low", "medium", "high"]}])
     # -> [{'choice': 'billing', 'confidence': 0.97, 'probs': {...}}, {...}]
 """
+import logging
+
 import torch
 from decider.model import DecisionModel, collate
 from decider.prompt import build, MAX_OPTIONS
@@ -23,6 +25,7 @@ class Example:
     context: str; qs: list; task: str = "infer"; image: bytes = None
 
 
+logger = logging.getLogger(__name__)
 NEUTRAL_NONE = "not listed here"
 
 
@@ -53,9 +56,18 @@ class CompiledSchema:
 
 
 class Decider:
-    """use_graphs=True (default on CUDA) routes scoring through decider.engine.Engine: shape-bucketed
-    CUDA graphs, ~7x lower single-request latency than eager. Set False for CPU or debugging."""
-    def __init__(self, path, device="cuda", dtype=torch.bfloat16, temperature=None, abstain_below=0.0, use_graphs=None):
+    """One-pass decisions with automatic CUDA, MPS, or CPU device selection.
+
+    CUDA uses shape-bucketed graphs by default. MPS defaults to float16 and uses
+    the optional MPS patch; CPU defaults to bfloat16. Set ``use_graphs=False``
+    for eager execution or debugging.
+    """
+    def __init__(self, path, device=None, dtype=None, temperature=None, abstain_below=0.0, use_graphs=None):
+        if device is None:
+            device = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
+        if dtype is None:
+            dtype = torch.float16 if str(device).startswith("mps") else torch.bfloat16
+        logger.info("Decider device=%s dtype=%s", device, dtype)
         import json, os
         cfg = {}
         try:                                          # model folder may carry decider_config.json (temperature, flags)
@@ -73,6 +85,9 @@ class Decider:
             from decider.engine import Engine
             self.eng = Engine(path, device=device, dtype=dtype); self.m = self.eng.m
         else:
+            if str(device).startswith("mps"):
+                from decider.mps_ops import patch_mps
+                patch_mps()
             self.eng = None; self.m = DecisionModel(path, dtype=dtype, grad_ckpt=False).to(device).eval()
         self.dev = device; self.T = temperature; self.abstain_below = abstain_below
         self.name = "decider-" + str(cfg.get("version", "dev"))

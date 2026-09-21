@@ -70,6 +70,7 @@ if __name__ == "__main__":
     ap.add_argument("--temperature", type=float, default=1.0)
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--engine", default="eager", help="eager | graph | compile | fp8")
+    ap.add_argument("--device", default=None, help="cuda | mps | cpu (auto-detected when omitted)")
     ap.add_argument("--max_options", type=int, default=0, help="0 = sub-sample large label sets to 10 (the original protocol); 255 = offer the full label set")
     ap.add_argument("--max_ctx", type=int, default=1536)
     ap.add_argument("--layout", default="state_first", help="state_first | schema_first")
@@ -80,16 +81,21 @@ if __name__ == "__main__":
         evals = {k: v for k, v in evals.items() if k in a.tasks.split(",")}
     if a.limit:
         evals = {k: v[:a.limit] for k, v in evals.items()}
+    device = a.device or ("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
+    dtype = torch.float16 if device == "mps" else torch.bfloat16
     eng = None
     if a.engine:
         from decider.engine import Engine
-        eng = Engine(a.model, compile=a.engine in ("compile", "fp8"), fp8=a.engine == "fp8", conv_patch=a.engine in ("compile", "fp8"))
+        eng = Engine(a.model, device=device, dtype=dtype, compile=a.engine in ("compile", "fp8"), fp8=a.engine == "fp8", conv_patch=a.engine in ("compile", "fp8"))
         m = eng.m
     else:
-        m = DecisionModel(a.model, grad_ckpt=False).cuda()
+        if device == "mps":
+            from decider.mps_ops import patch_mps
+            patch_mps()
+        m = DecisionModel(a.model, dtype=dtype, grad_ckpt=False).to(device).eval()
     os.makedirs(a.out, exist_ok=True)
     res, dump = run_eval(m, evals, bs=a.bs, temperature=a.temperature, engine=eng, max_options=a.max_options or None, max_ctx=a.max_ctx, layout=a.layout)
     agg = aggregate(res)
     print("[agg]", json.dumps(agg, indent=1))
-    json.dump(dict(results=res, agg=agg, model=a.model, engine=a.engine), open(f"{a.out}/eval.json", "w"), indent=1)
+    json.dump(dict(results=res, agg=agg, model=a.model, engine=a.engine, device=device, dtype=str(dtype)), open(f"{a.out}/eval.json", "w"), indent=1)
     pickle.dump(dump, open(f"{a.out}/preds.pkl", "wb"))

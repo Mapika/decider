@@ -68,8 +68,13 @@ class Engine:
     def __init__(self, path, device="cuda", dtype=torch.bfloat16, use_graphs=True, max_ctx_tokens=1536,
                  compile=True, fp8=False, conv_patch=True):
         if conv_patch:
-            patch_conv()
+            if str(device).startswith("mps"):
+                from decider.mps_ops import patch_mps
+                patch_mps()
+            else:
+                patch_conv()
         self.m = DecisionModel(path, dtype=dtype, grad_ckpt=False).to(device).eval()
+        use_graphs = use_graphs and torch.device(device).type == "cuda"
         self.tok = self.m.tok; self.dev = device; self.use_graphs = use_graphs; self.max_ctx = max_ctx_tokens
         self.core, self.W = self.m.lm.model, self.m.lm.lm_head.weight[self.m.letters].detach().clone()
         self.cfg = dict(compile=compile, fp8=fp8, conv_patch=conv_patch, graphs=use_graphs)
@@ -82,7 +87,7 @@ class Engine:
         else:
             self._fwd_impl = self._fwd_eager
         self.graphs = {}                       # (B, T) -> (static_ids, static_out, graph)
-        self.pool = torch.cuda.graph_pool_handle() if use_graphs else None
+        self.pool = torch.cuda.graph_pool_handle() if (use_graphs and str(device).startswith("cuda")) else None
         self.stats = dict(graph_captures=0, forwards=0)
 
     def _fwd_eager(self, ids):

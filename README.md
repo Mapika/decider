@@ -35,6 +35,8 @@ The v8 weights stay available under the Hub tag `v8`. `docs/HISTORY.md` describe
 pip install git+https://github.com/Mapika/decider          # or: git clone ... && pip install -e ".[serve]"
 ```
 
+On Apple Silicon, install the optional MLX/Metal kernel with `pip install -e ".[metal]"` from a clone. Without it, MPS inference uses the PyTorch implementation.
+
 ```python
 from decider.infer import Decider
 d = Decider("Mapika/decider-2b")                             # one CUDA GPU, bf16, about 4 GB; downloads the weights on first use
