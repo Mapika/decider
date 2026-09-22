@@ -6,14 +6,29 @@ on:
 
 jobs:
   unit:
+    # No torch: the request layer, the rules and prompt rendering. Tests that need torch skip themselves here.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install without torch (the tests cover the request layer and prompt rendering only)
-        run: pip install pytest "transformers>=5" numpy
+      - run: pip install pytest "transformers>=5" numpy
       - run: python -m pytest -q tests
         env:
           PYTHONPATH: .
+
+  torch-cpu:
+    # CPU-only torch: the attention backend policy, the MPS reference ops and everything above. No model weights are downloaded.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - run: pip install pytest "transformers>=5" "numpy<2" fastapi httpx
+      - run: python -m pytest -q tests
+        env:
+          PYTHONPATH: .
+          HF_HUB_OFFLINE: "1"

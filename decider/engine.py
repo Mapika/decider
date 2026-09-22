@@ -61,12 +61,24 @@ def fill_ids(items_ids, B, T, pad):
     return torch.from_numpy(a)
 
 
+def set_attention_backend_policy():
+    """Turn off the cuDNN scaled-dot-product-attention backend. On Blackwell with torch 2.14 / CUDA 13 it returns wrong,
+    finite output for masked rectangular attention, which is what the shared-state path (`Engine.score_shared`) and the schema
+    cache run when a suffix is scored against a cached prefix; the math and memory-efficient backends are correct. Measured on
+    a Decision Index row: the cached path answered a wrong option at p=0.93 where the full forward and the corrected cached path
+    both give option_4 at p=0.95 (decider2/SERVING_V2_REVIEW.md in the research notes). Must run before torch.compile and CUDA
+    graph capture: captured graphs keep the backend they were captured with."""
+    if hasattr(torch.backends.cuda, "enable_cudnn_sdp"):
+        torch.backends.cuda.enable_cudnn_sdp(False)
+
+
 class Engine:
     """compile: torch.compile the forward (needs use_cache=False; ~1.4x batched, fuses elementwise work).
     fp8: e4m3 weights + per-token activation scaling on the big linears (Hopper tensor cores).
     conv_patch: fusable depthwise causal conv instead of the cuDNN fallback."""
     def __init__(self, path, device="cuda", dtype=torch.bfloat16, use_graphs=True, max_ctx_tokens=1536,
                  compile=True, fp8=False, conv_patch=True):
+        set_attention_backend_policy()
         if conv_patch:
             if str(device).startswith("mps"):
                 from decider.mps_ops import patch_mps

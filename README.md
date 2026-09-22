@@ -38,6 +38,8 @@ local Qwen3.5-27B teacher (`teacher_data/`, `decider/data/mixture.py`). Nothing 
 
 ## What's new
 
+* **2026-09-22 — 1.0.2 fixes wrong answers from the cached shared-state path** on Blackwell (a cuDNN attention backend fault; the
+  engine now turns that backend off). Upgrade if you serve long shared-state requests; details in docs/CHANGELOG.md.
 * **2026-09-22 — On PyPI as `decider-ai`** (the import name stays `decider`).
 * **2026-09-22 — Apple Silicon.** MPS acceleration for the dense models (0.8B, 2B, 2B vision), merged from pull request #2 by
   **@simply-sunny**. See [Runs on](#runs-on).

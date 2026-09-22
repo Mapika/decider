@@ -3,6 +3,20 @@
 Newest first. Every entry names the weights it applies to; the Hub repositories keep earlier weights under tags where noted.
 `HISTORY.md` is the long form: how each stage was trained and what was measured.
 
+## 1.0.2 (2026-09-22): wrong answers from the cached shared-state path on Blackwell
+
+Code only; no weights change. `decider.serve` scores the questions of one request against a cached prefix of the shared state
+(`Engine.score_shared`), and the optional schema cache does the same for a cached schema. On a B300 with torch 2.14 / CUDA 13 the
+cuDNN scaled-dot-product-attention backend that PyTorch selects for that masked rectangular attention (a suffix of a few hundred
+tokens attending to a cached prefix of about 4,000) returns wrong, finite output in the first full-attention block; the math and
+memory-efficient backends are correct, and the plain single-pass forward is unaffected. Effect: some long shared-state requests
+got a wrong option with high confidence and the answer changed between identical requests. Reproduced on Decision Index row
+RouterBench-5shot:26878 (prefix 4,006 tokens, suffixes 223 and 240): the cached path answered option_7 and option_10, the full
+forward and the corrected path answer option_4 at p=0.95 and 0.93. Fix: `Engine` now disables the cuDNN SDPA backend before
+compile and graph capture (`decider.engine.set_attention_backend_policy`). Found by an independent review of the serving path;
+a review write-up with the reproduction commands is in the research notes. If you run the server from an earlier version on
+Hopper or Blackwell, upgrade or set `torch.backends.cuda.enable_cudnn_sdp(False)` before constructing `Decider` or `Engine`.
+
 ## decider-35b-a3b v1 (2026-09-20): the supervised recipe on a 35B mixture-of-experts base
 
 [Mapika/decider-35b-a3b](https://huggingface.co/Mapika/decider-35b-a3b) (bf16, 65 GB) and
