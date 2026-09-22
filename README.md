@@ -28,8 +28,8 @@ ten best. Gold is marked in green; 87% of 71 scored rows were correct; 59 ms med
 nothing is edited inside a clip; [docs/DEMOS.md](https://github.com/Mapika/decider/blob/main/docs/DEMOS.md) gives checkpoints, seeds, timers and the games-RL run.*
 
 **Independence.** This is an independent project. It is not affiliated with or endorsed by TypeSafe AI. It is an open
-reproduction of the "System One" model class (TypeSafe AI's *Jev*): a 2B model built on `Qwen/Qwen3.5-2B-Base` and a 35B
-mixture-of-experts model built on `Qwen/Qwen3.5-35B-A3B-Base`. The training mixture is public datasets plus data labelled by a
+reproduction of the "System One" model class (TypeSafe AI's *Jev*): a 2B model built on `Qwen/Qwen3.5-2B-Base`, a 4B model built on
+`Qwen/Qwen3.5-4B-Base` and a 35B mixture-of-experts model built on `Qwen/Qwen3.5-35B-A3B-Base`. The training mixture is public datasets plus data labelled by a
 local Qwen3.5-27B teacher (`teacher_data/`, `decider/data/mixture.py`). Nothing was distilled from Jev.
 
 **Contents:** [What's new](#whats-new) · [Standing](#standing) · [Models](#models) · [Runs on](#runs-on) ·
@@ -38,6 +38,10 @@ local Qwen3.5-27B teacher (`teacher_data/`, `decider/data/mixture.py`). Nothing 
 
 ## What's new
 
+* **2026-09-22 — decider-4b v1.** Qwen3.5-4B-Base, one pass over mixture v2 (the public mixture plus 26 further public
+  datasets and ten programmatic families), AdamW on bf16 parameters, no RL stage. Above decider-2b v10 on 87 of 95 regression
+  tasks (0.834 / 0.788 against 0.805 / 0.755), JevBench hard tier 0.541, Bespoke's suite 0.757; level with the 2B on TypeSafe
+  and OpenJev and 17 points below it on the held-out browser tasks. 8.4 GB bf16.
 * **2026-09-22 — 1.1.0: the HTTP server captures its CUDA graphs at start-up.** On the default path no request compiles or
   captures a graph (the opt-in schema cache still captures one graph set per schema the first time it is used); request-size
   and queue limits; `DECIDER_COMPILE` and `DECIDER_FP8` default off. Details in docs/CHANGELOG.md.
@@ -113,17 +117,20 @@ two are not comparable to each other, and the NVFP4 row is measured against the 
 | model | base | parameters | context | held-out accuracy | weights |
 |---|---|---|---|---|---|
 | decider-2b **v10** | Qwen3.5-2B-Base | 1.9B | 32k tokens | 0.755 (regression set) | [Mapika/decider-2b](https://huggingface.co/Mapika/decider-2b) |
+| decider-4b **v1** | Qwen3.5-4B-Base | 4.2B | 32k tokens | 0.788 (regression set) | [Mapika/decider-4b](https://huggingface.co/Mapika/decider-4b) |
 | decider-35b-a3b **v1** | Qwen3.5-35B-A3B-Base | 34.7B total, 3B active | 32k tokens | 0.810 (regression set) | [Mapika/decider-35b-a3b](https://huggingface.co/Mapika/decider-35b-a3b) |
 | decider-35b-a3b-nvfp4 | the 35B in NVFP4, 19.6 GB | 34.7B total, 3B active | 32k tokens | 1.0 to 1.5 points under bf16 in vLLM | [Mapika/decider-35b-a3b-nvfp4](https://huggingface.co/Mapika/decider-35b-a3b-nvfp4) |
 | decider-0.8b | Qwen3.5-0.8B-Base | 0.8B | 32k tokens | 0.71 (94-task set) | [Mapika/decider-0.8b](https://huggingface.co/Mapika/decider-0.8b) |
 | decider-2b-vision | Qwen3.5-2B vision-language, v5 text weights | 1.9B | 32k tokens | Visual7W 0.89 (see MODEL_CARD_VISION.md) | [Mapika/decider-2b-vision](https://huggingface.co/Mapika/decider-2b-vision) |
 
-The v8 weights stay available under the Hub tag `v8`. A 4B model is trained and under evaluation; it is not released. decider-2b-vision has a
+The v8 weights stay available under the Hub tag `v8`. decider-4b is the first model trained on mixture v2 (the public mixture
+plus 26 further public decision datasets and ten programmatic families with verifiable gold); the mixture-v2 builders are not
+yet in this package, `scripts/train.sh full` reproduces the public 60% of its data. decider-2b-vision has a
 [browser demo](https://huggingface.co/spaces/hugging-apps/decider-2b-vision-demo), a Space built by the Hugging Face team.
 
 ## Runs on
 
-* **CUDA.** bf16, `torch.compile`, shape-bucketed CUDA graphs, optional FP8 (e4m3) linears. The 2B needs about 4 GB, the 35B
+* **CUDA.** bf16, `torch.compile`, shape-bucketed CUDA graphs, optional FP8 (e4m3) linears. The 2B needs about 4 GB, the 4B 8.4 GB, the 35B
   65 GB in bf16 or 19.6 GB in NVFP4.
 * **Apple Silicon, MPS.** Merged 2026-09-22 from pull request #2 by **@simply-sunny**. On an M1 Pro in float16, across the
   three 2B smoke-test workloads, the median request is 133 ms with the patch and 171 ms without it; on the held-out MASSIVE
@@ -229,11 +236,12 @@ law where v8 was 0.47. In the browser it predicts the outcome of its own click a
   temporal arithmetic and multi-hop chains are out of reach. Split such a judgment into several questions.
 * **Calibration on hard items is the weak axis.** decider-2b's top-label ECE on JevBench's hard items is 0.30: it is
   confident where it is wrong there, which is what pulls its calibration axis to 46.6. The 35B's hard-tier ECE is 0.15.
-* **Knowledge-heavy multiple choice.** decider-2b improves little over its base model on MMLU and MedQA. decider-35b-a3b
-  closes part of that gap (MMLU +19 points, hard tier 0.68) at 3 to 4 times the cost per decision and without the RL stage.
+* **Knowledge-heavy multiple choice.** decider-2b improves little over its base model on MMLU and MedQA. decider-4b closes
+  part of it (MMLU +11, MedQA +17 points over the 2B, hard tier 0.54) and decider-35b-a3b more (MMLU +19 points, hard tier 0.68)
+  at 3 to 4 times the cost per decision; neither has the RL stage.
 * **Optimizer setting on the 35B.** decider-35b-a3b was trained with FP32 master weights (Muon on the block matrices, AdamW
   elsewhere). In later controlled runs that setting moved small models further from their base than the same schedule
-  without a master copy, and cost accuracy on knowledge tasks. The 2B was trained without a master copy and is not affected.
+  without a master copy, and cost accuracy on knowledge tasks. The 2B and the 4B were trained without a master copy and are not affected.
   A 35B retrain without it is planned.
 * **English only.** Calibration is measured on public datasets and teacher-labelled probes, not on your traffic.
 * **The schema cache costs accuracy.** Use it for fixed classification-style schemas with short states; see docs/RESULTS.md.

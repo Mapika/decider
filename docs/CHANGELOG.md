@@ -3,6 +3,22 @@
 Newest first. Every entry names the weights it applies to; the Hub repositories keep earlier weights under tags where noted.
 `HISTORY.md` is the long form: how each stage was trained and what was measured.
 
+## decider-4b v1 (2026-09-22): the supervised recipe on Qwen3.5-4B-Base with mixture v2
+
+[Mapika/decider-4b](https://huggingface.co/Mapika/decider-4b) (bf16, 8.4 GB). One supervised pass over mixture v2, 742M tokens: the
+public decision mixture (60% of tokens) plus 26 further public decision datasets (code, logs, legal, tables, finance, medical,
+science, multilingual, temporal and rule reasoning) and ten programmatic families with verifiable gold, each with a held-out
+variant. `torch.optim.AdamW` on the bf16 parameters, no FP32 master copy (the public trainer's optimizer), peak LR 1e-5, cosine, 26,729
+steps of 32,768 tokens, 577 minutes on two B300s. No RL stage. Temperature 1.05 fitted on the in-task half of the regression set.
+Against decider-2b v10 on the same rows: accuracy higher on 87 of 95 regression tasks (in-task / held-out 0.834 / 0.788 against
+0.805 / 0.755, NLL −0.07), +2.7 points on the validation rows, +5.7 on Mind2Web, +0.6 on OpenJev, level on TypeSafe, JevBench hard
+tier 0.541 against 0.459, Bespoke's suite 0.757 against 0.704 macro; below decider-35b-a3b by 2.1 to 2.3 regression points and on
+every fixture. Live browser: greedy play level with v10 over all tasks (91.5% against 90.9%) and 17 points below it on the six
+tasks v10 never used for reward (75.0% against 91.7%); sampled play 90.9% against 93.2%. Zero-shot on the ten text games (no game
+rows in mixture v2): CliffWalking and Blackjack at teacher level, Breakout 18 against the teacher's 22, Pong not learned. Decision
+Index 4,000-request sample: index 48.5 (2B 42.3, 35B 50.4), calibration error 0.086 against the 2B's 0.093 and the 35B's 0.027;
+the 4B is overconfident outside its regression set (JevBench hard-tier ECE 0.29). Tables in `docs/RESULTS.md`, the model card on the Hub.
+
 ## 1.1.0 (2026-09-22): the HTTP server captures its CUDA graphs at start-up
 
 Code only; no weights change. `decider.serve` is a new implementation with the same module name, routes, request format and

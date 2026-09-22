@@ -366,6 +366,35 @@ ids and `processed_logits` as the logprob mode, which reproduces the package rea
 in-process predictions on 99.0% of the TypeSafe rows and 99.8% of the validation rows (mean total variation 0.010 / 0.005), at 36
 TypeSafe packets/s and 498 validation rows/s on one B300. The NVFP4 export through the same vLLM path: TypeSafe accuracy 0.843 (bf16 in vLLM 0.853), argmax agreement with the in-process bf16 predictions 96.1%, mean total variation 0.051, 51 packets/s; validation rows 0.882 (0.897), agreement 96.7%, total variation 0.030, 274 rows/s. The loss of 1.0 to 1.5 points is larger than the fake-quant estimate; the throughput numbers are from single batches of a few seconds.
 
+## decider-4b: the supervised recipe on Qwen3.5-4B-Base with mixture v2
+
+Released 2026-09-22 as [Mapika/decider-4b](https://huggingface.co/Mapika/decider-4b) (bf16, 8.4 GB). The middle point of the
+family: the 2B recipe on a 4B dense base, on a larger mixture, with the optimizer setting the architecture study selected.
+
+**Base and data.** Qwen3.5-4B-Base, all parameters trained. Mixture v2 is the public decision mixture (60% of tokens) plus 26
+further public decision datasets (code, logs, legal, tables, finance, medical, science, multilingual, temporal and rule
+reasoning) and ten programmatic families with verifiable gold, each family with a held-out variant; 742M tokens in one pass.
+The mixture v2 builders are not in the public package yet; the data registry lists the sources.
+
+**Optimizer.** `torch.optim.AdamW` on the bf16 parameters with no FP32 master copy, peak learning rate 1e-5, cosine schedule,
+150 warm-up steps, 26,729 steps of 32,768 tokens, seed 0, 577 minutes on two B300s. The architecture study had found that an
+FP32 master copy moves a small model further from its base on the same schedule and costs accuracy on knowledge tasks, so this
+run uses the plain optimizer; block-bidirectional attention, readout heads and pause tokens were also tried there and gave
+nothing under this optimizer, so the architecture is unchanged. No RL stage.
+
+**Temperature.** 1.05, fitted by NLL on the 67 in-task tasks of the regression set, the same procedure and rows as the 2B
+(1.30) and the 35B (1.08).
+
+**What was measured.** Regression set in-task / held-out accuracy 0.834 / 0.788 (2B v10 0.805 / 0.755, 35B 0.855 / 0.810),
+paired +2.8 and +3.3 points over v10 with intervals that exclude zero, higher on 87 of 95 tasks, the largest gains on MedQA
+(+16.5), MedMCQA (+13.7), WinoGrande (+12.2), TruthfulQA (+12.0) and MMLU (+10.9). Fixtures: general validation 86.0%,
+TypeSafe 80.4%, OpenJev 63.8%, Mind2Web 88.3%. Bespoke's public suite 0.757 macro. JevBench public items 1.000 / 0.958 / 0.541
+easy / standard / hard. Live browser: greedy 91.5% over all tasks and 75.0% on the six tasks the 2B never used for reward,
+17 points below v10 there. Zero-shot on the ten text games: CliffWalking and Blackjack at teacher level, Breakout 18 against
+the teacher's 22, Pong not learned. Decision Index 4,000-request sample: index 48.5 (2B 42.3, 35B 50.4), calibration error
+0.086 (2B 0.093, 35B 0.027); the 4B is over-confident outside its regression set. Every number with its source is in
+`docs/RESULTS.md` and in `eval_results.json` on the Hub.
+
 ## Vision: decisions from pixels
 
 Qwen3.5-2B is a vision-language model; `decider/vision.py` uses the full model with the same

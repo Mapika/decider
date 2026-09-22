@@ -4,14 +4,15 @@ Every measurement moved out of the README, with the conditions it was taken unde
 
 **Where the numbers come from.** Unless a version is named, the numbers in this file were measured on the v8 weights on one
 GH200; v9 is v8 plus the terse-bucket and command data, with the same numbers on the 94 tasks. Rows marked "rebuilt set" and
-everything about decider-35b-a3b were measured on a B300. "Held-out" means no example of that dataset was trained on. The
+everything about decider-35b-a3b and decider-4b were measured on a B300. "Held-out" means no example of that dataset was trained on. The
 external-leaderboard numbers were read from the leaderboards on the dates given and were not measured here. The JevBench
 public-item and Bespoke-suite rows were run in this repository (`decider/bench/`). Dates: decider-2b v10 measurements
-2026-09-19, decider-35b-a3b measurements 2026-09-20, JevBench and Decision Index standings read 2026-09-21 and 2026-09-22,
+2026-09-19, decider-35b-a3b measurements 2026-09-20, decider-4b measurements 2026-09-22, JevBench and Decision Index standings read 2026-09-21 and 2026-09-22,
 Apple Silicon MPS measurements 2026-09-21 (`docs/benchmarks/`). [docs/HISTORY.md](HISTORY.md) has the per-stage measurements
 and [docs/RL.md](RL.md) the RL stage.
 
 **Contents:** [External leaderboards](#external-leaderboards) · [decider-35b-a3b against decider-2b v10](#decider-35b-a3b-against-decider-2b-v10)
+· [decider-4b against decider-2b v10 and decider-35b-a3b](#decider-4b-against-decider-2b-v10-and-decider-35b-a3b)
 · [The 94 public tasks](#the-94-public-tasks) · [JevBench public items](#jevbench-public-items) ·
 [Bespoke's public suite](#bespokes-public-suite) · [Speed](#speed) · [Input shapes](#input-shapes) ·
 [Custom questions and catch-all options](#custom-questions-and-catch-all-options) ·
@@ -89,6 +90,42 @@ times that of decider-2b per decision (47 ms per request eager, about 520 decisi
 The NVFP4 build (19.6 GB, ModelOpt) served by vLLM loses 1.0 to 1.5 accuracy points against bf16 in the same engine on the TypeSafe
 and validation rows and changes the argmax on 3 to 4% of rows; `moe/vllm_check.py` is the readout through vLLM.
 
+## decider-4b against decider-2b v10 and decider-35b-a3b
+
+Qwen3.5-4B-Base (4.2B, dense), one supervised pass over mixture v2 (742M tokens: the public mixture plus 26 further public decision
+datasets and ten programmatic families with verifiable gold), `torch.optim.AdamW` on the bf16 parameters with no master copy, peak LR
+1e-5, 577 minutes on two B300s. No RL stage. Temperature 1.05, fitted on the in-task half of the regression set as for the other
+models. Every row is scored by all three models on identical inputs; intervals are 95% paired bootstrap intervals (tasks for the
+regression set, rows for the fixtures, boards for the games, task-seed pairs for the browser).
+
+| on the same rows | decider-2b v10 | decider-4b v1 | decider-35b-a3b v1 | 4B minus 2B | 4B minus 35B |
+|---|---|---|---|---|---|
+| regression set, 67 in-task tasks, accuracy / NLL / ECE | 0.805 / 0.474 / 0.037 | 0.834 / 0.404 / 0.027 | 0.855 / 0.357 / 0.026 | +2.8 (+2.0 to +3.7); higher on 87 of 95 tasks | −2.1 (−2.9 to −1.5) |
+| regression set, 28 held-out tasks | 0.755 / 0.622 / 0.084 | 0.788 / 0.558 / 0.071 | 0.810 / 0.497 / 0.069 | +3.3 (+2.1 to +4.5) | −2.3 (−3.5 to −1.2) |
+| 847 in-task validation rows, accuracy / NLL | 83.2% / 0.444 | 86.0% / 0.417 | 90.0% / 0.329 | +2.7 (+0.7 to +4.7) | −4.0 (−6.1 to −2.1) |
+| OpenJev, 5,252 rows | 63.3% / 0.916 | 63.8% / 0.894 | 68.3% / 0.752 | +0.6 (−0.6 to +1.8) | −4.5 (−5.7 to −3.3) |
+| Mind2Web, 1,770 rows | 82.7% / 0.543 | 88.3% / 0.367 | 89.6% / 0.316 | +5.7 (+4.0 to +7.3) | −1.2 (−2.8 to +0.2) |
+| TypeSafe workflow decisions, 102 rows | 80.4% / 0.585 | 80.4% / 0.609 | 86.3% / 0.342 | 0.0 (−9.8 to +9.8) | −5.9 (−12.7 to +1.0) |
+| Bespoke's public suite, macro / micro | 0.704 / 0.711 | 0.757 / 0.765 | 0.774 / 0.787 | | |
+| JevBench public items, easy / standard / hard | 1.000 / 0.847 / 0.459 | 1.000 / 0.958 / 0.541 | 1.000 / 0.972 / 0.676 | | |
+| live MiniWoB++ click tasks, greedy play (all / 6 held-out) | 90.9% / 91.7% | 91.5% / 75.0% | 97.2% / 97.9% | +0.6 (−4.5 to +5.7) / −16.7 (−27.1 to −6.2) | −5.7 (−9.7 to −2.3) / −22.9 |
+| live MiniWoB++ click tasks, sampled play (all / held-out) | 93.2% / 91.7% | 90.9% / 79.2% | 86.4% / 79.2% | −2.3 (−8.0 to +2.8) / −12.5 (−25.0 to 0.0) | +4.5 (−0.6 to +10.2) / 0.0 |
+| zero-shot games, win rate, greedy / sampled | 26.5% / 23.7% | 28.6% / 27.7% | 37.2% / 24.1% | +2.1 (−3.0 to +7.3) / +4.0 (+1.1 to +7.1) | −8.5 (−13.7 to −3.0) / +3.5 (+1.2 to +5.9) |
+| Decision Index 4,000-request sample: index / calibration error (site definition) / mean confidence against accuracy | 42.3 / 0.093 / 0.658 vs 0.566 | 48.5 / 0.086 / 0.722 vs 0.637 | 50.4 / 0.027 / 0.684 vs 0.690 | | |
+
+The gain over the 2B is on knowledge and reasoning tasks (MedQA +16.5 points, MedMCQA +13.7, Winogrande +12.2, TruthfulQA +12.0,
+MMLU +10.9; nine knowledge tasks 0.800 against 0.707), on Mind2Web and on in-task rows; on the two fixtures in neither model's
+training data (TypeSafe, OpenJev) the 4B is level with the 2B. The seven tasks where it is lower are the abstention probe (−4.6),
+agent trajectories (−1.3), HelpSteer3 preference (−1.1) and four under one point. The browser rows show the missing RL stage: greedy
+play matches v10 over all tasks and is 17 points below it on the six tasks v10's RL never rewarded. The ten text games are
+zero-shot for the 4B (mixture v2 has no game rows): CliffWalking −13 and Blackjack −0.6 at teacher level, Breakout 18 against the
+teacher's 22, BabyAI-GoTo 0.54 above the teacher's 0.34, Pong −21 (not learned), the grid worlds 0 as for every model. The Decision
+Index row is a readout of the 4,000-request sample (about 88 cases per benchmark, about 4 points under a full run) through the
+public server with the stored temperature, calibration computed with the site's benchmark-weighted definition; the 4B's
+confidence exceeds its accuracy by 0.085 on it, about the 2B's gap, where the 35B has none. Speed: 24.7 ms median per decision on
+one B300 eager without CUDA graphs over 200 game-state decisions (2B 17.9 ms, 35B 41.4 ms, same method); the CUDA-graph and FP8
+paths were not measured on the 4B.
+
 ## The 94 public tasks
 
 Large label sets sub-sampled to 10 options; one temperature fitted on in-task data.
@@ -102,8 +139,10 @@ Large label sets sub-sampled to 10 options; one temperature fitted on in-task da
 | `scripts/train.sh full`, one run from the base model, T=1.03 | 0.809 / 0.030 | 0.739 / 0.620 / 0.079 |
 | decider v8, rebuilt set (67 / 28 tasks, see note), T=1.30 | 0.806 / 0.038 | 0.757 / 0.622 / 0.083 |
 | decider v10, rebuilt set (67 / 28 tasks, see note), T=1.30 | 0.805 / 0.037 | 0.755 / 0.622 / 0.084 |
+| decider-4b v1, rebuilt set, T=1.05 | 0.834 / 0.027 | 0.788 / 0.558 / 0.071 |
+| decider-35b-a3b v1, rebuilt set, T=1.08 | 0.855 / 0.026 | 0.810 / 0.497 / 0.069 |
 
-The two "rebuilt set" rows were measured on a different machine (B300) after the data pipeline was rebuilt: two datasets no longer
+The "rebuilt set" rows were measured on a different machine (B300) after the data pipeline was rebuilt: two datasets no longer
 download (TREC-fine, the game states) and the current mixture adds held-out probes, so that set has 67 in-task and 28 held-out
 tasks and its numbers are not comparable to the rows above it, only to each other. v10 matches v8 on it; the largest per-task
 moves are CommitmentBank −5 points (250 rows) and PAWS +2.
@@ -135,6 +174,7 @@ adds speed and cost measured from the operator's server, so this table is a part
 | djev (Maisa, diffusion-gemma) | 1.000 | 0.986 | 0.676 |
 | OpenJev (DiffusionGemma 26B-A4B) | 1.000 | 0.972 | 0.640 |
 | SemIf (Qwen3.5-4B) | 1.000 | 0.986 | 0.613 |
+| **decider-4b v1** (4.2B) | 1.000 | 0.958 | 0.541 |
 | open-alternative-jev (Qwen3.5-4B) | 1.000 | 0.833 | 0.568 |
 | system-one-open (Gemma 4 E2B) | 1.000 | 0.931 | 0.486 |
 | system-one (Qwen3-8B) | 1.000 | 0.889 | 0.486 |
@@ -155,24 +195,24 @@ human-labelled subsets, 3,880 records in Jev's wire format, on which they measur
 byte-for-byte from their manifests; decider answers them through `system_one` as shipped (`decider/bench/public_suite.py`).
 "trained" marks tasks whose *train* split is in decider's mixture.
 
-| subset (type) | decider-2b v9 | decider-2b v10 | decider-35b-a3b | Nimble-9B | Jev 1.13.0 |
-|---|---|---|---|---|---|
-| vitaminc-dev (choice, contrastive fact verification) | 0.651 | 0.639 | 0.795 | 0.766 | 0.801 |
-| massive-en-US (choice, 18 scenarios; trained) | 0.826 | 0.823 | 0.880 | 0.869 | 0.874 |
-| massive-de-DE (same utterances in German) | 0.794 | 0.797 | 0.869 | 0.834 | 0.869 |
-| boolq (noul; trained) | 0.803 | 0.803 | 0.887 | 0.860 | 0.897 |
-| squad2 (noul, answerability) | 0.786 | 0.776 | 0.749 | 0.806 | 0.829 |
-| paws (noul, paraphrase; trained) | 0.716 | 0.720 | 0.768 | 0.828 | 0.892 |
-| multinli (choice; trained) | 0.843 | 0.856 | 0.910 | 0.853 | 0.829 |
-| civil_comments (noul; trained) | 0.843 | 0.840 | 0.907 | 0.703 | 0.810 |
-| aegis2 (noul, prompt safety) | 0.720 | 0.728 | 0.808 | 0.812 | 0.804 |
-| helpsteer2 (score, 5 levels; trained) | 0.438 | 0.426 | 0.478 | 0.390 | 0.341 |
-| summeval-relevance (score) | 0.329 | 0.354 | 0.483 | 0.492 | 0.350 |
-| summeval-consistency (score) | 0.646 | 0.660 | 0.757 | 0.757 | 0.812 |
-| pubmedqa (choice; trained) | 0.720 | 0.724 | 0.768 | 0.756 | 0.772 |
-| **macro / micro** | **0.701 / 0.711** | **0.704 / 0.711** | **0.774 / 0.787** | 0.748 / 0.759 | 0.760 / 0.773 |
+| subset (type) | decider-2b v9 | decider-2b v10 | decider-4b | decider-35b-a3b | Nimble-9B | Jev 1.13.0 |
+|---|---|---|---|---|---|---|
+| vitaminc-dev (choice, contrastive fact verification) | 0.651 | 0.639 | 0.756 | 0.795 | 0.766 | 0.801 |
+| massive-en-US (choice, 18 scenarios; trained) | 0.826 | 0.823 | 0.860 | 0.880 | 0.869 | 0.874 |
+| massive-de-DE (same utterances in German) | 0.794 | 0.797 | 0.843 | 0.869 | 0.834 | 0.869 |
+| boolq (noul; trained) | 0.803 | 0.803 | 0.873 | 0.887 | 0.860 | 0.897 |
+| squad2 (noul, answerability) | 0.786 | 0.776 | 0.706 | 0.749 | 0.806 | 0.829 |
+| paws (noul, paraphrase; trained) | 0.716 | 0.720 | 0.716 | 0.768 | 0.828 | 0.892 |
+| multinli (choice; trained) | 0.843 | 0.856 | 0.933 | 0.910 | 0.853 | 0.829 |
+| civil_comments (noul; trained) | 0.843 | 0.840 | 0.880 | 0.907 | 0.703 | 0.810 |
+| aegis2 (noul, prompt safety) | 0.720 | 0.728 | 0.820 | 0.808 | 0.812 | 0.804 |
+| helpsteer2 (score, 5 levels; trained) | 0.438 | 0.426 | 0.466 | 0.478 | 0.390 | 0.341 |
+| summeval-relevance (score) | 0.329 | 0.354 | 0.425 | 0.483 | 0.492 | 0.350 |
+| summeval-consistency (score) | 0.646 | 0.660 | 0.833 | 0.757 | 0.757 | 0.812 |
+| pubmedqa (choice; trained) | 0.720 | 0.724 | 0.728 | 0.768 | 0.756 | 0.772 |
+| **macro / micro** | **0.701 / 0.711** | **0.704 / 0.711** | **0.757 / 0.765** | **0.774 / 0.787** | 0.748 / 0.759 | 0.760 / 0.773 |
 
-Nimble's and Jev's numbers are copied from their report. decider-35b-a3b is above both on the average (0.774 against 0.748 and 0.760) and behind Jev on PAWS, SummEval consistency and SQuAD2. A 2B model is 5 points under a 9B and 6 under Jev on the average; it is
+Nimble's and Jev's numbers are copied from their report. decider-35b-a3b is above both on the average (0.774 against 0.748 and 0.760) and behind Jev on PAWS, SummEval consistency and SQuAD2. decider-4b is above Nimble-9B and 0.3 points under Jev on the average (0.731 on the six subsets whose train split is not in the mixture), behind Jev on PAWS, VitaminC and SQuAD2, where it is also 7 points under the 2B. A 2B model is 5 points under a 9B and 6 under Jev on the average; it is
 ahead on moderation (civil_comments) and on HelpSteer2, and behind most where a claim has to be checked against evidence that
 nearly matches it (VitaminC, PAWS, SummEval consistency) and on prompt-safety judgments (Aegis).
 
@@ -180,7 +220,9 @@ nearly matches it (VitaminC, PAWS, SummEval consistency) and on prompt-safety ju
 
 decider-2b on one GH200, bf16 + torch.compile + CUDA graphs; support tickets are about 230 tokens, chat messages about 12. v10 is
 unchanged. decider-35b-a3b runs eager (`use_graphs=False`) at 47 ms per request and about 520 decisions/s in batches of 64 on one
-B300; its CUDA-graph and FP8 paths are untested.
+B300; its CUDA-graph and FP8 paths are untested. decider-4b, eager, batch of one, on one B300: 24.7 ms median per decision over 200
+game-state decisions of 156 tokens median (2B 17.9 ms, 35B 41.4 ms, same decisions and method); its CUDA-graph and FP8 paths were
+not measured.
 
 | in-process, per forward | full forward | schema cache | |
 |---|---|---|---|
@@ -291,6 +333,6 @@ with 95% intervals over boards (from [docs/CHANGELOG.md](CHANGELOG.md)):
 The v10 browser results are on the 22 click-only MiniWoB++ tasks: small synthetic pages, elements listed as text. Typing,
 scrolling and real websites were not tested. On the same rows, sampled play over 22 tasks x 8 seeds: v8 83.0%, v10 93.2%
 (+10.2, +5.1 to +15.9); on the 6 tasks never used for reward, 72.9% to 91.7% (+18.8, +6.2 to +31.2). Greedy play is 90.9% for
-v10 and 97.2% for decider-35b-a3b. In the browser v10 predicts the outcome of its own click (success, failure, continue) at a
+v10, 91.5% for decider-4b (75.0% on the six held-out tasks, 17 points under v10 there; no RL stage) and 97.2% for decider-35b-a3b. In the browser v10 predicts the outcome of its own click (success, failure, continue) at a
 log score of −0.03 against v8's −0.35. Recordings and the per-task figure are in `media/` and
 [docs/CHANGELOG.md](CHANGELOG.md).
