@@ -152,24 +152,16 @@ class Engine:
     @torch.no_grad()
     def score_shared(self, items, temperature=1.0, min_prefix=192):
         """Rows that start with the same tokens (one state, one question per row): run the shared prefix once, fork its
-        cache (attention KV + delta-net conv/recurrent states) to every row, and run only the question suffixes.
-        Same answers as score_items up to kernel round-off; cost ~ state + sum(questions) instead of n * state."""
-        ids = [it["ids"] for it in items]; n = len(ids)
-        lcp = 0; short = min(len(x) for x in ids) - 1
-        while lcp < short and all(x[lcp] == ids[0][lcp] for x in ids): lcp += 1
-        if n < 2 or lcp < min_prefix:
+        cache (attention KV + delta-net conv/recurrent states), and run only the question suffixes.
+        Same answers as score_items up to kernel round-off; cost ~ state + sum(questions) instead of n * state.
+        The fork is made in chunks that fit `DECIDER_SHARED_FORK_GB`, so the peak memory does not grow with the question
+        count; the implementation is decider.shared_prefix, shared with EngineV2."""
+        from decider import shared_prefix                      # imported here: decider.shared_prefix imports this module
+        out = shared_prefix.score_shared(self, items, temperature, min_prefix)
+        if out is None:
             return self.score_items(items, temperature)
         self.stats["shared_prefix_calls"] = self.stats.get("shared_prefix_calls", 0) + 1
-        pre = torch.tensor(ids[0][:lcp], device=self.dev)[None]
-        cache = self.core(input_ids=pre, use_cache=True).past_key_values
-        cache.reorder_cache(torch.zeros(n, dtype=torch.long, device=self.dev))            # fork: every row gets a copy of row 0
-        Ts = max(len(x) for x in ids) - lcp
-        suf = fill_ids([x[lcp:] for x in ids], n, Ts, self.tok.pad_token_id)
-        h = self.core(input_ids=suf.to(self.dev), past_key_values=cache, use_cache=True).last_hidden_state
-        rows = [b for b, it in enumerate(items) for _ in it["slots"]]; sl = [s - lcp for it in items for s in it["slots"]]
-        idx = torch.tensor([rows, sl], device=self.dev)
-        return read_slots(F.linear(h[idx[0], idx[1]], self.W).float()[:, None, :], list(range(len(rows))), [0] * len(rows),
-                          [n for it in items for n in it["nopts"]], temperature, [len(it["slots"]) for it in items])
+        return out
 
     def warmup(self, shapes=((1, 128), (1, 256), (1, 384), (1, 512), (8, 256), (8, 512), (32, 256), (32, 512))):
         t = time.time()

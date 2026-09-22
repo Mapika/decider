@@ -16,6 +16,7 @@ is what makes `score_shared` (a suffix scored against a cached prefix) return th
 docs/CHANGELOG.md 1.0.2 and tests/test_engine_v2_cuda.py.
 """
 import time, torch, torch.nn.functional as F
+from decider import shared_prefix
 from decider.engine import read_slots, fill_ids, patch_conv, set_attention_backend_policy
 from decider.model import DecisionModel
 
@@ -168,28 +169,17 @@ class EngineV2:
         return out
 
     @torch.no_grad()
-    def score_shared(self, items, temperature=1.0, min_prefix=192):
+    def score_shared(self, items, temperature=1.0, min_prefix=192, budget_bytes=None, rows_per_fork=None):
         """Rows that start with the same tokens (one state, one question per row): run the shared prefix once, fork its
-        cache to every row, run only the question suffixes.  The algorithm of Engine.score_shared: it is per request,
-        never per schema, so it adds no state that outlives the request and no shape that depends on the question set.
-        The prefix and suffix forwards are eager (request-specific shapes).  Correct only with the cuDNN SDPA backend off,
-        which __init__ arranges."""
-        ids = [it["ids"] for it in items]; n = len(ids)
-        lcp = 0; short = min(len(x) for x in ids) - 1
-        while lcp < short and all(x[lcp] == ids[0][lcp] for x in ids): lcp += 1
-        if n < 2 or lcp < min_prefix:
+        cache in chunks that fit a byte budget, run only the question suffixes.  The algorithm of Engine.score_shared,
+        shared with it in decider.shared_prefix: it is per request, never per schema, so it adds no state that outlives
+        the request and no shape that depends on the question set.  The prefix and suffix forwards are eager
+        (request-specific shapes).  Correct only with the cuDNN SDPA backend off, which __init__ arranges."""
+        out = shared_prefix.score_shared(self, items, temperature, min_prefix, budget_bytes, rows_per_fork)
+        if out is None:
             return self.score_items(items, temperature)
         self.stats["shared_calls"] += 1
-        pre = torch.tensor(ids[0][:lcp], device=self.dev)[None]
-        cache = self.core(input_ids=pre, use_cache=True).past_key_values
-        cache.reorder_cache(torch.zeros(n, dtype=torch.long, device=self.dev))
-        Ts = max(len(x) for x in ids) - lcp
-        suf = fill_ids([x[lcp:] for x in ids], n, Ts, self.tok.pad_token_id)
-        h = self.core(input_ids=suf.to(self.dev), past_key_values=cache, use_cache=True).last_hidden_state
-        rows = [b for b, it in enumerate(items) for _ in it["slots"]]; sl = [s - lcp for it in items for s in it["slots"]]
-        idx = torch.tensor([rows, sl], device=self.dev)
-        return read_slots(F.linear(h[idx[0], idx[1]], self.W).float()[:, None, :], list(range(len(rows))), [0] * len(rows),
-                          [n for it in items for n in it["nopts"]], temperature, [len(it["slots"]) for it in items])
+        return out
 
     # ---- start-up ----------------------------------------------------------
     def warmup(self, shapes=None, log=None):

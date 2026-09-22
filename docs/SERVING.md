@@ -27,12 +27,15 @@ turned it off (`decider.engine.set_attention_backend_policy`).
 * **Attention backend policy first.** `EngineV2.__init__` calls `set_attention_backend_policy()` (cuDNN SDPA off) before
   any compile or capture; captured graphs keep the backend they were captured with.
 * **Shared-state path on.** An independent request with more than one question over a state of at least
-  `DECIDER_SHARED_MIN_TOKENS` (768) tokens runs the state once, forks the cache to every row and scores only the question
-  suffixes (`EngineV2.score_shared`, the algorithm of `Engine.score_shared`). It is eager at request-specific shapes and is
-  correct with the backend policy in place (section 4).
+  `DECIDER_SHARED_MIN_TOKENS` (768) tokens runs the state once, forks the cache and scores only the question suffixes
+  (`EngineV2.score_shared`, the algorithm of `Engine.score_shared`, implemented once in `decider/shared_prefix.py` since
+  1.1.1). The fork is made in chunks that fit `DECIDER_SHARED_FORK_GB`, so the peak memory does not grow with the question
+  count (section 4.2). It is eager at request-specific shapes and is correct with the backend policy in place (section 5).
 * **One GPU thread.** Every forward, including graph capture at start-up, runs on a single-thread executor; tokenisation
-  runs on a CPU pool (`DECIDER_TOKENIZE_THREADS`, 8). Rows queued at the same moment are grouped by length bucket and
-  replayed together; `DECIDER_BATCH_WAIT_MS` (0) adds a collection window.
+  runs on a CPU pool (`DECIDER_TOKENIZE_THREADS`, 8). Rows queued at the same moment are partitioned by
+  `decider.batching.plan_batches`, which pads a shorter row into a longer row's bucket when that costs less than a second
+  forward (section 4.1); `DECIDER_BATCH_WAIT_MS` (0) adds a collection window, and after a collection that held more than
+  one request the next one waits up to `DECIDER_BATCH_ADAPTIVE_WAIT_MS` (2 ms).
 * **The state is tokenised once per request.** `prompt.build` encodes `"Context:\n" + state` and appends a separately
   encoded question block, so a row's ids are `ctx_ids + question_piece`; `prompt_fast.build_rows` shares `ctx_ids` across
   the rows. `tests/test_prompt_fast.py` checks id-for-id equality with `prompt.build`.
@@ -57,6 +60,9 @@ turned it off (`decider.engine.set_attention_backend_policy`).
 | `DECIDER_SHARED_MIN_TOKENS` | `768` | shortest row length at which the shared path applies |
 | `DECIDER_MAX_BATCH` | `32` | rows per dispatch |
 | `DECIDER_BATCH_WAIT_MS` | `0` | collection window; `DECIDER_MAX_WAIT_MS` is an alias |
+| `DECIDER_BATCH_ADAPTIVE_WAIT_MS` | `2` | extra window after a collection that held more than one request; `0` disables |
+| `DECIDER_MERGE_OVERHEAD_TOKENS` | `512` | fixed cost of a forward, in padded tokens, in the batch partition's cost model |
+| `DECIDER_SHARED_FORK_GB` | `8` | byte budget for one fork of the shared prefix cache; also capped at half the free memory |
 | `DECIDER_MAX_STATE_TOKENS` | `32768` | state truncation |
 | `DECIDER_T_BUCKETS`, `DECIDER_B_BUCKETS` | the ladders above | comma-separated |
 | `DECIDER_GRAPH_TOKEN_BUDGET` | `32768` | `(B, T)` captured when `B == 1` or `B * T` fits; also the eager chunk size |
@@ -92,9 +98,107 @@ grows by one graph set per new schema, which is the one place the server does GP
 
 Memory: the 89 graphs reserve about 25 GB on the 4B (graph pool plus `[B, T, 255]` float32 outputs). Nothing checks that
 the grid fits before capturing; a smaller card needs a shorter `DECIDER_T_BUCKETS` or a lower budget (a start-up that runs out
-of memory fails with `torch.OutOfMemoryError` and exits, it does not hang). Start-up is 27 to 45 s for the grid (section 5).
+of memory fails with `torch.OutOfMemoryError` and exits, it does not hang). Start-up is 27 to 45 s for the grid (section 6).
 
-## 4. Correctness
+## 4. Batching policy and the shared-prefix memory bound (1.1.1)
+
+Two changes to `decider.serve` and the two engines. Neither changes a route, a request field or a response field.
+
+### 4.1 Cross-request batching that merges
+
+Until 1.1.1 the batcher grouped the rows it collected by exact padded length (`EngineV2.pad_len`), so two requests that
+arrived together but landed in different length buckets ran as separate forwards. In the 1.1.0 benchmark at concurrency 8
+that produced 2,238 batches for 2,000 requests, 1,250 of them a single row.
+
+`decider/batching.py` replaces the grouping with a partition that may pad a shorter row up to a longer row's bucket when
+that is cheaper than a second forward. The cost model is `overhead + B * T` token-units for a forward of `B` rows padded
+to length `T`: `overhead` is the fixed cost of a forward expressed as the number of padded tokens that take the same
+time. Rows are sorted by padded length descending (stable, so rows of the same bucket keep their arrival order) and split
+into consecutive groups; a group runs at the bucket of its longest member, so a group starting at position `k` costs
+`overhead + g * T[k]`. A dynamic program takes the cheapest split subject to `g <= min(DECIDER_MAX_BATCH,
+EngineV2.max_rows(T))`, ties going to the larger group, so `DECIDER_MERGE_OVERHEAD_TOKENS=0` reproduces the 1.1.0
+grouping exactly. Rows above the last captured length bucket (8,192 tokens) run eager at a request-specific shape
+and are grouped by exact padded length as before, not merged into another row's bucket. The 1.1.0 grouping is one of the
+partitions the program may choose, so the planned cost is never above it; `tests/test_batching.py` checks that, plus
+coverage, the padded-length bound and the group cap, over 400 random row sets.
+
+`DECIDER_MERGE_OVERHEAD_TOKENS` defaults to 512. The measurement: on decider-2b, `EngineV2.score_items` on a single row at
+each captured length bucket (graph replay, slot gather and the device-to-host copy, which is what a forward costs the
+server) takes 12.3 ms at 64 tokens and 67.4 ms at 4,096; a least-squares fit over the ladder gives `t(T) = 9.20 ms +
+13.80 us/token`, so the fixed cost is worth 667 tokens; a fit over `T <= 1024` alone gives 1,061 tokens. 512 is the nearest
+power of two to the full-ladder figure. The same run timed batches of 2 to 32 rows: the measured time is below
+`overhead + B * T` at every width (102.9 ms against a modelled 122.3 ms at 32 rows of 256 tokens), because the per-token
+cost falls as the batch grows, so the model is conservative about merging rather than optimistic. The card was shared with
+a training run, which inflates both terms; the ratio is what the constant uses.
+
+The collection window is unchanged (`DECIDER_BATCH_WAIT_MS`, 0) with one addition: when the previous collection held rows
+from more than one request, the next one waits up to `DECIDER_BATCH_ADAPTIVE_WAIT_MS` (2 ms) for more rows; after a
+collection that held one request it does not wait. A request's rows carry its id through the queue, which is what the
+batcher reads. Two details of the rule:
+
+* Rows whose future is already done are not counted. A cancelled or failed request leaves its rows in the queue, and
+  they are not evidence that requests are overlapping.
+* The window is dropped again when the queue was idle. If the first row of a collection took more than 50 ms
+  (`serve.ADAPTIVE_IDLE_RESET_MS`) to arrive, the burst that earned the window is over, and an isolated request after a
+  quiet period pays nothing.
+
+Neither the window nor the merge changes what a row is scored against, only which rows share a forward.
+
+### 4.2 Shared-prefix memory bound
+
+`Engine.score_shared` and `EngineV2.score_shared` ran the common prefix once and then `cache.reorder_cache(zeros(n))`,
+which copies the prefix cache to all `n` question rows at once. The cost is `n` times the prefix cache: a 31k-token state
+with 32 questions is 133 GB on a 31B model, and it is wasteful on the 2B.
+
+`decider/shared_prefix.py` holds the implementation both engines now call, so the two cannot diverge; `min_prefix` (192)
+and the cuDNN SDPA policy are unchanged, and `Engine.score_shared`'s signature is unchanged (`decider2/serve_chat.py`
+subclasses it). The prefix cache is forked in chunks: `cache_row_bytes` sums the bytes one row holds over the layers,
+`fork_cache` builds a new cache of `m` rows from the un-expanded prefix cache without mutating it, and the loop scores the
+rows `m` at a time, each chunk's suffixes padded to that chunk's own longest suffix, dropping the fork before the next
+chunk. `m = clamp(budget // prefix_bytes, 1, n)`, the budget being `DECIDER_SHARED_FORK_GB` (8) capped at half of the
+memory free on the device at that moment. The cap applies only where the CUDA memory queries succeed: on CPU, on MPS and
+when the driver does not know the device string, the configured budget is kept as it is. The lower clamp is one row, so
+a request whose single prefix copy is already over the budget still runs -- the budget bounds the fork, it cannot make
+it free.
+
+A cache layout the helpers do not recognise is not chunked at all. If a layer holds a tensor, or a dict of tensors,
+under a name outside `keys`, `values`, `indexer_keys`, `conv_states`, `recurrent_states`, there is no way to tell
+whether it carries a batch dimension, so `score_shared` falls back to one fork of all `n` rows -- the 1.1.0 behaviour,
+correct but unbounded -- and counts it in `/stats -> engine.shared_unchunked_layout`. On decider-2b under transformers
+5.17 that counter stays at zero: its `DynamicCache` holds `DynamicLayer` and `LinearAttentionLayer` objects whose only
+tensors are the enumerated ones.
+
+The helpers do not assume one cache layout: they walk `cache.layers` and take whatever of `keys`, `values`, `conv_states`
+and `recurrent_states` is present, as tensors or as dicts of tensors, which is what transformers 5.17 gives for the
+Qwen3.5 hybrid layers (attention KV in the same layer object as the delta-net conv and recurrent states). The fork's
+tensors are fresh `index_select` allocations, never views: the linear-attention layers write their states back with
+`copy_()`, so a fork that shared storage would corrupt the prefix for the next chunk.
+
+Answers. With every suffix the same length, chunking is bit-identical to the single fork at `m = 1, 2, 3` on decider-2b:
+the batch size of the suffix forward on its own changes nothing. With suffixes of different lengths a chunk pads to its
+own longest suffix instead of the request's, the kernels reduce in a different order, and the answers move: at most
+2.9e-5 of probability on a four-row request with 223 to 450-token suffixes and 4.5e-5 on a 32-row request with 223 to
+471-token suffixes, argmax unchanged. A request whose suffixes are further apart moves further: 1.5e-2 on the 32-row
+synthetic row of the memory table, whose suffixes run from 182 to 932 tokens, still well inside the server's 0.05
+tolerance against the eager reference. `tests/test_engine_v2_cuda.py` covers the equal-length case and both
+mixed-length cases (4 rows and 32); the 182 to 932-token spread is measured, not asserted.
+
+Peak reserved memory on decider-2b, measured around the call after `empty_cache`, over what was already held:
+
+| request | prefix cache | old (n-row fork) | new, 8 GB budget | new, 1 GB budget | new, m = 1 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `ContractNLI:test:58`, 17 questions, 7,988-token state | 112.5 MB/row | 3.75 GB | 3.84 GB | 1.94 GB | 0.67 GB |
+| `BRIGHT-retrieval:robotics:7:chunk0`, 32 questions, 1,489-token state | 36.3 MB/row | 3.77 GB | 3.85 GB | 3.38 GB | 0.15 GB |
+| synthetic 16,000-token state, 32 questions | 206.3 MB/row | 15.38 GB | 15.53 GB | 2.17 GB | 1.34 GB |
+
+Reading the table: on decider-2b the default 8 GB budget does not bind on anything in the 4,000-row Decision Index
+sample, whose heaviest shared-prefix request forks 1.87 GB; it bounds the case the change is for. The peak is not the fork
+alone: the suffix forward's activations scale with the chunk as well, so the observed peak is about 2.4 times the fork
+(6.45 GB of fork, 15.4 GB of peak, on the synthetic row). A deployment that wants a hard ceiling should set
+`DECIDER_SHARED_FORK_GB` to about 40% of what it can afford. The prefix forward itself is linear and cheap (1.31 GB at
+16,000 tokens, 1.99 GB at 24,000) and is not chunked.
+
+## 5. Correctness
 
 * `tests/test_engine_v2_cuda.py` (marker `cuda`, skips without a GPU; `DECIDER_TEST_MODEL` selects the checkpoint) loads a
   real checkpoint, captures one graph, and checks on a synthetic two-row prompt with a 4,000-token shared prefix and
@@ -106,16 +210,26 @@ of memory fails with `torch.OutOfMemoryError` and exits, it does not hang). Star
   answers `option_4` for both questions on both checkpoints, max |dp| against the full forward 1.6e-3 (4B) and 1.2e-2 (2B);
   with cuDNN forced back on it answers options 7/10 (4B) and 2/1 (2B) at high confidence. Log:
   `decider2/serving_v2_fix_evidence/row_shared_check_{2b,4b}.log` in the research notes.
+* `tests/test_batching.py` checks the batch partition on CPU: coverage, the padded-length bound, the group cap and
+  "never more expensive than the per-bucket grouping", over 400 random row sets. `tests/test_shared_prefix.py` checks the
+  cache helpers against stand-in layers of every layout (which tensors are found, the per-row byte count, the chunk size a
+  budget gives, that a fork has its own storage and leaves the original alone, that `indexer_keys` is forked and that an
+  unrecognised state name turns chunking off) and then runs the whole scoring loop against a cache-aware stand-in
+  backbone whose answers depend on the position: per-chunk slot offsets with unequal suffix lengths, multi-question
+  rows, the fallbacks that return `None`, the chunk-size clamps and the budget when the CUDA query raises. A fork left
+  at one row fails that backbone outright, and a fork sharing storage with the prefix moves its answers by 0.77.
+  `tests/test_serve_http.py` checks the queue side: which rows share a forward, that every row gets its own answer back
+  across split collections, a cancelled row, a forward that raises, and the adaptive window's rule.
 * `decider/bench/verify_engine_v2.py` compares `EngineV2.score_items`, `EngineV2.score_shared` and `Engine.score_items`
   against the masked eager forward over a row file and exits 1 on any argmax mismatch, non-finite output or max |dp| above
   `--tol`. `decider/bench/probe_cache_split.py` sweeps split points of a random sequence and exits 1 on any failure; `--cudnn`
   reproduces the fault.
 * Answers are deterministic for a fixed batch shape and not across batch shapes (bf16 reduction order): against the eager
   reference the server differs on 0.1% to 0.16% of argmaxes, all at near-ties (reference top probability at most 0.53),
-  with per-answer probability differences up to 0.05 on the 4B and 0.12 on the 2B (section 5). Pin
+  with per-answer probability differences up to 0.05 on the 4B and 0.12 on the 2B (section 6). Pin
   `DECIDER_MAX_BATCH=1 DECIDER_B_BUCKETS=1` for bit-reproducible answers.
 
-## 5. Measurements
+## 6. Measurements
 
 Setup: one B300 (`CUDA_VISIBLE_DEVICES=2`, no other process on the card during the runs, checked every 30 s), 1,000 rows in
 file order from the Decision Index 4,000-row sample (`work/sample-4k.jsonl.gz`; all questions are `choice`, median 1
@@ -175,6 +289,48 @@ Reading the tables:
 * Start-up: 27 s (2B) and 45 s (4B) for the 89 graphs, against 114 s and 126 s for the old server's 72 compiled shapes with a
   warm inductor cache (the first write-up measured 309 s and 393 s with a cold one).
 
+### 6.3 The 1.1.1 batching change (decider-2b, 1,000 requests, shared card)
+
+Setup: the same 1,000 rows and the same harness as sections 6.1 and 6.2, decider-2b, `CUDA_VISIBLE_DEVICES=3` on a B300
+that a training run was using at the same time, so the absolute latencies here are about twice those of section 6.1 and
+are only comparable within this table. "1.1.0" is `decider.serve` from the released checkout, "1.1.1" is the same module
+from the working tree; the two cases ran back to back on the same card, each as its own server process, concurrency 1
+first and then concurrency 8. "batches" and "single-row batches" are that replay's share of `/stats`, which is cumulative
+over a case. Two 1.1.1 controls are included: `DECIDER_BATCH_ADAPTIVE_WAIT_MS=0`, and `DECIDER_MERGE_OVERHEAD_TOKENS=0`,
+which turns the partition back into the 1.1.0 per-bucket grouping inside the new code. "eager disagreements" is the
+number of the 8,247 answers whose argmax differs from `decider/bench/eager_reference.py`; every case has exactly one
+answer above the 0.05 probability tolerance and a maximum difference of 0.116, the same answer as in section 6.1, and no
+`usage` mismatches.
+
+| server | conc | median | p95 | p99 | mean | max | req/s | errors | batches / 1,000 requests | single-row batches | eager disagreements |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1.1.0 | 1 | 18.5 | 187.0 | 400.5 | 57.9 | 639.2 | 17.25 | 0 | 1,207 | 783 | 9 (0.11%) |
+| 1.1.1 | 1 | 18.5 | 185.9 | 379.1 | 57.8 | 698.3 | 17.30 | 0 | 1,134 | 745 | 8 (0.10%) |
+| 1.1.1, adaptive wait off | 1 | 18.8 | 184.7 | 360.5 | 57.5 | 644.2 | 17.38 | 0 | 1,134 | 745 | 8 (0.10%) |
+| 1.1.1, merge off | 1 | 18.5 | 190.5 | 371.1 | 57.0 | 638.9 | 17.53 | 0 | 1,207 | 783 | 9 (0.11%) |
+| 1.1.0 | 8 | 304.4 | 1018.6 | 1315.8 | 432.8 | 1619.3 | 18.46 | 0 | 1,027 | 476 | 13 (0.16%) |
+| 1.1.1 | 8 | **300.8** | 1030.6 | 1299.7 | **420.3** | 1565.9 | **19.02** | 0 | **748** | **210** | 12 (0.15%) |
+| 1.1.1, adaptive wait off | 8 | 305.3 | 1057.9 | 1267.4 | 421.4 | 1459.1 | 18.97 | 0 | 749 | 208 | 13 (0.16%) |
+| 1.1.1, merge off | 8 | 316.7 | 1024.3 | 1256.3 | 425.3 | 1522.6 | 18.79 | 0 | 1,017 | 464 | 13 (0.16%) |
+
+Reading the table:
+
+* The partition does what it was written for. At concurrency 8 the server runs 748 forwards for 1,000 requests instead of
+  1,027, and single-row forwards fall from 476 to 210. Throughput rises 3% (19.02 against 18.46 req/s), the mean falls
+  from 433 to 420 ms and the median from 304 to 301 ms; p95 is 1% worse and p99 1% better, which is inside the run-to-run
+  spread on a shared card. At concurrency 1 the median is unchanged at 18.5 ms and the forward count still falls (1,207
+  to 1,134), because a single request whose rows land in several length buckets is now one forward instead of several.
+* The merge is what produces the gain, not the adaptive wait or anything else in the release. With the merge off the new
+  code reproduces the 1.1.0 forward counts (1,207 and 1,017 against 1,207 and 1,027) and lands between the two servers on
+  latency (concurrency-8 median 316.7 ms, 18.79 req/s). Turning only the adaptive wait off leaves the forward count
+  unchanged (749 against 748) and moves throughput by 0.3%. The adaptive wait is kept on at 2 ms because it does not cost
+  the concurrency-1 median and gives the collection a chance to fill when requests are genuinely overlapping; on this
+  sample its effect is inside the noise.
+* The shared-state path took the same 118 requests per replay in both servers, and both captured 89 graphs at start-up
+  and ran the same 5 eager forwards per replay for rows above 8,192 tokens.
+* This is one measurement on one shared card. The 1.1.0 numbers in section 6.1 (median 9.1 ms, 42.8 req/s at concurrency
+  8) were taken on an idle card; nothing here contradicts them, and nothing here should be compared to them.
+
 Raw files: `summary.json`, per-case responses `{old,new}_c{1,8}.jsonl`, `eager.jsonl` and the server logs under
 `runs/serving_v2_release/{2b,4b}` in the research checkout; `gpu2_monitor.log` there records the processes on the card
 every 30 s during the runs (only the server under test, or the reference, at any time).
@@ -186,7 +342,7 @@ server, and the
 Decision Index harness itself (its 132k requests at unknown concurrency against decider-2b gave 50 ms / 1,641 ms; the
 numbers above are comparable server to server, not to theirs).
 
-## 6. Reproducing
+## 7. Reproducing
 
 ```bash
 export CUDA_VISIBLE_DEVICES=0 PYTHONPATH=.

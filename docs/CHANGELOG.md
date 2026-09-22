@@ -3,6 +3,53 @@
 Newest first. Every entry names the weights it applies to; the Hub repositories keep earlier weights under tags where noted.
 `HISTORY.md` is the long form: how each stage was trained and what was measured.
 
+## 1.1.1 (2026-09-22): cross-request batch merging and a bounded shared-prefix fork
+
+Code only; no weights change. Same routes, same request and response format, same limits. Two changes to `decider.serve`
+and the two engines, both measured on decider-2b. Design and measurements: `docs/SERVING.md`, section 4.
+
+**Batching.** 1.1.0 grouped the rows a collection pulled off the queue by exact padded length, so two requests that
+arrived together but landed in different length buckets ran as separate forwards; at concurrency 8 that was 2,238 batches
+for 2,000 requests, 1,250 of them a single row. `decider/batching.py` replaces the grouping with a partition that pads a
+shorter row into a longer row's bucket when that costs less than a second forward. A forward of `B` rows at padded length
+`T` is modelled as `DECIDER_MERGE_OVERHEAD_TOKENS + B * T` token-units; rows are sorted by padded length descending and a
+dynamic program takes the cheapest split into consecutive groups, each capped at the engine's widest captured batch
+bucket for its length and at `DECIDER_MAX_BATCH`. Rows above the last captured length bucket still run alone in their own
+padded length. The 1.1.0 grouping is one of the partitions the program may choose, so the planned cost is never above it.
+`DECIDER_MERGE_OVERHEAD_TOKENS` defaults to 512: on the 2B a single-row forward fits `t(T) = 9.20 ms + 13.80 us/token`
+over the bucket ladder, so the fixed cost is worth 667 tokens, and 512 is the nearest power of two.
+`DECIDER_BATCH_ADAPTIVE_WAIT_MS` (2 ms) is a new collection window that applies only after a collection that held live
+rows from more than one request, and only while the queue stays busy: a first row that took more than 50 ms to arrive
+drops the window again, and rows whose request has already gone away are not counted. After a single-request collection
+the batcher does not wait, as before.
+
+**Shared prefix.** `Engine.score_shared` and `EngineV2.score_shared` ran the state once and then
+`cache.reorder_cache(zeros(n))`, which copies the prefix cache to all `n` question rows at once: `n` times the prefix
+cache, which is 133 GB for a 31k-token state with 32 questions on a 31B model. The implementation now lives in
+`decider/shared_prefix.py`, used by both engines, and forks the prefix cache in chunks of `m` rows with
+`m = clamp(DECIDER_SHARED_FORK_GB // prefix_bytes, 1, n)`, the budget also capped at half the memory free on the device.
+`min_prefix`, the cuDNN SDPA policy and `Engine.score_shared`'s signature are unchanged. The fork helpers walk
+`cache.layers` and handle `keys`, `values`, `indexer_keys`, `conv_states` and `recurrent_states` without assuming one
+layout, and always allocate fresh tensors, because the linear-attention layers write their states back in place. A layer
+holding a tensor under any other name is not chunked at all: `score_shared` falls back to the 1.1.0 single fork of every
+row and counts it in `/stats -> engine.shared_unchunked_layout`, which stays at zero on the released checkpoints. Answers: with equal-length suffixes the chunked path is bit-identical to the single fork at every chunk size, so
+the batch size on its own changes nothing; with suffixes of different lengths a chunk pads to its own longest suffix and
+the answers move by at most 2.9e-5 (four rows, 223 to 450-token suffixes) to 1.5e-2 (32 rows, 182 to 932-token suffixes)
+of probability, argmax unchanged. Peak reserved memory on the 2B for the heaviest shared-prefix request in the 4,000-row
+Decision Index sample (17 questions over a 7,988-token state): 3.75 GB before, 1.94 GB at a 1 GB budget, 0.67 GB at one
+row per fork. On a synthetic 16,000-token state with 32 questions, 15.38 GB before and 2.17 GB at a 1 GB budget. The
+default 8 GB budget does not bind on anything in that sample; it bounds the long-state case.
+
+**Measured** (1,000 Decision Index rows, decider-2b, one B300 shared with a training run, so the absolute latencies are
+inflated; 1.1.0 from the released checkout, 1.1.1 from the working tree, back to back on the same card): at concurrency 1
+the median is unchanged at 18.5 ms, p99 379 against 401 ms, throughput 17.30 against 17.25 req/s. At concurrency 8 the
+server runs 748 batches for 1,000 requests instead of 1,027 (single-row batches 210 against 476), throughput 19.02
+against 18.46 req/s, median 301 against 304 ms, mean 420 against 433 ms, p99 1,300 against 1,316 ms. No errors in any
+run. Two controls on the new code: with `DECIDER_MERGE_OVERHEAD_TOKENS=0` the batching is the 1.1.0 grouping again (1,207
+and 1,017 batches) and the gain disappears; with `DECIDER_BATCH_ADAPTIVE_WAIT_MS=0` nothing measurable changes. Agreement
+with the masked eager forward is unchanged: 8 to 13 of 8,247 answers differ in argmax in every case, old and new, one
+answer above a 0.05 probability tolerance, `usage` identical.
+
 ## decider-4b v1 (2026-09-22): the supervised recipe on Qwen3.5-4B-Base with mixture v2
 
 [Mapika/decider-4b](https://huggingface.co/Mapika/decider-4b) (bf16, 8.4 GB). One supervised pass over mixture v2, 742M tokens: the

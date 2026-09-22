@@ -7,15 +7,19 @@
 
    uvicorn decider.serve:app --host 0.0.0.0 --port 8000        (env: DECIDER_MODEL and the variables below)
 
-Execution (1.1.0; docs/SERVING.md has the design and the measurements):
+Execution (1.1.1; docs/SERVING.md has the design and the measurements):
   * decider.engine_v2.EngineV2: CUDA graphs keyed on (batch bucket, padded length bucket) only.  The whole grid is captured
     during start-up and the engine is then sealed, so no request pays a graph capture or a torch.compile.  Rows longer than the
     last length bucket (8,192 tokens) run eager, in chunks bounded by DECIDER_GRAPH_TOKEN_BUDGET padded tokens.
-  * one GPU thread runs every forward; tokenisation runs on a CPU pool; rows waiting at the same moment are grouped by length
-    bucket and replayed together.
+  * one GPU thread runs every forward; tokenisation runs on a CPU pool; rows waiting at the same moment are partitioned by
+    decider.batching.plan_batches, which pads a shorter row into a longer row's bucket when that costs less than a second
+    forward (cost model: DECIDER_MERGE_OVERHEAD_TOKENS + rows * padded length).  When a collection held rows from more than
+    one live request the next one waits up to DECIDER_BATCH_ADAPTIVE_WAIT_MS for more rows, unless its own first row took
+    more than 50 ms to arrive (a quiet queue drops the window again); after a single-request collection it does not wait.
   * an independent request with more than one question over a state of at least DECIDER_SHARED_MIN_TOKENS tokens runs the state
-    once and forks its cache per question (EngineV2.score_shared).  The cuDNN SDPA backend is off (decider.engine
-    .set_attention_backend_policy), which is what makes that path agree with the full forward.
+    once and forks its cache per question (EngineV2.score_shared, decider.shared_prefix).  The fork is made in chunks that fit
+    DECIDER_SHARED_FORK_GB, so the peak memory does not grow with the question count.  The cuDNN SDPA backend is off
+    (decider.engine.set_attention_backend_policy), which is what makes that path agree with the full forward.
   * the schema cache (questions-first layout, prefix cached per question set) is honoured exactly as before: on when
     decider_config.json has "schema_first": true, or with DECIDER_SCHEMA_CACHE=1 on a model trained for that layout.  It is
     the one path that does GPU work after start-up that is not a graph replay: the first request with a new schema runs its
@@ -25,6 +29,7 @@ Execution (1.1.0; docs/SERVING.md has the design and the measurements):
     limits below, HTTP 503 when the outstanding work exceeds DECIDER_MAX_QUEUE_ROWS.
 
 Variables (default):  DECIDER_COMPILE (0)  DECIDER_FP8 (0)  DECIDER_SHARED (1)  DECIDER_SHARED_MIN_TOKENS (768)
+  DECIDER_SHARED_FORK_GB (8)  DECIDER_MERGE_OVERHEAD_TOKENS (512)  DECIDER_BATCH_ADAPTIVE_WAIT_MS (2)
   DECIDER_MAX_BATCH (32)  DECIDER_BATCH_WAIT_MS (0; DECIDER_MAX_WAIT_MS is an alias)  DECIDER_MAX_STATE_TOKENS (32768)
   DECIDER_T_BUCKETS  DECIDER_B_BUCKETS  DECIDER_GRAPH_TOKEN_BUDGET (32768)  DECIDER_WARMUP (1)  DECIDER_TOKENIZE_THREADS (8)
   DECIDER_MAX_ROWS (1024)  DECIDER_MAX_ROW_TOKENS (DECIDER_MAX_STATE_TOKENS + 4096)  DECIDER_MAX_REQUEST_TOKENS (1048576)
@@ -36,6 +41,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from decider import systemone as S1
+from decider.batching import DEFAULT_MERGE_OVERHEAD_TOKENS, plan_batches
 from decider.prompt import build, MAX_OPTIONS
 from decider.prompt_fast import build_rows, unique_tokens
 
@@ -47,6 +53,9 @@ def _env_int(name, default):
 MODEL = os.environ.get("DECIDER_MODEL", "runs/r3_v2/model")
 MAX_BATCH = _env_int("DECIDER_MAX_BATCH", 32)
 BATCH_WAIT_MS = float(os.environ.get("DECIDER_BATCH_WAIT_MS", os.environ.get("DECIDER_MAX_WAIT_MS", "0")))
+ADAPTIVE_WAIT_MS = float(os.environ.get("DECIDER_BATCH_ADAPTIVE_WAIT_MS", "2"))   # window after a collection that held >1 request; 0 disables
+ADAPTIVE_IDLE_RESET_MS = 50.0                                               # an idler queue than this drops the adaptive window again
+MERGE_OVERHEAD_TOKENS = _env_int("DECIDER_MERGE_OVERHEAD_TOKENS", DEFAULT_MERGE_OVERHEAD_TOKENS)
 MAX_STATE_TOKENS = _env_int("DECIDER_MAX_STATE_TOKENS", 32768)
 SHARED = os.environ.get("DECIDER_SHARED", "1") == "1"
 SHARED_MIN_TOKENS = _env_int("DECIDER_SHARED_MIN_TOKENS", 768)
@@ -65,7 +74,7 @@ DECIDE_MAX_CTX_TOKENS = 1536                                                # /d
 MODEL_NAME = "decider"; TEMP = 1.0; TEMP_SCHEMA = 1.0; RELEASE_DATE = "2026-09-17"; ISOLATED = False; NEUTRALIZE_NONE = True
 SCHEMA_FIRST = False; se = None; squeue = None; schemas = {}; seen = {}
 eng = None; queue = None; gpu = None; cpu = None; batcher_task = None; schema_task = None
-outstanding = 0
+outstanding = 0; REQ_SEQ = 0
 stats = dict(requests=0, batches=0, decisions=0, rows=0, shared_prefix_requests=0, errors=0, rejected_too_large=0,
              rejected_overloaded=0, batch_hist={}, bucket_hist={})
 
@@ -178,9 +187,20 @@ def _score_shared(items):
     return eng.score_shared(items, temperature=TEMP)
 
 
-async def _collect(q):
-    """Take what is already queued and go; DECIDER_BATCH_WAIT_MS > 0 adds a collection window."""
-    batch = [await q.get()]; deadline = time.monotonic() + BATCH_WAIT_MS / 1000
+async def _collect(q, wait_ms=None, adaptive_ms=0.0, idle_reset_ms=None):
+    """Take what is already queued and go.
+
+    `wait_ms` (DECIDER_BATCH_WAIT_MS) is the unconditional collection window.  `adaptive_ms` is the extra window the
+    batcher asks for after a collection that held more than one live request; it is dropped again when the first row of
+    this collection took longer than `idle_reset_ms` to arrive, so an isolated request after a quiet period never waits.
+    """
+    wait = BATCH_WAIT_MS if wait_ms is None else wait_ms
+    reset = ADAPTIVE_IDLE_RESET_MS if idle_reset_ms is None else idle_reset_ms
+    t0 = time.monotonic()
+    batch = [await q.get()]
+    if adaptive_ms > 0 and (time.monotonic() - t0) * 1000 <= reset:
+        wait = max(wait, adaptive_ms)
+    deadline = time.monotonic() + wait / 1000
     while len(batch) < MAX_BATCH:
         try:
             batch.append(q.get_nowait())
@@ -192,28 +212,44 @@ async def _collect(q):
     return batch
 
 
+def _bucketed(n):
+    """False for a row longer than the engine's last captured length bucket.  Those run eager at a request-specific shape,
+    so they are grouped by exact padded length as in 1.1.0 instead of being padded into another row's bucket."""
+    t_bucket = getattr(eng, "t_bucket", None)
+    return True if t_bucket is None else t_bucket(n) is not None
+
+
+def adaptive_ms(batch):
+    """The extra collection window the next collection may use: DECIDER_BATCH_ADAPTIVE_WAIT_MS when this collection held
+    live rows from more than one request, 0 otherwise.  Rows whose future is already done (a cancelled or failed request)
+    are not counted: they are not evidence that requests are overlapping."""
+    if ADAPTIVE_WAIT_MS <= 0:
+        return 0.0
+    return ADAPTIVE_WAIT_MS if len({rid for fut, _, rid in batch if not fut.done()}) > 1 else 0.0
+
+
 async def batcher():
-    """One forward per (length bucket, chunk): rows queued at the same moment share a replay when their bucket matches."""
+    """One forward per planned group.  Rows queued at the same moment are partitioned by decider.batching.plan_batches:
+    a shorter row is padded into a longer row's bucket when that costs less than running a second forward."""
     loop = asyncio.get_running_loop()
+    extra = 0.0                                      # the adaptive window the previous collection earned
     while True:
-        batch = await _collect(queue)
-        groups = {}
-        for fut, it in batch:
-            groups.setdefault(eng.pad_len(len(it["ids"])), []).append((fut, it))
-        for T, g in groups.items():
-            cap = max(1, min(MAX_BATCH, eng.max_rows(T)))
-            stats["bucket_hist"][T] = stats["bucket_hist"].get(T, 0) + len(g)
-            for i in range(0, len(g), cap):
-                part = g[i:i + cap]
-                try:
-                    probs = await loop.run_in_executor(gpu, _score_items, [it for _, it in part])
-                    for (fut, _), p in zip(part, probs):
-                        if not fut.done(): fut.set_result(p)
-                except Exception as e:
-                    for fut, _ in part:
-                        if not fut.done(): fut.set_exception(e)
-                stats["batches"] += 1
-                stats["batch_hist"][len(part)] = stats["batch_hist"].get(len(part), 0) + 1
+        batch = await _collect(queue, BATCH_WAIT_MS, extra)
+        extra = adaptive_ms(batch)
+        groups = plan_batches([len(it["ids"]) for _, it, _ in batch], eng.pad_len, eng.max_rows, MAX_BATCH,
+                              MERGE_OVERHEAD_TOKENS, _bucketed)
+        for T, idx in groups:
+            part = [batch[i] for i in idx]
+            stats["bucket_hist"][T] = stats["bucket_hist"].get(T, 0) + len(part)
+            try:
+                probs = await loop.run_in_executor(gpu, _score_items, [it for _, it, _ in part])
+                for (fut, _, _), p in zip(part, probs):
+                    if not fut.done(): fut.set_result(p)
+            except Exception as e:
+                for fut, _, _ in part:
+                    if not fut.done(): fut.set_exception(e)
+            stats["batches"] += 1
+            stats["batch_hist"][len(part)] = stats["batch_hist"].get(len(part), 0) + 1
 
 
 # ---- schema cache (questions-first layout; opt-in) --------------------------------
@@ -382,9 +418,12 @@ def _alive():
 
 
 async def _queued(items):
+    """Queue one request's rows.  Every row carries the request's id, which is what the batcher's adaptive wait reads."""
+    global REQ_SEQ
     loop = asyncio.get_running_loop(); futs = []
+    REQ_SEQ += 1; rid = REQ_SEQ
     for it in items:
-        f = loop.create_future(); futs.append(f); queue.put_nowait((f, it))
+        f = loop.create_future(); futs.append(f); queue.put_nowait((f, it, rid))
     return await asyncio.gather(*futs)
 
 

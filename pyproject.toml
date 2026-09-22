@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "decider-ai"
-version = "1.1.0"
+version = "1.1.1"
 description = "One-pass typed decisions with calibrated probabilities: decider-2b, decider-35b-a3b and the training recipe"
 readme = "README.md"
 requires-python = ">=3.11"

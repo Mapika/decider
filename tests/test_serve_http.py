@@ -321,3 +321,159 @@ def test_schema_cache_requests_are_bounded_before_any_gpu_preparation(served, mo
     assert se.stats["prepared"] == 1 and se.stats["replays"] == 2          # one preparation per schema, one replay per request
     assert o["stats"]["schema_cache"] == dict(prepared=1, captures=1, replays=2, eager=0, schemas=1)
     assert serve.outstanding == 0 and o["stats"]["rejected_too_large"] >= 3
+
+
+# ---- batching policy ------------------------------------------------------
+def _row(n, nopts=3):
+    return dict(ids=list(range(n)), slots=[n - 1], nopts=[nopts], golds=[0], perms=[list(range(nopts))])
+
+
+def _queue_rows(loop, spec):
+    """spec: [(row length, request id)].  -> the futures, in the order the rows were queued."""
+    futs = []
+    for n, rid in spec:
+        f = loop.create_future(); futs.append(f)
+        serve.queue.put_nowait((f, _row(n), rid))
+    return futs
+
+
+def test_queued_rows_of_different_lengths_share_one_forward(served):
+    """The cross-request merge: rows waiting at the same moment are partitioned by decider.batching.plan_batches, so
+    three rows in three different 64-token buckets run as one forward at the longest bucket instead of three."""
+    eng, run = served
+
+    async def fn(cl):
+        return await asyncio.gather(*_queue_rows(asyncio.get_running_loop(), [(200, 1), (60, 2), (130, 3)]))
+    out = run(fn)
+    assert eng.calls == [("items", 3)], eng.calls
+    for (n, _), p in zip([(200, 1), (60, 2), (130, 3)], out):
+        assert p.tolist() == [_probs(_row(n)["ids"], 3)]                  # every row got its own answer, not a neighbour's
+    assert len({tuple(p.tolist()[0]) for p in out}) == 3
+
+
+def test_split_collections_return_each_row_its_own_answer(served, monkeypatch):
+    """With merging off the three rows run as three forwards; the results must still come back on the right futures."""
+    eng, run = served
+    monkeypatch.setattr(serve, "MERGE_OVERHEAD_TOKENS", 0)
+    spec = [(200, 1), (60, 2), (130, 3)]
+
+    async def fn(cl):
+        return await asyncio.gather(*_queue_rows(asyncio.get_running_loop(), spec))
+    out = run(fn)
+    assert eng.calls == [("items", 1), ("items", 1), ("items", 1)], eng.calls
+    for (n, _), p in zip(spec, out):
+        assert p.tolist() == [_probs(_row(n)["ids"], 3)]
+
+
+def test_a_cancelled_row_does_not_disturb_the_others(served):
+    """A request that goes away before its batch runs: the batcher must skip its future, serve the rest and stay alive."""
+    eng, run = served
+
+    async def fn(cl):
+        loop = asyncio.get_running_loop()
+        futs = _queue_rows(loop, [(200, 1), (60, 2), (130, 3)])
+        futs[1].cancel()
+        done = await asyncio.gather(futs[0], futs[2])
+        again = await asyncio.gather(*_queue_rows(loop, [(80, 4)]))       # the batcher is still running
+        return done, again, serve.batcher_task.done()
+    (a, c), again, dead = run(fn)
+    assert not dead
+    assert a.tolist() == [_probs(_row(200)["ids"], 3)] and c.tolist() == [_probs(_row(130)["ids"], 3)]
+    assert again[0].tolist() == [_probs(_row(80)["ids"], 3)]
+
+
+def test_a_failing_forward_fails_every_future_in_its_group(served):
+    """score_items raising must reach every row of that group as an exception, and must not kill the batcher."""
+    eng, run = served
+    good_score = eng.score_items
+
+    def boom(items, temperature=1.0):
+        eng.calls.append(("items", len(items)))
+        raise RuntimeError("forward failed")
+
+    async def fn(cl):
+        loop = asyncio.get_running_loop()
+        eng.score_items = boom                                            # restored below, not via monkeypatch: the
+        try:                                                              # `served` fixture shares that monkeypatch
+            bad = await asyncio.gather(*_queue_rows(loop, [(200, 1), (60, 2)]), return_exceptions=True)
+        finally:
+            eng.score_items = good_score
+        good = await asyncio.gather(*_queue_rows(loop, [(80, 3)]))
+        return bad, good, serve.batcher_task.done()
+    bad, good, dead = run(fn)
+    assert len(bad) == 2 and all(isinstance(x, RuntimeError) and str(x) == "forward failed" for x in bad)
+    assert not dead and good[0].tolist() == [_probs(_row(80)["ids"], 3)]
+
+
+def test_merging_is_off_when_the_overhead_is_zero(served, monkeypatch):
+    """With DECIDER_MERGE_OVERHEAD_TOKENS = 0 a forward is free, so no row is ever padded into a longer row's bucket."""
+    eng, run = served
+    monkeypatch.setattr(serve, "MERGE_OVERHEAD_TOKENS", 0)
+
+    async def fn(cl):
+        return await asyncio.gather(*_queue_rows(asyncio.get_running_loop(), [(200, 1), (60, 2), (130, 3)]))
+    run(fn)
+    assert eng.calls == [("items", 1), ("items", 1), ("items", 1)], eng.calls
+
+
+# ---- the adaptive collection window ---------------------------------------
+class _Fut:
+    """Future stand-in for adaptive_ms: only `done()` is read."""
+    def __init__(self, done): self._done = done
+    def done(self): return self._done
+
+
+def _batch(spec):
+    return [(_Fut(done), None, rid) for rid, done in spec]
+
+
+def test_adaptive_window_follows_the_request_mix(monkeypatch):
+    """multi -> single -> multi: the window is asked for only after a collection that held more than one live request."""
+    monkeypatch.setattr(serve, "ADAPTIVE_WAIT_MS", 2.0)
+    assert serve.adaptive_ms(_batch([(1, False), (2, False)])) == 2.0        # two requests: wait next time
+    assert serve.adaptive_ms(_batch([(1, False), (1, False)])) == 0.0        # one request, several rows: do not wait
+    assert serve.adaptive_ms(_batch([(1, False)])) == 0.0
+    assert serve.adaptive_ms(_batch([(3, False), (4, False)])) == 2.0        # back to two requests
+
+
+def test_a_cancelled_row_is_not_evidence_of_concurrency(monkeypatch):
+    monkeypatch.setattr(serve, "ADAPTIVE_WAIT_MS", 2.0)
+    assert serve.adaptive_ms(_batch([(1, False), (2, True)])) == 0.0         # the second request's row is already done
+    assert serve.adaptive_ms(_batch([(1, True), (2, True)])) == 0.0
+
+
+def test_the_adaptive_window_is_off_when_the_variable_is_zero(monkeypatch):
+    monkeypatch.setattr(serve, "ADAPTIVE_WAIT_MS", 0.0)
+    assert serve.adaptive_ms(_batch([(1, False), (2, False)])) == 0.0
+
+
+def test_collect_waits_only_for_the_window_it_was_given():
+    """_collect takes what is queued; a positive adaptive window holds the collection open for a row that is still
+    coming, and a zero window does not."""
+    async def go(adaptive):
+        q = asyncio.Queue(); q.put_nowait("a")
+        async def later():
+            await asyncio.sleep(0.01)
+            q.put_nowait("b")
+        t = asyncio.get_running_loop().create_task(later())
+        got = await serve._collect(q, 0.0, adaptive)
+        await t
+        return got
+    assert _run(go(50.0)) == ["a", "b"]
+    assert _run(go(0.0)) == ["a"]
+
+
+def test_a_quiet_queue_drops_the_adaptive_window():
+    """The window is for overlapping requests.  When the first row of a collection was slow to arrive, the queue was
+    idle, and the collection must go as soon as it is empty however large the window was."""
+    async def go(idle_reset_ms):
+        q = asyncio.Queue()
+        async def feed():
+            await asyncio.sleep(0.02); q.put_nowait("a")
+            await asyncio.sleep(0.01); q.put_nowait("b")
+        t = asyncio.get_running_loop().create_task(feed())
+        got = await serve._collect(q, 0.0, 50.0, idle_reset_ms)
+        await t
+        return got
+    assert _run(go(0.0)) == ["a"]                                            # idle queue: window dropped
+    assert _run(go(1000.0)) == ["a", "b"]                                    # window kept

@@ -98,3 +98,56 @@ def test_cached_continuation_matches_the_single_prefill_at_the_known_bad_splits(
             assert bool(h.isfinite().all()), P
             rel = float((full - h).abs().max() / full.abs().max())
             assert rel < 0.05, (P, rel)
+
+
+@pytest.mark.cuda
+def test_chunked_shared_fork_is_exact_when_the_suffixes_are_equally_long(engine):
+    """The memory-bounded fork (decider.shared_prefix): the prefix cache is copied m rows at a time instead of n at once.
+    With every suffix the same length, every chunk pads to the same width as the single fork, and the answers are
+    bit-identical at m = 1, 2, 3 -- the batch size of the suffix forward on its own changes nothing."""
+    items = _prompt(engine.tok, suffix_tokens=(300, 300, 300, 300))
+    full = torch.cat(engine.score_shared(items, rows_per_fork=len(items)))
+    assert bool(full.isfinite().all())
+    for m in (1, 2, 3):
+        got = torch.cat(engine.score_shared(items, rows_per_fork=m))
+        assert float((got - full).abs().max()) == 0.0, (m, float((got - full).abs().max()))
+
+
+@pytest.mark.cuda
+@pytest.mark.parametrize("suffixes", [(223, 240, 300, 450),
+                                      tuple(223 + 8 * i for i in range(32))])           # 4 rows and 32 rows
+def test_chunked_shared_fork_matches_the_single_fork_with_mixed_suffixes(engine, suffixes):
+    """With suffixes of different lengths a chunk pads to its own longest suffix, not the request's, so the kernels
+    reduce in a different order.  Measured on decider-2b: at most 2.9e-5 of probability over four rows (223 to 450-token
+    suffixes) and 4.5e-5 over 32 (223 to 471), argmax unchanged.  A request whose suffixes are further apart moves
+    further: 1.5e-2 on a 32-row sample row with 182 to 932-token suffixes, still well inside the server's 0.05 tolerance
+    against the eager reference."""
+    items = _prompt(engine.tok, suffix_tokens=suffixes)
+    full = torch.cat(engine.score_shared(items, rows_per_fork=len(items)))
+    for m in (1, 3):
+        got = torch.cat(engine.score_shared(items, rows_per_fork=m))
+        assert bool(got.isfinite().all()), m
+        assert (got.argmax(-1) == full.argmax(-1)).all(), m
+        assert float((got - full).abs().max()) <= 1e-4, (len(items), m, float((got - full).abs().max()))
+
+
+@pytest.mark.cuda
+def test_the_fork_budget_bounds_peak_memory(engine):
+    """A small budget must lower the peak reserved memory of the same request, and `chunk_rows` must turn a budget into
+    the row count the loop uses."""
+    from decider import shared_prefix
+    items = _prompt(engine.tok, suffix_tokens=(300,) * 8)
+    torch.cuda.synchronize(); torch.cuda.empty_cache(); torch.cuda.reset_peak_memory_stats()
+    wide = torch.cat(engine.score_shared(items, rows_per_fork=len(items)))
+    peak_wide = torch.cuda.max_memory_reserved()
+    torch.cuda.synchronize(); torch.cuda.empty_cache(); torch.cuda.reset_peak_memory_stats()
+    narrow = torch.cat(engine.score_shared(items, rows_per_fork=1))
+    peak_narrow = torch.cuda.max_memory_reserved()
+    assert peak_narrow < peak_wide, (peak_narrow, peak_wide)
+    assert float((narrow - wide).abs().max()) == 0.0
+    pre = torch.tensor(items[0]["ids"][:2000], device=engine.dev)[None]
+    cache = engine.core(input_ids=pre, use_cache=True).past_key_values
+    per_row = shared_prefix.cache_row_bytes(cache)
+    assert per_row > 0
+    assert shared_prefix.chunk_rows(per_row, 32, budget_bytes=per_row * 3) == 3
+    assert shared_prefix.chunk_rows(per_row, 32, budget_bytes=per_row // 2) == 1
