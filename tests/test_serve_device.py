@@ -1,6 +1,6 @@
 """Issue #5: the server picks its device like decider.infer.Decider and fails with a message that names the requirement."""
 import pytest
-import torch
+torch = pytest.importorskip("torch")
 
 from decider import serve
 
