@@ -3,6 +3,60 @@
 Newest first. Every entry names the weights it applies to; the Hub repositories keep earlier weights under tags where noted.
 `HISTORY.md` is the long form: how each stage was trained and what was measured.
 
+## 1.1.0 (2026-09-22): the HTTP server captures its CUDA graphs at start-up
+
+Code only; no weights change. `decider.serve` is a new implementation with the same module name, routes, request format and
+response format (fields, order, `usage`, 422 bodies); the environment variables are the same except where listed below. The
+1.0.x server is kept for one release as `decider.serve_v1` (its code unchanged, its module docstring replaced) and is removed in
+1.2.0. Probabilities are not byte-identical across the two servers: the defaults changed from FP8 to bf16 and a Hub-id
+configuration is now read (below). Design, limits and measurements: `docs/SERVING.md`.
+
+What changed and why. On the Decision Index the 1.0.x server gave decider-2b a p95 of 1,641 ms against a 50 ms median. The
+cause was shape-dependence: the graph grid stopped at 2,048 tokens and was only warmed to 1,536, so the first request at a new
+`(batch, length)` shape paid a torch.compile and a graph capture with the GPU lock held, and rows above 2,048 tokens ran eager
+at request-specific shapes. The new server:
+
+* captures every CUDA graph of a fixed `(batch bucket, length bucket)` grid during start-up (lengths 64 to 8,192, batches 1 to
+  32, 89 graphs) and then seals the engine: on the default path no request can trigger a capture or a compile. Rows above
+  8,192 tokens run eager in bounded chunks. The opt-in schema cache is the exception: as in 1.0.x, the first request with a new
+  schema runs its prefix and captures one graph per (schema, batch bucket, state bucket); `/stats -> schema_cache` counts them.
+  Engine: `decider.engine_v2.EngineV2`.
+* defaults to `DECIDER_COMPILE=0` and `DECIDER_FP8=0` (were 1). At the old defaults the served probabilities differ from the
+  bf16 weights on 1.3% to 2.8% of the measured answers (the 1.0.x row of the `docs/SERVING.md` table); the new defaults serve the
+  bf16 numerics. The two switches were not measured in isolation against the new server; both remain available.
+* keeps the shared-state path on (`DECIDER_SHARED=1`): an independent request with several questions over a state of at least
+  768 tokens runs the state once and forks the cache per question. It is correct because the engine applies the attention
+  backend policy of 1.0.2 before any capture; `tests/test_engine_v2_cuda.py` checks it against the full forward on the shape
+  that failed.
+* runs every forward on one GPU thread, tokenises the state once per request instead of once per question, and groups rows
+  waiting at the same moment by length bucket.
+* bounds requests before they reach the GPU: HTTP 413 when a request expands to more than `DECIDER_MAX_ROWS` (1,024) scoring
+  rows, when a row exceeds `DECIDER_MAX_ROW_TOKENS` (state cap + 4,096 = 36,864) tokens, or when the request exceeds
+  `DECIDER_MAX_REQUEST_TOKENS` (1,048,576) tokens in total; HTTP 503 when more than `DECIDER_MAX_QUEUE_ROWS` (4,096) rows are
+  admitted and not yet scored. 1.0.x had no such limits.
+* reads `decider_config.json` from a Hub id as well as from a folder. 1.0.x only read it from a folder, so
+  `scripts/serve.sh Mapika/decider-2b` served temperature 1.0 with isolated levels off and the model name `decider-dev`; it now
+  serves the config's temperature 1.3, isolated levels and `decider-v10`, as the library does.
+* `/decide` returns 422 with the message for an invalid schema (1.0.x returned 500).
+* `/health` is true only once the graphs are captured and the batcher is running; `/stats` adds `rows`, `rejected_too_large`,
+  `rejected_overloaded`, `outstanding_rows`, `limits`, `schema_cache` and the engine's capture/replay/eager counters
+  (`graph_captures`, `replays`, `eager_forwards`, `shared_calls` replace the 1.0.x `long_forwards` and `shared_prefix_calls`).
+  `errors` counts requests that failed after parsing (question validation, inference failures); Pydantic 422s, 413 and 503
+  are not in it.
+* schema-cache requests are bounded and admitted like the others, on prefix plus suffix tokens, before any prefix is run on
+  the GPU; a schema-cache request with no questions returns the empty answer set instead of an error.
+
+Unchanged: the wire format of `/v1/systemone` and `/decide` (answers, `usage`, field order, 422 bodies), the schema cache and
+its switches (`schema_first` in the config, `DECIDER_SCHEMA_CACHE`, `DECIDER_SCHEMAS`, `DECIDER_SCHEMA_MIN_SEEN`),
+`DECIDER_MAX_BATCH`, `DECIDER_MAX_STATE_TOKENS`, `DECIDER_TEMPERATURE`. `DECIDER_BATCH_WAIT_MS` is the collection window as
+before, default 0; `DECIDER_MAX_WAIT_MS`, declared but unused in 1.0.x, is now an alias for it. `DECIDER_MAX_FWD_TOKENS` is
+replaced, not aliased, by `DECIDER_GRAPH_TOKEN_BUDGET` (32,768 padded tokens per forward). Start-up took 27 s (decider-2b) and
+45 s (4B) for the graph grid on a B300.
+
+Bench and test tooling: `decider/bench/replay_systemone.py` (replay a row file against a server, compare two runs),
+`run_serving_matrix.py`, `verify_engine_v2.py`, `probe_cache_split.py`, `eager_reference.py`; `tests/test_serve_http.py` checks
+the new server byte for byte against `serve_v1` on the same requests with a stand-in engine.
+
 ## 1.0.2 (2026-09-22): wrong answers from the cached shared-state path on Blackwell
 
 Code only; no weights change. `decider.serve` scores the questions of one request against a cached prefix of the shared state

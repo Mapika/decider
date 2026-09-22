@@ -38,6 +38,9 @@ local Qwen3.5-27B teacher (`teacher_data/`, `decider/data/mixture.py`). Nothing 
 
 ## What's new
 
+* **2026-09-22 — 1.1.0: the HTTP server captures its CUDA graphs at start-up.** On the default path no request compiles or
+  captures a graph (the opt-in schema cache still captures one graph set per schema the first time it is used); request-size
+  and queue limits; `DECIDER_COMPILE` and `DECIDER_FP8` default off. Details in docs/CHANGELOG.md.
 * **2026-09-22 — 1.0.2 fixes wrong answers from the cached shared-state path** on Blackwell (a cuDNN attention backend fault; the
   engine now turns that backend off). Upgrade if you serve long shared-state requests; details in docs/CHANGELOG.md.
 * **2026-09-22 — On PyPI as `decider-ai`** (the import name stays `decider`).
@@ -165,7 +168,11 @@ scripts/serve.sh Mapika/decider-2b 8000
 ```
 
 `POST /v1/systemone` is TypeSafe's wire format, so their SDKs work unchanged with `TYPESAFE_BASE_URL=http://localhost:8000`;
-`POST /decide` is the plain form. A schema seen twice gets a cached prefix and its own CUDA graphs.
+`POST /decide` is the plain form. The server captures a CUDA graph for every (batch, length) shape at start-up, so on the
+default path no request compiles or captures a graph; requests over its size limits get HTTP 413 and an overloaded server
+answers 503 (limits, defaults and measurements in `docs/SERVING.md`). The schema cache (a schema seen twice gets a cached prefix
+and its own graphs, captured the first time that schema is used) is on only for a model whose `decider_config.json` sets
+`schema_first`, or with `DECIDER_SCHEMA_CACHE=1`.
 
 ## Train your own
 
