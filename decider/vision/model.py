@@ -14,8 +14,10 @@ def to_pil(x):
 
 
 class VisionDecisionModel(nn.Module):
-    def __init__(self, name, dtype=torch.bfloat16, grad_ckpt=True):
+    def __init__(self, name, dtype=None, grad_ckpt=True):
         super().__init__()
+        if dtype is None:
+            dtype = torch.float16 if torch.backends.mps.is_available() else torch.bfloat16
         self.proc = AutoProcessor.from_pretrained(name); self.tok = self.proc.tokenizer
         self.lm = AutoModelForImageTextToText.from_pretrained(name, dtype=dtype)
         if grad_ckpt: self.lm.gradient_checkpointing_enable()
@@ -49,6 +51,9 @@ class VisionDecisionModel(nn.Module):
 
     def slot_logits(self, inp):
         dev = self.letters.device
+        if dev.type == "mps":
+            from decider.mps_ops import patch_mps
+            patch_mps()
         kw = {k: v.to(dev) for k, v in inp.items() if k in ("input_ids", "attention_mask", "pixel_values", "image_grid_thw", "mm_token_type_ids")}
         h = self.lm.model(**kw, use_cache=False).last_hidden_state                        # [B, T, H]
         hs = h[inp["slot_batch"].to(dev), inp["slot_idx"].to(dev)]                         # [N, H]
