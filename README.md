@@ -2,7 +2,7 @@
 
 [![tests](https://github.com/Mapika/decider/actions/workflows/tests.yml/badge.svg)](https://github.com/Mapika/decider/actions/workflows/tests.yml)
 [![weights](https://img.shields.io/badge/%F0%9F%A4%97%20weights-Mapika%2Fdecider--2b-yellow)](https://huggingface.co/Mapika/decider-2b)
-[![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/Mapika/decider/blob/main/LICENSE)
 
 A language model that does not generate text. It reads a **state** and a set of **typed questions** and returns, from one
 forward pass, a probability distribution for every question.
@@ -10,14 +10,14 @@ forward pass, a probability distribution for every question.
 A typed decision is a question with a fixed answer set: **Choice** over 2 to 255 options, **Score** over 2 to 10 described
 levels, or **Noul**, the probability of yes. There is no decoding, no parsing, and no output outside the options you defined.
 
-![the model playing ten games from text state descriptions, plus Super Mario Bros with the RL checkpoint](media/montage.gif)
+![the model playing ten games from text state descriptions, plus Super Mario Bros with the RL checkpoint](https://raw.githubusercontent.com/Mapika/decider/main/media/montage.gif)
 
 *Ten text games and Super Mario Bros, each move one typed decision over the legal actions; see `decider/games/` and
 `docs/HISTORY.md`.*
 
 <p align="center">
-  <img width="55%" src="media/pong_35b.gif" alt="Atari Pong played from RAM-derived text state by decider-35b-a3b as released (left) and with the games-RL overlay (right)">
-  <img width="44%" src="media/vision_2b.gif" alt="decider-2b-vision answering ten held-out image questions with the served probability on every option">
+  <img width="55%" src="https://raw.githubusercontent.com/Mapika/decider/main/media/pong_35b.gif" alt="Atari Pong played from RAM-derived text state by decider-35b-a3b as released (left) and with the games-RL overlay (right)">
+  <img width="44%" src="https://raw.githubusercontent.com/Mapika/decider/main/media/vision_2b.gif" alt="decider-2b-vision answering ten held-out image questions with the served probability on every option">
 </p>
 
 *Left: Atari Pong, same seed twice, decider-35b-a3b as released (left half) and the same weights with the games-RL overlay (right half). The model never sees the picture: it reads a text state built from the console RAM and picks
@@ -25,7 +25,7 @@ up, down or stay, one forward pass per decision, 43 ms median on one B300 in bf1
 21-0; the overlay is at -3 when the clip ends. The overlay is an experiment, not a released checkpoint. Right:
 `decider-2b-vision` on ten held-out image questions, chosen by a fixed rule that includes the confident wrong answers, not the
 ten best. Gold is marked in green; 87% of 71 scored rows were correct; 59 ms median per image. The clips are recorded frames,
-nothing is edited inside a clip; [docs/DEMOS.md](docs/DEMOS.md) gives checkpoints, seeds, timers and the games-RL run.*
+nothing is edited inside a clip; [docs/DEMOS.md](https://github.com/Mapika/decider/blob/main/docs/DEMOS.md) gives checkpoints, seeds, timers and the games-RL run.*
 
 **Independence.** This is an independent project. It is not affiliated with or endorsed by TypeSafe AI. It is an open
 reproduction of the "System One" model class (TypeSafe AI's *Jev*): a 2B model built on `Qwen/Qwen3.5-2B-Base` and a 35B
@@ -34,7 +34,7 @@ local Qwen3.5-27B teacher (`teacher_data/`, `decider/data/mixture.py`). Nothing 
 
 **Contents:** [What's new](#whats-new) · [Standing](#standing) · [Models](#models) · [Runs on](#runs-on) ·
 [Quick start](#quick-start) · [Train your own](#train-your-own) · [How it works](#how-it-works) ·
-[Limits](#limits-stated-plainly) · [Results](docs/RESULTS.md)
+[Limits](#limits-stated-plainly) · [Results](https://github.com/Mapika/decider/blob/main/docs/RESULTS.md)
 
 ## What's new
 
@@ -46,8 +46,8 @@ local Qwen3.5-27B teacher (`teacher_data/`, `decider/data/mixture.py`). Nothing 
 * **2026-09-19 — decider-2b v10.** The v8 weights plus 384 steps of calibration-aware RL on live browser tasks and exact
   games: sampled browser play 83% to 93%, belief 0.47 to 0.22 nats above the exact laws, everything else unchanged.
 
-Earlier versions, v1 to v9, are in [docs/CHANGELOG.md](docs/CHANGELOG.md), with the per-stage measurements in
-[docs/HISTORY.md](docs/HISTORY.md).
+Earlier versions, v1 to v9, are in [docs/CHANGELOG.md](https://github.com/Mapika/decider/blob/main/docs/CHANGELOG.md), with the per-stage measurements in
+[docs/HISTORY.md](https://github.com/Mapika/decider/blob/main/docs/HISTORY.md).
 
 ## Standing
 
@@ -103,7 +103,7 @@ decider-35b-a3b 0.676 and decider-2b 0.459 against Jev's 0.730 (our runner and t
 
 Held-out means no example of that dataset was trained on. The regression set has 28 held-out tasks, the 94-task set 24; the
 two are not comparable to each other, and the NVFP4 row is measured against the bf16 build rather than on a held-out set.
-[docs/RESULTS.md](docs/RESULTS.md) has all of them in full.
+[docs/RESULTS.md](https://github.com/Mapika/decider/blob/main/docs/RESULTS.md) has all of them in full.
 
 | model | base | parameters | context | held-out accuracy | weights |
 |---|---|---|---|---|---|
@@ -179,7 +179,7 @@ fine-tune, `scripts/evaluate.sh` scores it. One epoch is 1.47M examples and 455M
 evaluation, and it reproduces the released supervised weights: it matches v9 on the 94-task set (in-task 0.809 against 0.812,
 held-out 0.739 against 0.741) and every probe family within noise, with a fitted temperature of 1.03 instead of 1.36.
 
-The RL stage that turns v8 into v10 ([docs/RL.md](docs/RL.md)) needs a live Chrome with MiniWoB++, the exact game environments
+The RL stage that turns v8 into v10 ([docs/RL.md](https://github.com/Mapika/decider/blob/main/docs/RL.md)) needs a live Chrome with MiniWoB++, the exact game environments
 and the training loop of a separate research repository; it is not in this package yet.
 
 ## How it works
@@ -204,11 +204,11 @@ Two prompt layouts are trained, 50/50. **State-first** (`Context ... Question ..
 **Schema-first** puts the question and option blocks before the state, so they form a prefix that does not depend on the
 state: `decider/schema_engine.py` runs that prefix once per schema, keeps its cache read-only, and a request then runs only
 `Context: <state>` plus the slots, as a CUDA graph per (batch, length) bucket. Schema-first trades accuracy for speed, so the
-cache is opt-in; the cost is measured in [docs/RESULTS.md](docs/RESULTS.md).
+cache is opt-in; the cost is measured in [docs/RESULTS.md](https://github.com/Mapika/decider/blob/main/docs/RESULTS.md).
 
 ### Calibration
 
-![belief excess over the exact laws, and click-outcome prediction, v8 against v10](media/v10_calibration.png)
+![belief excess over the exact laws, and click-outcome prediction, v8 against v10](https://raw.githubusercontent.com/Mapika/decider/main/media/v10_calibration.png)
 
 Calibration is what the v10 RL objective trains directly. For every action in a game with a known probability law the model
 is asked what will happen next, and its answer is scored against the exact law with a log score: v10 is 0.22 nats above the
@@ -278,4 +278,4 @@ docs/                    RESULTS.md (every measurement), CHANGELOG.md, HISTORY.m
 
 ## License
 
-Apache 2.0. See [LICENSE](LICENSE).
+Apache 2.0. See [LICENSE](https://github.com/Mapika/decider/blob/main/LICENSE).
