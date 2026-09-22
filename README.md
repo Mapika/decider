@@ -136,7 +136,7 @@ yet in this package, `scripts/train.sh full` reproduces the public 60% of its da
   three 2B smoke-test workloads, the median request is 133 ms with the patch and 171 ms without it; on the held-out MASSIVE
   Scenario set (1,500 examples, temperature 1.30) the MPS path scores accuracy 0.7553 and ECE 0.0438 against the published
   bf16 row's 0.756 and 0.041. Conditions: `docs/benchmarks/mps-full-model.md`, `docs/benchmarks/mps-heldout.md`.
-* **CPU.** The unit tests run without a GPU: `python -m pytest tests`.
+* **CPU.** The library and the HTTP server run on CPU in bfloat16, eager; the unit tests run without a GPU: `python -m pytest tests`.
 
 ## Quick start
 
@@ -175,8 +175,9 @@ scripts/serve.sh Mapika/decider-2b 8000
 ```
 
 `POST /v1/systemone` is TypeSafe's wire format, so their SDKs work unchanged with `TYPESAFE_BASE_URL=http://localhost:8000`;
-`POST /decide` is the plain form. The server captures a CUDA graph for every (batch, length) shape at start-up, so on the
-default path no request compiles or captures a graph; requests over its size limits get HTTP 413 and an overloaded server
+`POST /decide` is the plain form. The server picks its device as `Decider` does (CUDA, else MPS, else CPU; `DECIDER_DEVICE`
+overrides it). On CUDA it captures a CUDA graph for every (batch, length) shape at start-up, so on the default path no
+request compiles or captures a graph; on MPS and CPU every request runs eager; requests over its size limits get HTTP 413 and an overloaded server
 answers 503 (limits, defaults and measurements in `docs/SERVING.md`). The schema cache (a schema seen twice gets a cached prefix
 and its own graphs, captured the first time that schema is used) is on only for a model whose `decider_config.json` sets
 `schema_first`, or with `DECIDER_SCHEMA_CACHE=1`.

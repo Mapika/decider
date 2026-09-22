@@ -35,7 +35,10 @@ class EngineV2:
         set_attention_backend_policy()              # before compile and capture: captured graphs keep their backend
         if conv_patch is None:
             conv_patch = bool(compile)          # the unrolled depthwise conv only pays off inside a compiled region
-        if conv_patch:
+        if str(device).startswith("mps"):
+            from decider.mps_ops import patch_mps       # the Apple Silicon path of decider.infer.Decider
+            patch_mps()
+        elif conv_patch:
             patch_conv()
         self.m = model if model is not None else DecisionModel(path, dtype=dtype, grad_ckpt=False).to(device).eval()
         self.tok = self.m.tok; self.dev = device; self.max_ctx = max_ctx_tokens

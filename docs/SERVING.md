@@ -54,6 +54,7 @@ turned it off (`decider.engine.set_attention_backend_policy`).
 | variable | default | meaning |
 | --- | --- | --- |
 | `DECIDER_MODEL` | `runs/r3_v2/model` | model folder or Hub id |
+| `DECIDER_DEVICE` | `auto` | `auto` (CUDA, else MPS, else CPU, as `Decider`), `cuda`, `cuda:<i>`, `mps` or `cpu`. Off CUDA: no graphs, no warm-up, every request eager; FP8 and compile refuse to start. On a CPU run of a CUDA machine, uninstall `causal-conv1d` or the Qwen3.5 layers call its CUDA kernel on CPU tensors |
 | `DECIDER_COMPILE` | `0` | torch.compile the forward during warm-up (never at runtime) |
 | `DECIDER_FP8` | `0` | e4m3 weights with per-token activation scaling |
 | `DECIDER_SHARED` | `1` | shared-state path for multi-question requests over long states |

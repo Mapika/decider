@@ -28,7 +28,7 @@ Execution (1.1.1; docs/SERVING.md has the design and the measurements):
   * requests are bounded before they reach the GPU: HTTP 413 when a row, the request or the expanded question count exceeds the
     limits below, HTTP 503 when the outstanding work exceeds DECIDER_MAX_QUEUE_ROWS.
 
-Variables (default):  DECIDER_COMPILE (0)  DECIDER_FP8 (0)  DECIDER_SHARED (1)  DECIDER_SHARED_MIN_TOKENS (768)
+Variables (default):  DECIDER_DEVICE (auto: cuda, else mps, else cpu)  DECIDER_COMPILE (0)  DECIDER_FP8 (0)  DECIDER_SHARED (1)  DECIDER_SHARED_MIN_TOKENS (768)
   DECIDER_SHARED_FORK_GB (8)  DECIDER_MERGE_OVERHEAD_TOKENS (512)  DECIDER_BATCH_ADAPTIVE_WAIT_MS (2)
   DECIDER_MAX_BATCH (32)  DECIDER_BATCH_WAIT_MS (0; DECIDER_MAX_WAIT_MS is an alias)  DECIDER_MAX_STATE_TOKENS (32768)
   DECIDER_T_BUCKETS  DECIDER_B_BUCKETS  DECIDER_GRAPH_TOKEN_BUDGET (32768)  DECIDER_WARMUP (1)  DECIDER_TOKENIZE_THREADS (8)
@@ -59,6 +59,7 @@ MERGE_OVERHEAD_TOKENS = _env_int("DECIDER_MERGE_OVERHEAD_TOKENS", DEFAULT_MERGE_
 MAX_STATE_TOKENS = _env_int("DECIDER_MAX_STATE_TOKENS", 32768)
 SHARED = os.environ.get("DECIDER_SHARED", "1") == "1"
 SHARED_MIN_TOKENS = _env_int("DECIDER_SHARED_MIN_TOKENS", 768)
+DEVICE = os.environ.get("DECIDER_DEVICE", "auto")                          # auto | cuda[:i] | mps | cpu
 COMPILE = os.environ.get("DECIDER_COMPILE", "0") == "1"
 FP8 = os.environ.get("DECIDER_FP8", "0") == "1"
 WARMUP = os.environ.get("DECIDER_WARMUP", "1") == "1"
@@ -347,16 +348,40 @@ def start_workers(loop=None):
         squeue = asyncio.Queue(); schema_task = loop.create_task(schema_batcher())
 
 
+def resolve_device(requested=None):
+    """The device and dtype the server runs on.  `auto` picks as decider.infer.Decider does: CUDA, else MPS, else CPU; float16
+    on MPS, bfloat16 elsewhere.  An explicit device that is not available, or FP8 / torch.compile off CUDA, is a start-up error
+    that says so, instead of the torch assertion a CUDA call raises on a build without CUDA."""
+    import torch
+    req = (DEVICE if requested is None else requested).strip().lower()
+    if req in ("", "auto"):
+        dev = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
+    else:
+        dev = req
+        kind = dev.split(":")[0]
+        if kind == "cuda" and not torch.cuda.is_available():
+            raise RuntimeError(f"DECIDER_DEVICE={req}, but torch.cuda.is_available() is False on this machine. "
+                               "Set DECIDER_DEVICE=mps or cpu (or leave it at auto).")
+        if kind == "mps" and not torch.backends.mps.is_available():
+            raise RuntimeError(f"DECIDER_DEVICE={req}, but torch.backends.mps.is_available() is False on this machine.")
+        if kind not in ("cuda", "mps", "cpu"):
+            raise RuntimeError(f"DECIDER_DEVICE={req}: expected auto, cuda, cuda:<index>, mps or cpu.")
+    if not dev.startswith("cuda") and (FP8 or COMPILE):
+        raise RuntimeError(f"DECIDER_FP8 and DECIDER_COMPILE need CUDA; the server is starting on {dev}. Unset them.")
+    return dev, (torch.float16 if dev.startswith("mps") else torch.bfloat16)
+
+
 async def _start():
     global eng, se, gpu
     from decider.engine_v2 import EngineV2
     apply_config(load_config(MODEL))
     gpu = ThreadPoolExecutor(max_workers=1, thread_name_prefix="gpu")
     loop = asyncio.get_running_loop()
+    dev, dtype = resolve_device()
     eng = await loop.run_in_executor(gpu, lambda: EngineV2(
-        MODEL, compile=COMPILE, fp8=FP8, max_ctx_tokens=MAX_STATE_TOKENS, t_buckets=_ints("DECIDER_T_BUCKETS"),
+        MODEL, device=dev, dtype=dtype, compile=COMPILE, fp8=FP8, max_ctx_tokens=MAX_STATE_TOKENS, t_buckets=_ints("DECIDER_T_BUCKETS"),
         b_buckets=_ints("DECIDER_B_BUCKETS"), token_budget=GRAPH_TOKEN_BUDGET))
-    print("[serve] engine", {k: v for k, v in eng.cfg.items() if k not in ("t_buckets", "b_buckets")}, flush=True)
+    print("[serve] engine", dict({k: v for k, v in eng.cfg.items() if k not in ("t_buckets", "b_buckets")}, device=dev), flush=True)
     if SCHEMA_FIRST:
         from decider.schema_engine import SchemaEngine
         se = SchemaEngine(eng); print("[serve] schema cache on", flush=True)
@@ -365,7 +390,7 @@ async def _start():
             _, h, _ = await loop.run_in_executor(gpu, _schema_handle, spec["questions"], spec.get("independent", True), COMPILE)
             t = await loop.run_in_executor(gpu, se.warmup, h, spec.get("batch_sizes", (1, 8, 32)), spec.get("state_tokens", (64, 128, 256)))
             print(f"[serve] preloaded schema with {h.nq} rows, prefix {sum(h.tps)} tokens, graphs ready in {t:.0f}s", flush=True)
-    if WARMUP:
+    if WARMUP and eng.use_graphs:                   # off CUDA there are no graphs to capture; every request runs eager
         t = await loop.run_in_executor(gpu, lambda: eng.warmup(log=lambda s: print(s, flush=True)))
         print(f"[serve] captured {len(eng.graphs)} graphs in {t:.0f}s", flush=True)
     eng.seal()
@@ -498,7 +523,8 @@ async def models():
 
 @app.get("/health")
 async def health():
-    return {"ok": eng is not None and bool(getattr(eng, "sealed", True)) and _alive(), "model": MODEL}
+    return {"ok": eng is not None and bool(getattr(eng, "sealed", True)) and _alive(), "model": MODEL,
+            "device": str(getattr(eng, "dev", "")) if eng is not None else None}
 
 
 @app.get("/stats")

@@ -3,6 +3,18 @@
 Newest first. Every entry names the weights it applies to; the Hub repositories keep earlier weights under tags where noted.
 `HISTORY.md` is the long form: how each stage was trained and what was measured.
 
+## 1.1.2 (2026-09-22): the HTTP server runs on MPS and CPU
+
+Code only; no weights change. Reported in issue #5: the server always built its engine on `cuda`, so on a machine without CUDA
+it stopped at start-up with torch's "Torch not compiled with CUDA enabled" assertion, while the README lists MPS and CPU. The
+server now picks its device the way `decider.infer.Decider` does (CUDA, else MPS, else CPU; float16 on MPS, bfloat16
+elsewhere), and `DECIDER_DEVICE=auto|cuda|cuda:<i>|mps|cpu` overrides it. Off CUDA there are no graphs to capture, so start-up
+skips the warm-up and every request runs eager; on MPS the engine applies the same MPS patch as the library. An explicit
+device that is not available, or `DECIDER_FP8` / `DECIDER_COMPILE` off CUDA, stops start-up with a message naming the
+requirement. `/health` reports the device. Checked on CPU with no GPU visible: the server answers the README example with the
+same probabilities as `Decider(device="cpu")` (billing 0.5706, refund 0.987, frustration 0.354 / 0.540 / 0.106), 685 ms per
+request. MPS is not tested here; it uses the code path of the merged Apple Silicon work. Nothing changes on CUDA.
+
 ## 1.1.1 (2026-09-22): cross-request batch merging and a bounded shared-prefix fork
 
 Code only; no weights change. Same routes, same request and response format, same limits. Two changes to `decider.serve`
