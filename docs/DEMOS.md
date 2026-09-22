@@ -89,6 +89,25 @@ prompt building are outside it. Per-image time tracks the number of vision token
 
 **Time compression.** Not applicable: each panel is held for 2000 ms.
 
+## `media/vision_35b.gif`
+
+**What is shown.** The text-only `Mapika/decider-35b-a3b` weights loaded onto the vision-language version of their base
+(`Qwen3.5-35B-A3B` VL tower, text weights replaced by the released overlay, temperature 1.08, no image training), deciding on
+the same ten held-out Cauldron images as `media/vision_2b.gif` with the same panel layout.
+
+**Data and selection.** Identical to `vision_2b.gif`: the same 72 rows, the first discarded as warm-up, the same panel rule
+(most confident correct example per subset, the two most confident wrong ones, then the examples closest to 60%).
+
+**Result.** Over the 71 scored rows the overlay picked the gold answer 91.5% of the time (65 of 71) against 87.3% for
+`decider-2b-vision` on exactly the same rows (61 rows right for both, 4 only the 35B, 1 only the 2B). On a larger probe
+(300 rows per subset) the overlay is at 0.871 in-task against 0.880 for `decider-2b-vision`, so the 4-point gap on 71 rows
+is within the sample noise; the finding is that the text-trained weights answer image questions at the level of the
+purpose-trained vision model without any image training. The ten panels are 7 correct and 3 wrong by the selection rule.
+
+**Latency.** Median 85 ms per image (51 to 139 ms), against 59 ms for `decider-2b-vision`, same timer as above.
+
+**Time compression.** Not applicable: each panel is held for 2000 ms.
+
 ## `media/montage.gif`
 
 Recorded in 2026-09 on the v8 weights: the ten text games from `decider/games/` and Super Mario Bros from the PPO checkpoint
