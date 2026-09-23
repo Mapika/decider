@@ -54,7 +54,9 @@ def render_question(spec):
             raise ValueError(f"score criteria: an ordered list of 2..{MAX_LEVELS} level descriptions")
         names = list(range(len(crit))); opts = [f"{i}: {_txt(c)}" for i, c in enumerate(crit)]
     elif t in ("noul", "bool"):
-        names = [False, True]; c = crit or {}
+        if crit is not None and not isinstance(crit, dict):
+            raise ValueError("noul criteria: a map of optional true/false descriptions")
+        names = [False, True]; c = crit if crit is not None else {}
         f, tr = c.get("false", c.get(False)), c.get("true", c.get(True))
         opts = ["no" if f in (None, "") else f"no: {_txt(f)}", "yes" if tr in (None, "") else f"yes: {_txt(tr)}"]
     else:
