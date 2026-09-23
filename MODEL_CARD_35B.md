@@ -187,7 +187,7 @@ Per-task accuracy / ECE on the held-out datasets, v10 against this model:
 | Mind2Web element and action choice, 1,770 rows | 82.7% / 0.543 | 89.6% / 0.316 | +6.9 (+5.1 to +8.7) |
 | TypeSafe workflow decisions, 102 rows, accuracy / NLL | 80.4% / 0.585 | 86.3% / 0.342 | +5.9 (−2.0 to +13.7) |
 | Bespoke's public suite, 13 subsets, macro / micro | 0.704 / 0.711 | 0.774 / 0.787 | |
-| JevBench public items, easy / standard / hard accuracy | 1.000 / 0.847 / 0.459 | 1.000 / 0.972 / 0.676 | |
+| JevBench public items, easy / standard / hard accuracy | 1.000 / 0.889 / 0.459 | 1.000 / 0.972 / 0.676 | |
 | live MiniWoB++ click tasks, 22 tasks x 8 seeds, greedy play | 90.9% | 97.2% | +6.2 (+1.7 to +10.8) |
 | the same, 6 tasks v10 never used for reward, greedy | 91.7% | 97.9% | +6.2 (0.0 to +14.6) |
 | live MiniWoB++ click tasks, sampled play | 93.2% | 86.4% | −6.8 (−12.5 to −1.7) |

@@ -78,7 +78,7 @@ training details and the optimizer comparison, `moe/` the scripts.
 | Mind2Web, 1,770 rows | 82.7% / 0.543 | 89.6% / 0.316 | +6.9 (+5.1 to +8.7) |
 | TypeSafe workflow decisions, 102 rows | 80.4% / 0.585 | 86.3% / 0.342 | +5.9 (−2.0 to +13.7) |
 | Bespoke's public suite, macro / micro | 0.704 / 0.711 | 0.774 / 0.787 | Jev 1.13.0: 0.760 / 0.773 |
-| JevBench public items, easy / standard / hard | 1.000 / 0.847 / 0.459 | 1.000 / 0.972 / 0.676 | Jev 1.13.0: 1.000 / 0.986 / 0.730 |
+| JevBench public items, easy / standard / hard | 1.000 / 0.889 / 0.459 | 1.000 / 0.972 / 0.676 | Jev 1.13.0: 1.000 / 0.986 / 0.730 |
 | live MiniWoB++ click tasks, greedy play | 90.9% | 97.2% | +6.2 (+1.7 to +10.8) |
 | live MiniWoB++ click tasks, sampled play | 93.2% | 86.4% | −6.8 (−12.5 to −1.7) |
 | zero-shot games, win rate, greedy / sampled | 26.5% / 23.7% | 37.2% / 24.1% | +10.7 (+5.6 to +15.8) / +0.4 |
@@ -107,7 +107,7 @@ regression set, rows for the fixtures, boards for the games, task-seed pairs for
 | Mind2Web, 1,770 rows | 82.7% / 0.543 | 88.3% / 0.367 | 89.6% / 0.316 | +5.7 (+4.0 to +7.3) | −1.2 (−2.8 to +0.2) |
 | TypeSafe workflow decisions, 102 rows | 80.4% / 0.585 | 80.4% / 0.609 | 86.3% / 0.342 | 0.0 (−9.8 to +9.8) | −5.9 (−12.7 to +1.0) |
 | Bespoke's public suite, macro / micro | 0.704 / 0.711 | 0.757 / 0.765 | 0.774 / 0.787 | | |
-| JevBench public items, easy / standard / hard | 1.000 / 0.847 / 0.459 | 1.000 / 0.958 / 0.541 | 1.000 / 0.972 / 0.676 | | |
+| JevBench public items, easy / standard / hard | 1.000 / 0.889 / 0.459 | 1.000 / 0.958 / 0.541 | 1.000 / 0.972 / 0.676 | | |
 | live MiniWoB++ click tasks, greedy play (all / 6 held-out) | 90.9% / 91.7% | 91.5% / 75.0% | 97.2% / 97.9% | +0.6 (−4.5 to +5.7) / −16.7 (−27.1 to −6.2) | −5.7 (−9.7 to −2.3) / −22.9 |
 | live MiniWoB++ click tasks, sampled play (all / held-out) | 93.2% / 91.7% | 90.9% / 79.2% | 86.4% / 79.2% | −2.3 (−8.0 to +2.8) / −12.5 (−25.0 to 0.0) | +4.5 (−0.6 to +10.2) / 0.0 |
 | zero-shot games, win rate, greedy / sampled | 26.5% / 23.7% | 28.6% / 27.7% | 37.2% / 24.1% | +2.1 (−3.0 to +7.3) / +4.0 (+1.1 to +7.1) | −8.5 (−13.7 to −3.0) / +3.5 (+1.2 to +5.9) |
@@ -178,15 +178,18 @@ adds speed and cost measured from the operator's server, so this table is a part
 | open-alternative-jev (Qwen3.5-4B) | 1.000 | 0.833 | 0.568 |
 | system-one-open (Gemma 4 E2B) | 1.000 | 0.931 | 0.486 |
 | system-one (Qwen3-8B) | 1.000 | 0.889 | 0.486 |
-| **decider-2b v10** (1.9B) | 1.000 | 0.847 | 0.459 |
-| decider-2b v8 | 1.000 | 0.861 | 0.459 |
+| **decider-2b v10** (1.9B) | 1.000 | 0.889 | 0.459 |
+| decider-2b v8 | 1.000 | 0.875 | 0.441 |
 | Bespoke Nimble 9B | 1.000 | 0.931 | 0.369 |
 | open-jev-deberta-v3-large | 1.000 | 0.431 | 0.378 |
 
-On the standard tier decider misses answer-adequacy judgments (7 of 12) and routing (3 of 12). The hard tier is long policy
-texts, multi-hop and temporal-numeric reasoning, which a 2B model without reasoning does not do: it is at 0.26 to 0.33 on those
-families and at 0.88 to 1.00 on the trap and hard-routing families. Its top-label ECE on the hard items is 0.30, meaning it is
-confident where it is wrong there.
+The decider-2b rows were read again on 2026-09-23 in process, bf16, decider-ai 1.2.1. The values first published (standard / hard:
+v10 0.847 / 0.459, v8 0.861 / 0.459) came from the FP8 server of 2026-09-19 and do not reproduce item for item.
+
+On the standard tier decider-2b v10 misses answer-adequacy judgments (4 of 12), routing (3 of 12) and one policy item. The hard
+tier is long policy texts, multi-hop and temporal-numeric reasoning, which a 2B model without reasoning does not do well: it is at
+0.26 (long policy), 0.33 (temporal-numeric) and 0.50 (multi-hop) on those families and at 1.00 on the trap and hard-routing
+families. Its top-label ECE on the hard items is 0.31, meaning it is confident where it is wrong there.
 
 ## Bespoke's public suite
 
@@ -219,7 +222,8 @@ nearly matches it (VitaminC, PAWS, SummEval consistency) and on prompt-safety ju
 ## Speed
 
 decider-2b on one GH200, bf16 + torch.compile + CUDA graphs; support tickets are about 230 tokens, chat messages about 12. v10 is
-unchanged. decider-35b-a3b runs eager (`use_graphs=False`) at 47 ms per request and about 520 decisions/s in batches of 64 on one
+unchanged. On one B300 (decider-ai 1.2.1, 2026-09-23) v10 takes 3.2 ms per ticket request with graphs and runs about 2,700
+decisions/s in batches of 32; the model card has the B300 table. decider-35b-a3b runs eager (`use_graphs=False`) at 47 ms per request and about 520 decisions/s in batches of 64 on one
 B300; its CUDA-graph and FP8 paths are untested. decider-4b, eager, batch of one, on one B300: 24.7 ms median per decision over 200
 game-state decisions of 156 tokens median (2B 17.9 ms, 35B 41.4 ms, same decisions and method); its CUDA-graph and FP8 paths were
 not measured.

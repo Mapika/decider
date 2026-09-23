@@ -190,7 +190,7 @@ browser).
 | Mind2Web element and action choice, 1,770 rows | 82.7% / 0.543 | 88.3% / 0.367 | 89.6% / 0.316 | +5.7 (+4.0 to +7.3) | −1.2 (−2.8 to +0.2) |
 | TypeSafe workflow decisions, 102 rows, accuracy / NLL | 80.4% / 0.585 | 80.4% / 0.609 | 86.3% / 0.342 | 0.0 (−9.8 to +9.8) | −5.9 (−12.7 to +1.0) |
 | Bespoke's public suite, 13 subsets, macro / micro | 0.704 / 0.711 | 0.757 / 0.765 | 0.774 / 0.787 | | |
-| JevBench public items, easy / standard / hard accuracy | 1.000 / 0.847 / 0.459 | 1.000 / 0.958 / 0.541 | 1.000 / 0.972 / 0.676 | | |
+| JevBench public items, easy / standard / hard accuracy | 1.000 / 0.889 / 0.459 | 1.000 / 0.958 / 0.541 | 1.000 / 0.972 / 0.676 | | |
 | live MiniWoB++ click tasks, 22 tasks x 8 seeds, greedy play | 90.9% | 91.5% | 97.2% | +0.6 (−4.5 to +5.7) | −5.7 (−9.7 to −2.3) |
 | the same, 6 tasks v10 never used for reward, greedy | 91.7% | 75.0% | 97.9% | −16.7 (−27.1 to −6.2) | −22.9 (−35.4 to −12.5) |
 | live MiniWoB++ click tasks, sampled play | 93.2% | 90.9% | 86.4% | −2.3 (−8.0 to +2.8) | +4.5 (−0.6 to +10.2) |

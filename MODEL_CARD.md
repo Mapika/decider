@@ -218,37 +218,41 @@ Per-task accuracy / ECE on the held-out datasets of the rebuilt set, v8 against 
 | TypeSafe workflow decisions, 102 rows, accuracy / NLL | 78.4% / 0.594 | 80.4% / 0.585 | +2.0 (−2.0 to +5.9) |
 | 847 in-task validation rows, accuracy / NLL | 83.6% / 0.443 | 83.2% / 0.444 | −0.4 (−1.3 to +0.6) |
 | Bespoke's public suite, 13 subsets, macro accuracy | 0.706 | 0.704 | |
-| JevBench public items, easy / standard / hard accuracy | 1.000 / 0.861 / 0.459 | 1.000 / 0.847 / 0.459 | |
+| JevBench public items, easy / standard / hard accuracy | 1.000 / 0.875 / 0.441 | 1.000 / 0.889 / 0.459 | +1 / +2 items |
 | OpenJev, 5,252 rows, accuracy / NLL | 64.1% / 0.906 | 63.3% / 0.916 | −0.8 (−1.3 to −0.3) |
 
 The browser gain is in the served distribution rather than in the argmax: sampled play improves by ten points, greedy play by
 under one. Tic-tac-toe and minesweeper play did not change; a 2B model without search loses most of those games either
-way. The one measured regression is OpenJev, under one point.
+way. The one measured regression is OpenJev, under one point. The JevBench row was read again for both versions on 2026-09-23, in process, bf16, decider-ai
+1.2.1. The values first published here (standard / hard: v8 0.861 / 0.459, v10 0.847 / 0.459) came from the FP8 server of
+2026-09-19 and do not reproduce item for item.
 
 **Bespoke's public suite** (13 human-labelled subsets, 3,880 records in Jev's wire format, answered through `system_one` as
 shipped). decider-2b v10 macro 0.704 / micro 0.711; v9 0.701 / 0.711; Nimble-9B 0.748 / 0.759; Jev 1.13.0 0.760 / 0.773
-(the last two copied from Bespoke's report). Per-subset numbers, the JevBench public-item comparison (decider-2b v10 is at 1.000 / 0.847 / 0.459 on the easy / standard /
+(the last two copied from Bespoke's report). Per-subset numbers, the JevBench public-item comparison (decider-2b v10 is at 1.000 / 0.889 / 0.459 on the easy / standard /
 hard public items, against Jev 1.13.0 at 1.000 / 0.986 / 0.730) and recordings of both versions on the same browser pages and
 game boards are in the GitHub README.
 
 ## Speed
 
-One NVIDIA GH200, bf16, unchanged from v8 (same architecture, readout and temperature). `decider.infer.Decider` uses
-shape-bucketed CUDA graphs; the batching server is `decider/serve.py`. Support-ticket states of about 230 tokens with 3 to 5
-typed questions each:
+One NVIDIA B300, decider-ai 1.2.1, measured 2026-09-23. Support-ticket states of about 230 tokens with 3 typed questions each
+(the first 64 `support_tickets` examples). `decider.infer.Decider` uses shape-bucketed CUDA graphs; the batching server is
+`decider/serve.py`, whose default since 1.1 is bf16.
 
 | setting | p50 latency | throughput |
 |---|---|---|
-| single request, eager PyTorch | 49 ms | |
-| single request, CUDA graphs + torch.compile (helper default) | 4.0 ms | |
-| batch of 32, in-process, bf16 | 70 ms | about 1,370 decisions/s |
-| batch of 32, in-process, FP8 linears | 58 ms | about 1,670 decisions/s |
-| HTTP server (FP8), 1 client | 6.8 ms | 134 req/s |
-| HTTP server (FP8), 64 clients | 126 ms | 431 req/s, 2,152 decisions/s |
+| single request, eager PyTorch | 18.9 ms | |
+| single request, CUDA graphs + torch.compile (helper default) | 3.2 ms | |
+| batch of 32, in-process, bf16 | 35.5 ms | about 2,700 decisions/s |
+| batch of 32, in-process, FP8 linears | 32.3 ms | about 2,980 decisions/s |
+| HTTP server `/decide` (bf16, default), 1 client | 6.1 ms | 158 req/s |
+| HTTP server `/decide` (bf16, default), 64 clients | 134 ms | 436 req/s, 2,181 decisions/s |
+| HTTP server `/decide` with `DECIDER_FP8=1`, 64 clients | 212 ms | 286 req/s, 1,429 decisions/s |
 
-With the schema cache (`Decider.schema`), 10 described questions on short chat messages run at 11,180 decisions/s in a batch,
-and one question with 151 options at 19x the full-forward rate. FP8 (e4m3 weights, per-token activation scales) changes
-accuracy and calibration by less than the evaluation noise.
+On the B300, FP8 is faster in process but slower through the server, so the server default is bf16. The schema-cache figures
+were measured earlier on one GH200 and not repeated: with `Decider.schema`, 10 described questions on short chat messages ran at
+11,180 decisions/s in a batch, and one question with 151 options at 19x the full-forward rate. FP8 (e4m3 weights, per-token
+activation scales) changes accuracy and calibration by less than the evaluation noise.
 
 ## Limitations
 
