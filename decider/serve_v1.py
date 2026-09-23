@@ -1,5 +1,6 @@
 """The 1.0.x HTTP server, kept for one release.  `decider.serve` is the 1.1.0 server (docs/CHANGELOG.md); this module is the
-previous implementation with its code unchanged (only this docstring differs), for anyone who needs to compare or roll back:
+previous implementation with its code unchanged (only this docstring and, since 1.2.0, a start-up refusal of chat-layout
+models differ), for anyone who needs to compare or roll back:
 
    uvicorn decider.serve_v1:app --host 0.0.0.0 --port 8000
 
@@ -129,8 +130,10 @@ async def _start():
     eng = Engine(MODEL, compile=COMPILE, fp8=FP8, conv_patch=COMPILE); print("[serve] engine", eng.cfg, flush=True)
     import json
     global MODEL_NAME, TEMP
-    try: cfg = json.load(open(os.path.join(MODEL, "decider_config.json")))
-    except Exception: cfg = {}
+    from decider.prompt import resolve_layout, load_decider_config
+    cfg = load_decider_config(MODEL)                  # a folder or a Hub id, as decider.serve reads it
+    if resolve_layout(cfg) != "plain":             # 1.2.0: this server only renders the plain layout
+        raise RuntimeError(f"{MODEL} is a {resolve_layout(cfg)}-layout model; decider.serve_v1 renders only the plain layout. Use decider.serve.")
     eng.neutralize_none = bool(cfg.get("neutralize_none", True)); MODEL_NAME = "decider-" + str(cfg.get("version", "dev"))
     TEMP = float(os.environ.get("DECIDER_TEMPERATURE", cfg.get("temperature", 1.0)))
     global RELEASE_DATE; RELEASE_DATE = str(cfg.get("release_date", RELEASE_DATE))

@@ -11,7 +11,7 @@ import logging
 
 import torch
 from decider.model import DecisionModel, collate
-from decider.prompt import build, MAX_OPTIONS
+from decider.prompt import build, MAX_OPTIONS, resolve_layout, chat_template
 from dataclasses import dataclass
 
 
@@ -43,6 +43,11 @@ def neutralize_options(options):
     return out, back
 
 
+class _NoShuffle:                              # keep option order as given
+    def shuffle(self, x): pass
+    def sample(self, xs, k): return xs[:k]
+
+
 class CompiledSchema:
     def __init__(self, d, rqs, h, index): self.d, self.rqs, self.h, self.index = d, rqs, h, index
 
@@ -63,6 +68,9 @@ class Decider:
     for eager execution or debugging.
     """
     def __init__(self, path, device=None, dtype=None, temperature=None, abstain_below=0.0, use_graphs=None):
+        """The prompt layout comes from decider_config.json: "layout": "chat" (chat-trained checkpoints) wraps every prompt in the
+        tokenizer's chat template (decider.prompt.build_chat); no "layout" key is the plain layout of every earlier model.
+        An unknown layout raises ValueError before the weights are loaded."""
         if device is None:
             device = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
         if dtype is None:
@@ -76,6 +84,7 @@ class Decider:
             cfg = json.load(open(cfg_path))
         except Exception:
             pass
+        self.layout = resolve_layout(cfg)
         if temperature is None:
             temperature = float(cfg.get("temperature", 1.0))
         self.neutralize_none = bool(cfg.get("neutralize_none", True))   # v4 and earlier learned the literal string as an abstain signal
@@ -89,6 +98,7 @@ class Decider:
                 from decider.mps_ops import patch_mps
                 patch_mps()
             self.eng = None; self.m = DecisionModel(path, dtype=dtype, grad_ckpt=False).to(device).eval()
+        self.chat = chat_template(self.m.tok) if self.layout == "chat" else None      # None: plain layout, prompts as in 1.1.x
         self.dev = device; self.T = temperature; self.abstain_below = abstain_below
         self.name = "decider-" + str(cfg.get("version", "dev"))
         self.schema_first = bool(cfg.get("schema_first", False)) and self.eng is not None      # default layout. Questions-first (the cacheable one) costs accuracy
@@ -96,20 +106,22 @@ class Decider:
         self.isolated_levels = bool(cfg.get("isolated_levels", False))      # Score levels judged one per row (v8+)
         self._se = None; self._schemas = {}
 
-    @torch.no_grad()
-    def decide_batch(self, requests, max_ctx_tokens=1536):
-        """requests: list of (context:str, questions:list[dict(question, options)]). One forward pass for everything."""
-        exs, meta = [], []
+    def _decide_items(self, requests, max_ctx_tokens=1536):
+        """The prompt rows of decide_batch: -> (requests with neutralized options, one item per request)."""
+        exs = []
         if self.neutralize_none:
             requests = [(context, [dict(q, options=neutralize_options(q["options"])[0], _back=neutralize_options(q["options"])[1]) for q in qs]) for context, qs in requests]
         for context, qs in requests:
             for q in qs:
                 assert 2 <= len(q["options"]) <= MAX_OPTIONS, f"2..{MAX_OPTIONS} options required"
             exs.append(Example(context, [Q(q["question"], list(q["options"]), 0) for q in qs], "infer"))
-        class _NoShuffle:                      # keep option order as given
-            def shuffle(self, x): pass
-            def sample(self, xs, k): return xs[:k]
-        items = [build(e, self.m.tok, _NoShuffle(), max_options=MAX_OPTIONS, max_ctx_tokens=max_ctx_tokens) for e in exs]
+        items = [build(e, self.m.tok, _NoShuffle(), max_options=MAX_OPTIONS, max_ctx_tokens=max_ctx_tokens, chat=self.chat) for e in exs]
+        return requests, items
+
+    @torch.no_grad()
+    def decide_batch(self, requests, max_ctx_tokens=1536):
+        """requests: list of (context:str, questions:list[dict(question, options)]). One forward pass for everything."""
+        requests, items = self._decide_items(requests, max_ctx_tokens)
         if self.eng is not None:
             probs = torch.cat(self.eng.score_items(items, temperature=self.T))
         else:
@@ -142,7 +154,7 @@ class Decider:
         isolated = self.isolated_levels if isolated is None else isolated
         key = (json.dumps(questions, sort_keys=True, ensure_ascii=False), independent, isolated)
         if key not in self._schemas:
-            if self._se is None: self._se = SchemaEngine(self.eng)
+            if self._se is None: self._se = SchemaEngine(self.eng, chat=self.chat)
             if len(self._schemas) >= 64:                                  # drop the oldest schema and its graphs
                 old = next(iter(self._schemas)); hid = self._schemas.pop(old)[1].id
                 for k in [k for k in self._se.graphs if k[0] == hid]: del self._se.graphs[k]
@@ -162,16 +174,8 @@ class Decider:
         reordering questions cannot change any other answer; the state is run once and its cache forked to every
         question (Engine.score_shared).  independent=False packs all questions behind one copy of the state in one row
         (later questions can then see earlier question texts)."""
-        from decider.systemone import render_state, render_question, unique_tokens, plan_rows, assemble
-        ctx = render_state(state); rqs = {k: render_question(v) for k, v in questions.items()}
-        opts = (lambda r: neutralize_options(r["options"])[0]) if self.neutralize_none else (lambda r: list(r["options"]))
-        flat, index = plan_rows(rqs, isolated)
-        rows = [[r] for r in flat] if independent else [flat]
-        class _Keep:
-            def shuffle(self, x): pass
-            def sample(self, xs, k): return xs[:k]
-        items = [build(Example(ctx, [Q(r["question"], opts(r), 0) for r in row]), self.m.tok, _Keep(), max_options=MAX_OPTIONS,
-                       max_ctx_tokens=max_state_tokens, layout=layout) for row in rows]
+        from decider.systemone import unique_tokens, assemble
+        rqs, index, items = self._system_one_items(state, questions, independent, max_state_tokens, layout, isolated)
         with torch.no_grad():
             if self.eng is not None and len(items) > 1 and layout == "state_first":
                 probs = self.eng.score_shared(items, temperature=self.T)
@@ -189,6 +193,19 @@ class Decider:
         flatp = [p.tolist() for ps in probs for p in ps]
         return {"model": self.name, "answers": assemble(rqs, index, flatp),
                 "usage": {"input_tokens": unique_tokens(items), "output_tokens": 0}}
+
+    def _system_one_items(self, state, questions, independent=True, max_state_tokens=32768, layout=None, isolated=None):
+        """The prompt rows of system_one's uncached path: -> (rendered questions, answer index, items)."""
+        from decider.systemone import render_state, render_question, plan_rows
+        layout = layout or ("schema_first" if self.schema_first else "state_first")
+        isolated = (self.isolated_levels if isolated is None else isolated) and independent
+        ctx = render_state(state); rqs = {k: render_question(v) for k, v in questions.items()}
+        opts = (lambda r: neutralize_options(r["options"])[0]) if self.neutralize_none else (lambda r: list(r["options"]))
+        flat, index = plan_rows(rqs, isolated)
+        rows = [[r] for r in flat] if independent else [flat]
+        items = [build(Example(ctx, [Q(r["question"], opts(r), 0) for r in row]), self.m.tok, _NoShuffle(), max_options=MAX_OPTIONS,
+                       max_ctx_tokens=max_state_tokens, layout=layout, chat=self.chat) for row in rows]
+        return rqs, index, items
 
     # ---- typed schema interface: {question: {"type": "bool"} | {"type": "choice", "options": [...]}
     #                                         | {"type": "scale", "legend": {"0": "none", "1": "low", ...}}}

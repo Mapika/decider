@@ -8,8 +8,10 @@ from decider import data as D
 
 
 @torch.no_grad()
-def run_eval(model, evals, bs=32, max_ctx=1536, temperature=1.0, log=print, engine=None, max_options=None, max_tokens=24576, layout="state_first"):
-    """engine: optional decider.engine.Engine; if given, scoring goes through it instead of the eager path."""
+def run_eval(model, evals, bs=32, max_ctx=1536, temperature=1.0, log=print, engine=None, max_options=None, max_tokens=24576, layout="state_first",
+             chat=None):
+    """engine: optional decider.engine.Engine; if given, scoring goes through it instead of the eager path.
+    chat: the model's ChatTemplate for a chat-layout model (decider.prompt.chat_for_model); None = plain layout."""
     model.eval()
     dev = next(model.parameters()).device
     results, dump = {}, {}
@@ -19,7 +21,7 @@ def run_eval(model, evals, bs=32, max_ctx=1536, temperature=1.0, log=print, engi
         rng = random.Random(1234)
         kw = dict(max_options=max_options) if max_options else {}
         kw["layout"] = layout
-        items = [dict(build(e, model.tok, rng, max_ctx_tokens=max_ctx, **kw), task=tname, ex_id=i) for i, e in enumerate(exs)]
+        items = [dict(build(e, model.tok, rng, max_ctx_tokens=max_ctx, chat=chat, **kw), task=tname, ex_id=i) for i, e in enumerate(exs)]
         items.sort(key=lambda it: len(it["ids"]))
         P, G, NO, QI = [], [], [], []
         t0 = time.time()
@@ -94,7 +96,9 @@ if __name__ == "__main__":
             patch_mps()
         m = DecisionModel(a.model, dtype=dtype, grad_ckpt=False).to(device).eval()
     os.makedirs(a.out, exist_ok=True)
-    res, dump = run_eval(m, evals, bs=a.bs, temperature=a.temperature, engine=eng, max_options=a.max_options or None, max_ctx=a.max_ctx, layout=a.layout)
+    from decider.prompt import chat_for_model
+    res, dump = run_eval(m, evals, bs=a.bs, temperature=a.temperature, engine=eng, max_options=a.max_options or None, max_ctx=a.max_ctx, layout=a.layout,
+                         chat=chat_for_model(a.model, m.tok))
     agg = aggregate(res)
     print("[agg]", json.dumps(agg, indent=1))
     json.dump(dict(results=res, agg=agg, model=a.model, engine=a.engine, device=device, dtype=str(dtype)), open(f"{a.out}/eval.json", "w"), indent=1)

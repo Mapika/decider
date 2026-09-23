@@ -11,7 +11,7 @@ from vllm import LLM,SamplingParams
 
 sys.path.insert(0,'.')
 from decider.infer import Example,Q
-from decider.prompt import build,label_table
+from decider.prompt import build,label_table,chat_for
 
 model=Path(sys.argv[1]);ref_dir=Path(sys.argv[2]);out_path=Path(sys.argv[3]);fixtures=sys.argv[4:] or ['typesafe','general_validation']
 cfg=json.load(open(model/'decider_config.json'));T=float(cfg['temperature'])
@@ -19,12 +19,12 @@ class _NoShuffle:
     def shuffle(self,x):pass
     def sample(self,xs,k):return xs[:k]
 llm=LLM(model=str(model),max_model_len=34816,gpu_memory_utilization=0.9,logprobs_mode='processed_logits',enable_prefix_caching=False,max_num_seqs=64,max_logprobs=256)
-tok=llm.get_tokenizer();_,lab_ids,_=label_table(tok)
+tok=llm.get_tokenizer();_,lab_ids,_=label_table(tok);chat=chat_for(tok,cfg)  # chat-layout models (decider_config.json "layout": "chat")
 report=dict(model=str(model),temperature=T,quantization=cfg.get('quantization'),fixtures={})
 for fx in fixtures:
     rows=[json.loads(l) for l in open(f'runs/head_to_head_v1/requests/{fx}.jsonl',encoding='utf-8')]
     ref={r['id']:(r.get('answer',r)) for r in (json.loads(l) for l in open(ref_dir/f'{fx}.jsonl',encoding='utf-8'))}
-    items=[build(Example(r['context'],[Q(r['question'],list(r['options']),0)],'infer'),tok,_NoShuffle(),max_options=255,max_ctx_tokens=32768) for r in rows]
+    items=[build(Example(r['context'],[Q(r['question'],list(r['options']),0)],'infer'),tok,_NoShuffle(),max_options=255,max_ctx_tokens=32768,chat=chat) for r in rows]
     prompts=[dict(prompt_token_ids=it['ids']) for it in items]
     params=[SamplingParams(max_tokens=1,temperature=1.0,logprobs=it['nopts'][0],allowed_token_ids=lab_ids[:it['nopts'][0]]) for it in items]
     t=time.time();outs=llm.generate(prompts,params,use_tqdm=False);sec=time.time()-t

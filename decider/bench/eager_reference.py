@@ -46,7 +46,9 @@ def main():
     cfg = load_config(a.model)
     temperature = float(os.environ.get("DECIDER_TEMPERATURE", cfg.get("temperature", 1.0)))
     isolated = bool(cfg.get("isolated_levels", False)); name = "decider-" + str(cfg.get("version", "dev"))
+    from decider.prompt import chat_for
     m = DecisionModel(a.model, dtype=torch.bfloat16, grad_ckpt=False).to("cuda").eval()
+    chat = chat_for(m.tok, cfg)                     # the model's prompt layout, as decider.serve reads it
     rows = load_rows(a.data, a.rows)
     os.makedirs(os.path.dirname(os.path.abspath(a.out)) or ".", exist_ok=True)
     t0 = time.time(); n_ans = 0; nonfinite = 0
@@ -56,7 +58,7 @@ def main():
         for j, r in enumerate(rows):
             rid = r.get("id", j)
             try:
-                rqs, index, items, ctx_len = prepare(m.tok, r["state"], r["questions"], True, isolated, a.max_state_tokens)
+                rqs, index, items, ctx_len = prepare(m.tok, r["state"], r["questions"], True, isolated, a.max_state_tokens, chat=chat)
             except ValueError as e:
                 f.write(json.dumps(dict(id=rid, ms=0.0, status=422, kind="error", detail=str(e))) + "\n"); continue
             probs = [p for ps in masked_probs(m, items, temperature, "cuda", a.max_tokens) for p in ps] if items else []

@@ -27,6 +27,10 @@ Execution (1.1.1; docs/SERVING.md has the design and the measurements):
     the one path that does GPU work after start-up that is not a graph replay: the first request with a new schema runs its
     prefix and captures one graph per (schema, batch bucket, state bucket) as in 1.0.x (/stats -> schema_cache.captures).
     Its requests are bounded and admitted like the others, on prefix plus suffix tokens, before any GPU preparation.
+  * prompt layout (1.2.0): a model whose decider_config.json has "layout": "chat" (a chat-trained checkpoint) is read in the chat layout
+    (decider.prompt.build_chat: the tokenizer's chat template around one user turn, thinking off, "Answer: (" in the assistant
+    turn) on every route, including the shared-prefix fork and the schema cache.  Every other model is read in the plain
+    layout, with the same token ids as 1.1.x.  A config naming an unknown layout stops start-up with a ValueError.
   * requests are bounded before they reach the GPU: HTTP 413 when a row, the request or the expanded question count exceeds the
     limits below, HTTP 503 when the outstanding work exceeds DECIDER_MAX_QUEUE_ROWS.
 
@@ -44,7 +48,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from decider import systemone as S1
 from decider.batching import DEFAULT_MERGE_OVERHEAD_TOKENS, plan_batches
-from decider.prompt import build, MAX_OPTIONS
+from decider.prompt import build, MAX_OPTIONS, resolve_layout, chat_template
 from decider.prompt_fast import build_rows, unique_tokens
 
 
@@ -75,7 +79,7 @@ MAX_QUEUE_ROWS = _env_int("DECIDER_MAX_QUEUE_ROWS", 4096)                   # ro
 DECIDE_MAX_CTX_TOKENS = 1536                                                # /decide context cap, unchanged from 1.0.x
 
 MODEL_NAME = "decider"; TEMP = 1.0; TEMP_SCHEMA = 1.0; RELEASE_DATE = "2026-09-17"; ISOLATED = False; NEUTRALIZE_NONE = True
-SCHEMA_FIRST = False; se = None; squeue = None; schemas = {}; seen = {}
+SCHEMA_FIRST = False; LAYOUT = "plain"; CHAT = None; se = None; squeue = None; schemas = {}; seen = {}
 eng = None; queue = None; gpu = None; cpu = None; batcher_task = None; schema_task = None
 outstanding = 0; REQ_SEQ = 0
 stats = dict(requests=0, batches=0, decisions=0, rows=0, shared_prefix_requests=0, errors=0, rejected_too_large=0,
@@ -104,20 +108,21 @@ class _NoShuffle:
     def sample(self, xs, k): return xs[:k]
 
 
-def prepare(tok, state, questions, independent, isolated=False, max_state_tokens=32768):
+def prepare(tok, state, questions, independent, isolated=False, max_state_tokens=32768, chat=None):
     """Render, plan the rows, tokenize the state once.  -> (rqs, index, items, ctx_len).  The rows are those
-    `prompt.build` produces for the same request (tests/test_prompt_fast.py, tests/test_serve_prepare.py)."""
+    `prompt.build` produces for the same request (tests/test_prompt_fast.py, tests/test_serve_prepare.py); chat: the
+    ChatTemplate of a chat-layout model, None for the plain layout."""
     ctx = S1.render_state(state)
     rqs = {k: S1.render_question(v) for k, v in questions.items()}
     flat, index = S1.plan_rows(rqs, isolated and independent)
     pairs = [(r["question"], list(r["options"])) for r in flat]
     rows = [[p] for p in pairs] if independent else [pairs]
-    items, ctx_len = build_rows(tok, ctx, rows, max_ctx_tokens=max_state_tokens)
+    items, ctx_len = build_rows(tok, ctx, rows, max_ctx_tokens=max_state_tokens, chat=chat)
     return rqs, index, items, ctx_len
 
 
 def _prepare_s1(state, questions, independent):
-    return prepare(eng.tok, state, questions, independent, ISOLATED, MAX_STATE_TOKENS)
+    return prepare(eng.tok, state, questions, independent, ISOLATED, MAX_STATE_TOKENS, chat=CHAT)
 
 
 def _prepare_decide(context, schema):
@@ -127,7 +132,7 @@ def _prepare_decide(context, schema):
         if NEUTRALIZE_NONE:
             q["options"], q["_back"] = neutralize_options(q["options"])
     ex = Example(context, [Q(q["question"], list(q["options"]), 0) for q in qs])
-    it = build(ex, eng.tok, _NoShuffle(), max_options=MAX_OPTIONS, max_ctx_tokens=DECIDE_MAX_CTX_TOKENS)
+    it = build(ex, eng.tok, _NoShuffle(), max_options=MAX_OPTIONS, max_ctx_tokens=DECIDE_MAX_CTX_TOKENS, chat=CHAT)
     return qs, it
 
 
@@ -275,8 +280,8 @@ def _plan_schema(questions, independent, state):
         tps = list(cached[1].tps)
     else:
         qs = [_SQ(x["question"], list(x["options"])) for x in rows]
-        tps = [len(schema_prefix_ids(eng.tok, g)) for g in ([[q] for q in qs] if independent else [qs])]
-    row = schema_suffix_ids(eng.tok, S1.render_state(state), 1 if independent else len(rows), MAX_STATE_TOKENS)
+        tps = [len(schema_prefix_ids(eng.tok, g, chat=CHAT)) for g in ([[q] for q in qs] if independent else [qs])]
+    row = schema_suffix_ids(eng.tok, S1.render_state(state), 1 if independent else len(rows), MAX_STATE_TOKENS, chat=CHAT)
     return tps, row
 
 
@@ -328,7 +333,8 @@ async def schema_batcher():
 
 # ---- start-up / shutdown -------------------------------------------------------
 def apply_config(cfg):
-    global MODEL_NAME, TEMP, TEMP_SCHEMA, RELEASE_DATE, ISOLATED, NEUTRALIZE_NONE, SCHEMA_FIRST
+    global MODEL_NAME, TEMP, TEMP_SCHEMA, RELEASE_DATE, ISOLATED, NEUTRALIZE_NONE, SCHEMA_FIRST, LAYOUT
+    LAYOUT = resolve_layout(cfg)                    # ValueError for an unknown layout, before the engine is built
     NEUTRALIZE_NONE = bool(cfg.get("neutralize_none", True))
     MODEL_NAME = "decider-" + str(cfg.get("version", "dev"))
     TEMP = float(os.environ.get("DECIDER_TEMPERATURE", cfg.get("temperature", 1.0)))
@@ -374,7 +380,7 @@ def resolve_device(requested=None):
 
 
 async def _start():
-    global eng, se, gpu
+    global eng, se, gpu, CHAT
     from decider.engine_v2 import EngineV2
     apply_config(load_config(MODEL))
     gpu = ThreadPoolExecutor(max_workers=1, thread_name_prefix="gpu")
@@ -383,10 +389,11 @@ async def _start():
     eng = await loop.run_in_executor(gpu, lambda: EngineV2(
         MODEL, device=dev, dtype=dtype, compile=COMPILE, fp8=FP8, max_ctx_tokens=MAX_STATE_TOKENS, t_buckets=_ints("DECIDER_T_BUCKETS"),
         b_buckets=_ints("DECIDER_B_BUCKETS"), token_budget=GRAPH_TOKEN_BUDGET))
-    print("[serve] engine", dict({k: v for k, v in eng.cfg.items() if k not in ("t_buckets", "b_buckets")}, device=dev), flush=True)
+    CHAT = chat_template(eng.tok) if LAYOUT == "chat" else None
+    print("[serve] engine", dict({k: v for k, v in eng.cfg.items() if k not in ("t_buckets", "b_buckets")}, device=dev, layout=LAYOUT), flush=True)
     if SCHEMA_FIRST:
         from decider.schema_engine import SchemaEngine
-        se = SchemaEngine(eng); print("[serve] schema cache on", flush=True)
+        se = SchemaEngine(eng, chat=CHAT); print("[serve] schema cache on", flush=True)
         pre = os.environ.get("DECIDER_SCHEMAS")      # JSON: [{"questions": {...}, "independent": true, "batch_sizes": [1, 8, 32], "state_tokens": [64, 256]}]
         for spec in (json.load(open(pre)) if pre else []):
             _, h, _ = await loop.run_in_executor(gpu, _schema_handle, spec["questions"], spec.get("independent", True), COMPILE)
@@ -396,7 +403,7 @@ async def _start():
         t = await loop.run_in_executor(gpu, lambda: eng.warmup(log=lambda s: print(s, flush=True)))
         print(f"[serve] captured {len(eng.graphs)} graphs in {t:.0f}s", flush=True)
     eng.seal()
-    print("[serve] ready", json.dumps(dict(model=MODEL_NAME, temperature=TEMP, isolated_levels=ISOLATED, schema_first=SCHEMA_FIRST,
+    print("[serve] ready", json.dumps(dict(model=MODEL_NAME, layout=LAYOUT, temperature=TEMP, isolated_levels=ISOLATED, schema_first=SCHEMA_FIRST,
                                           shared=SHARED, graphs=len(eng.graphs), limits=dict(
                                               max_rows=MAX_ROWS, max_row_tokens=MAX_ROW_TOKENS, max_request_tokens=MAX_REQUEST_TOKENS,
                                               max_queue_rows=MAX_QUEUE_ROWS))), flush=True)
@@ -528,7 +535,7 @@ async def models():
 @app.get("/health")
 async def health():
     return {"ok": eng is not None and bool(getattr(eng, "sealed", True)) and _alive(), "model": MODEL,
-            "device": str(getattr(eng, "dev", "")) if eng is not None else None}
+            "device": str(getattr(eng, "dev", "")) if eng is not None else None, "layout": LAYOUT}
 
 
 @app.get("/stats")

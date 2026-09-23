@@ -101,6 +101,18 @@ Memory: the 89 graphs reserve about 25 GB on the 4B (graph pool plus `[B, T, 255
 the grid fits before capturing; a smaller card needs a shorter `DECIDER_T_BUCKETS` or a lower budget (a start-up that runs out
 of memory fails with `torch.OutOfMemoryError` and exits, it does not hang). Start-up is 27 to 45 s for the grid (section 6).
 
+Prompt layout (1.2.0): the server reads `"layout"` from `decider_config.json` at start-up. `"layout": "chat"` (or
+`"chat_template": true`), which the chat-trained research checkpoint decider-2b v11 has (not released), wraps every row in the tokenizer's chat template (`decider.prompt.build_chat`).
+This applies to `/decide`, `/v1/systemone`, the shared-prefix fork and the schema cache. A config with no `"layout"` key is
+the plain layout of every earlier model; its rows have the same token ids as in 1.1.x. An unknown layout stops start-up with a
+`ValueError` that names it. The start-up line and `/health` report `"layout"`. There is no environment variable that
+overrides the layout, because a model gives wrong probabilities when it is read in a layout it was not trained on. The chat
+layout adds 12 tokens to each Qwen3.5 row (3 before the context and 9 before the first answer piece). `DECIDER_MAX_STATE_TOKENS`
+still caps only `Context:\n<state>`, and `DECIDER_MAX_ROW_TOKENS` counts the whole row, template tokens included.
+`/decide` keeps its 1,536-token context cap in both layouts. The research server that v11 was evaluated with used the
+state cap there instead, so `/decide` answers on longer contexts can differ from it.
+`decider.serve_v1` renders only the plain layout and refuses a chat-layout model at start-up.
+
 ## 4. Batching policy and the shared-prefix memory bound (1.1.1)
 
 Two changes to `decider.serve` and the two engines. Neither changes a route, a request field or a response field.

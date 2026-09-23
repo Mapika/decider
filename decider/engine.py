@@ -180,7 +180,9 @@ if __name__ == "__main__":
     eng = Engine(path, **cfg); print("engine cfg", eng.cfg)
     rng = random.Random(0)
     exs = evals["support_tickets"][:64] + evals["clinc_oos"][:64] + evals["race"][:32]
-    items = [build(e, eng.tok, rng, max_ctx_tokens=1536) for e in exs]
+    from decider.prompt import chat_for_model
+    chat = chat_for_model(path, eng.tok)
+    items = [build(e, eng.tok, rng, max_ctx_tokens=1536, chat=chat) for e in exs]
     # correctness vs eager masked forward (DecisionModel.slot_logits)
     ref = []
     with torch.no_grad():
@@ -194,7 +196,7 @@ if __name__ == "__main__":
     print(f"warmup capture of 8 buckets: {eng.warmup():.1f}s; captures so far {eng.stats['graph_captures']}")
     # latency: single real requests
     for name, pool in [("support_tickets", exs[:64]), ("clinc_oos", exs[64:128]), ("race", exs[128:])]:
-        its = [build(e, eng.tok, rng) for e in pool]
+        its = [build(e, eng.tok, rng, chat=chat) for e in pool]
         ts = []
         for it in its[:40]:
             torch.cuda.synchronize(); t = time.time(); eng.score_items([it]); torch.cuda.synchronize(); ts.append(time.time() - t)

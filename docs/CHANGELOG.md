@@ -3,6 +3,81 @@
 Newest first. Every entry names the weights it applies to; the Hub repositories keep earlier weights under tags where noted.
 `HISTORY.md` is the long form: how each stage was trained and what was measured.
 
+## 1.2.0 (2026-09-23): the chat prompt layout
+
+Code only; no weights change: `Mapika/decider-2b` stays v10. decider-2b v11, a research checkpoint that is not released, was
+trained with every prompt wrapped in its tokenizer's chat template, and it gives wrong probabilities when it is read in the
+plain layout that every released model uses. 1.2.0 reads
+the layout from the model's `decider_config.json`. `"layout": "chat"` (or `"chat_template": true`) selects the chat
+layout. A config with no `"layout"` key selects the plain layout, which is every released model up to and including
+decider-2b v10, decider-4b, decider-35b-a3b, decider-0.8b and decider-2b-vision.
+
+The chat layout, state-first, for Qwen3.5:
+
+    <|im_start|>user\n  Context:\n<state>  \n\nQuestion: <q>\nOptions:\n(A) ..\n(B) ..  <|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n  Answer: (
+
+The head and tail of the template come from `tok.apply_chat_template` on a single user turn, with no system prompt and with
+thinking switched off (`enable_thinking=False`). When a row holds several questions, all question blocks come first. The
+answer pieces (`Answer 1: (`, `\nAnswer 2: (`, ...) follow the tail. In the schema-first layout the user turn holds the
+question blocks and then `\n\nContext:\n<state>`. Each part is tokenized separately, and the letter is read at the final
+` (` token, as in the plain layout. The state cap (`max_ctx_tokens`, `DECIDER_MAX_STATE_TOKENS`) applies to
+`Context:\n<state>`; the template tokens do not count against it (3 head tokens and 9 tail tokens for Qwen3.5).
+
+Every path that builds prompts uses the layout: `decider.infer.Decider` (`decide`, `decide_batch`, `decide_json`,
+`system_one`, `schema()`), on CUDA with graphs and on MPS and CPU; `decider.serve` (`/decide`, `/v1/systemone`, the
+shared-prefix fork, the schema cache); and `decider.bench.eager_reference`. `decider.prompt` has the new functions
+`resolve_layout`, `chat_template`, `chat_for` and `build_chat`. `build`, `schema_prefix_ids`, `schema_suffix_ids`,
+`prompt_fast.build_rows`, `serve.prepare` and `SchemaEngine` take an optional `chat=` argument. The default `None` is the
+plain layout. The engines are unchanged: they score token ids and do not depend on the layout. `/health` and the start-up
+line of the server report the layout. A config that names a layout this version does not know (anything except `"plain"` and
+`"chat"`), or that says both `"layout": "plain"` and `"chat_template": true`, raises a `ValueError` that names the value.
+`Decider` raises it before loading the weights and the server raises it at start-up. `decider.serve_v1`, the 1.0.x server,
+renders only the plain layout, and it now refuses a chat-layout model at start-up. Versions 1.1.x and earlier do not read
+the `layout` key, so they read a chat-layout model in the plain layout without an error. A chat-layout model needs 1.2.0
+or later.
+
+Checks:
+
+- **Plain layout.** Token ids are identical to 1.1.3/1.1.4. `tests/test_layout.py` pins sha256 digests of 359 prompt sets
+  produced by 1.1.3: `prompt.build` (state-first and schema-first, several state caps, shuffled and unshuffled),
+  `schema_prefix_ids`, `schema_suffix_ids`, `build_rows`, `serve.prepare`, the `/decide` preparation, and the prompt
+  building of `Decider.decide_batch` and `Decider.system_one` with `neutralize_none` and `isolated_levels` on and off. On
+  a GPU, decider-2b v10 under 1.1.3 and under 1.2.0 gives identical answers on 121 Decision Index rows (`system_one`),
+  identical `decide_json` answers, and identical raw `decide_batch` probabilities (maximum absolute difference 0.0).
+- **Chat layout, token ids.** The ids equal those of the chat-layout research server that v11 was evaluated with, and those
+  of the builder v11 was trained with. The tests hold copies of both renderers. Against the originals, with the v11
+  tokenizer: 802 `/v1/systemone` requests (401 Decision Index rows plus a 40,000-event log state with a 200-option
+  question, each at state caps 32,768 and 512; 7,468 rows, of which 624 are truncated and 150 have more than 10 options;
+  packed rows as well); 200 `/decide` requests; and 2,700 training-builder items (1,350 state-first and 1,350
+  schema-first, with random option order, sub-sampling from 300 options, and state caps of 64, 1,536 and 16,384 tokens).
+  All are equal.
+- **Chat layout, probabilities** (decider-2b v11 candidate, T 1.0257, GPU, 301 Decision Index rows, 2,848 questions,
+  compared with the research server's engine). The package's `Engine` with the server's settings (compile off, conv patch
+  off) gives identical probabilities (maximum absolute difference 0.0, no argmax changes). The HTTP server (`EngineV2`,
+  answers rounded to 4 decimals) gives a mean per-question maximum difference of 0.00027 and a maximum of 0.026, with 1
+  argmax change. The library `Decider` (`torch.compile` and conv patch on, which is the library default for every model)
+  gives a mean of 0.0044 and a maximum of 0.040, with 16 argmax changes, all at a top-2 margin of 0.06 or less. For
+  comparison, the difference between the two engines on decider-2b v10 in the plain layout is a mean of 0.0028 and a
+  maximum of 0.069, with 7 argmax changes. On CPU (the eager path that MPS also uses), 12 rows with 19 questions have
+  equal ids, a maximum difference of 0.014 and no argmax changes.
+- **Regression readout** (95-task public regression set, 144,226 rows, per-task RNG 1234, state cap 1,536, state-first,
+  temperature fitted on the 67 in-task tasks). The package builds the rows with `prompt.build(..., chat=...)`. Through
+  the eager model path, the probabilities are identical to the research readout of the v11 candidate on every row
+  (maximum difference 0.0). The fitted temperature is 1.0257, and held-out accuracy, NLL and ECE (Decision Index
+  definition) are 0.7619, 0.6161 and 0.0501, the same as the research readout. Through the library's CUDA-graph engine
+  (compiled), the mean per-row maximum difference is 0.0035, 748 of 144,226 argmaxes change, and the held-out numbers
+  are 0.7607, 0.6162 and 0.0512.
+- **Evaluation, probes and benchmarks.** `decider.evaluate` (`run_eval(..., chat=)` and its CLI), `decider.probes.isolated`,
+  `decider.probes.independence`, `decider.bench.verify_engine_v2`, `decider.bench.schema`, `decider.bench.latency` and the
+  `decider.engine` self-check and `moe/vllm_check.py` read the model's layout (`decider.prompt.chat_for_model`, which reads `decider_config.json`
+  from a folder or a Hub id) and build chat prompts for a chat model. `decider.serve_v1` reads the config the same way,
+  so it also refuses a chat model given as a Hub id. The training and data-building code (`decider.train`,
+  `decider/data/`, `decider.games.rl`, `decider.vision`) renders the plain layout only.
+- **cuDNN attention off on the eager path too.** Since 1.0.2 the CUDA-graph engines switch off PyTorch's cuDNN
+  scaled-dot-product-attention backend, which returns wrong output for masked attention on Blackwell with torch 2.14.
+  `DecisionModel`, which `Decider(..., use_graphs=False)`, `decider.evaluate` and the probes use, now switches it off
+  as well. The setting is process-wide, as it already was once an engine was built.
+
 ## 1.1.4 (2026-09-23): decider-35b-a3b on Apple Silicon, two MPS replacements
 
 Code only; no weights change. Contributed by @nassersala in issue #6. On MPS, decider-35b-a3b ran transformers' Qwen3.5-MoE

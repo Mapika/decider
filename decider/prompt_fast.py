@@ -9,7 +9,7 @@ so the ids are exactly `ctx_ids + question_piece`; this module reuses that fact 
                   max_options=MAX_OPTIONS, max_ctx_tokens=max_ctx_tokens) for row in rows]
 (ids, slots, golds, nopts, perms) and is checked against it in tests/test_prompt_fast.py.
 """
-from decider.prompt import LETTERS, NARROW, MAX_OPTIONS, label_table, _enc_opt
+from decider.prompt import LETTERS, NARROW, MAX_OPTIONS, label_table, _enc_opt, _options_ids
 
 
 def context_ids(tok, context, max_ctx_tokens=32768):
@@ -30,12 +30,35 @@ def question_piece(tok, text, options, k=0, multi=False):
     return piece + tok.encode(tail, add_special_tokens=False)
 
 
-def build_rows(tok, context, rows, max_ctx_tokens=32768):
+class _Opts:
+    def __init__(self, options): self.options = options
+
+
+def _chat_row(tok, chat, ctx, row):
+    """One chat-layout row after the shared ids `ctx` (template head + context): every question block, the template tail,
+    then the answer pieces.  Equal to prompt.build_chat for the same row (tests/test_layout.py)."""
+    multi = len(row) > 1
+    ids = list(ctx)
+    for k, (text, options) in enumerate(row):
+        ids += tok.encode(f"\n\nQuestion{' ' + str(k + 1) if multi else ''}: {text}\nOptions:", add_special_tokens=False)
+        ids += _options_ids(tok, _Opts(options), list(range(len(options))))
+    ids += chat.tail
+    slots = []
+    for k in range(len(row)):
+        ids += chat.answer_ids(tok, k, multi); slots.append(len(ids) - 1)
+    return ids, slots
+
+
+def build_rows(tok, context, rows, max_ctx_tokens=32768, chat=None):
     """rows: list of rows, each a list of (question text, options).  -> (items, len(ctx_ids)).
 
     Option order is kept as given (no shuffling, no subsetting): systemone.render_question already caps a choice at
-    MAX_OPTIONS options, so prompt.build's sampling branch is unreachable here."""
+    MAX_OPTIONS options, so prompt.build's sampling branch is unreachable here.
+    chat: a ChatTemplate (prompt.chat_template) for a chat-layout model; the shared ids are then the template head plus the
+    context, and each row is prompt.build_chat's rendering."""
     ctx = context_ids(tok, context, max_ctx_tokens)
+    if chat is not None:
+        ctx = list(chat.head) + ctx
     items = []
     for row in rows:
         multi = len(row) > 1
@@ -43,8 +66,12 @@ def build_rows(tok, context, rows, max_ctx_tokens=32768):
         for k, (text, options) in enumerate(row):
             if not 2 <= len(options) <= MAX_OPTIONS:
                 raise ValueError(f"2..{MAX_OPTIONS} options required")
-            ids.extend(question_piece(tok, text, options, k, multi))
-            slots.append(len(ids) - 1); nopts.append(len(options))
+            if chat is None:
+                ids.extend(question_piece(tok, text, options, k, multi))
+                slots.append(len(ids) - 1)
+            nopts.append(len(options))
+        if chat is not None:
+            ids, slots = _chat_row(tok, chat, ctx, row)
         items.append(dict(ids=ids, slots=slots, golds=[0] * len(row), nopts=nopts,
                           perms=[list(range(len(o))) for _, o in row]))
     return items, len(ctx)

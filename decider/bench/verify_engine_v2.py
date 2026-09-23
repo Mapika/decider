@@ -16,7 +16,7 @@ from decider.prompt_fast import build_rows
 from decider.model import collate
 
 
-def suite_rows(path, n, tok, max_ctx_tokens):
+def suite_rows(path, n, tok, max_ctx_tokens, chat=None):
     out = []
     with gzip.open(path, "rt") as f:
         for line in f:
@@ -30,7 +30,7 @@ def suite_rows(path, n, tok, max_ctx_tokens):
             except ValueError:
                 continue
             rows = [[(x["question"], list(x["options"]))] for x in flat]
-            items, _ = build_rows(tok, ctx, rows, max_ctx_tokens=max_ctx_tokens)
+            items, _ = build_rows(tok, ctx, rows, max_ctx_tokens=max_ctx_tokens, chat=chat)
             out.append((r["id"], items))
     return out
 
@@ -82,7 +82,8 @@ def main():
     t = e2.warmup(log=lambda s: print(s, flush=True)); e2.seal()
     print(f"warm-up: {len(e2.graphs)} graphs in {t:.0f}s, {torch.cuda.memory_reserved()/1e9:.1f} GB reserved", flush=True)
 
-    data = suite_rows(a.data, a.rows, e2.tok, a.max_state_tokens)
+    from decider.prompt import chat_for_model
+    data = suite_rows(a.data, a.rows, e2.tok, a.max_state_tokens, chat=chat_for_model(a.model, e2.tok))
     print(f"{len(data)} suite rows, {sum(len(x) for _, x in data)} scoring rows", flush=True)
 
     ref, v2, sh = [], [], []

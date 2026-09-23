@@ -16,8 +16,8 @@ class K:
 
 
 @torch.no_grad()
-def score(m, exs, layout, bs=48):
-    items = [build(e, m.tok, K(), max_options=255, max_ctx_tokens=4096, layout=layout) for e in exs]; order = sorted(range(len(items)), key=lambda i: len(items[i]["ids"])); out = [None] * len(items)
+def score(m, exs, layout, bs=48, chat=None):
+    items = [build(e, m.tok, K(), max_options=255, max_ctx_tokens=4096, layout=layout, chat=chat) for e in exs]; order = sorted(range(len(items)), key=lambda i: len(items[i]["ids"])); out = [None] * len(items)
     for i in range(0, len(order), bs):
         idx = order[i:i + bs]; b = collate([items[j] for j in idx], m.tok.pad_token_id)
         p = torch.softmax(m.slot_logits(*[b[k].cuda() for k in ("input_ids", "attention_mask", "slot_idx", "slot_batch", "nopts")]), -1).cpu().numpy(); c = 0
@@ -32,6 +32,8 @@ def is_scale(q): return len(q.options) >= 3 and all(re.match(r"^-?\d+:", o) for 
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("model"); ap.add_argument("--n", type=int, default=300); ap.add_argument("--layout", default="state_first"); ap.add_argument("--out", default="")
     a = ap.parse_args(); m = DecisionModel(a.model, grad_ckpt=False).cuda().eval()
+    from decider.prompt import chat_for_model
+    chat = chat_for_model(a.model, m.tok)
     _, evals = D.load_cache("data/tasks_v4.pkl"); sets = {}
     for t, exs in evals.items():
         qs = [(e.context, q) for e in exs[:a.n] for q in e.qs if is_scale(q) and q.gold >= 0]
@@ -41,9 +43,9 @@ def main():
     except Exception: pass
     res = {}
     for t, qs in sets.items():
-        lw = score(m, [D.Example(c, [q], t) for c, q in qs], a.layout)
+        lw = score(m, [D.Example(c, [q], t) for c, q in qs], a.layout, chat=chat)
         rows = [D.Example(c, [D.Q(text, opts, 0)], t) for c, q in qs for text, opts in isolated_rows(q.text, q.options)]
-        py = score(m, rows, a.layout); k = 0; P_iso, mass = [], []
+        py = score(m, rows, a.layout, chat=chat); k = 0; P_iso, mass = [], []
         for c, q in qs:
             n = len(q.options); p, tot = combine_isolated([float(py[k + j][0][1]) for j in range(n)]); k += n; P_iso.append(p); mass.append(tot)
         G = np.array([q.gold for _, q in qs]); NO = np.array([len(q.options) for _, q in qs]); K_ = NO.max()

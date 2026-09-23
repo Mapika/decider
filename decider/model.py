@@ -7,6 +7,8 @@ from decider.prompt import letter_ids, MAX_OPTIONS
 class DecisionModel(nn.Module):
     def __init__(self, name, dtype=torch.bfloat16, grad_ckpt=True):
         super().__init__()
+        if hasattr(torch.backends.cuda, "enable_cudnn_sdp"):   # as decider.engine.set_attention_backend_policy: the cuDNN SDPA
+            torch.backends.cuda.enable_cudnn_sdp(False)         # backend is wrong for masked attention on Blackwell (torch 2.14)
         self.tok = AutoTokenizer.from_pretrained(name)
         self.lm = AutoModelForCausalLM.from_pretrained(name, dtype=dtype)
         if grad_ckpt:

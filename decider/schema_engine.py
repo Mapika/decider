@@ -40,7 +40,10 @@ class PrefixCache:
 
 
 class SchemaEngine:
-    def __init__(self, engine, use_graphs=True):
+    def __init__(self, engine, use_graphs=True, chat=None):
+        """chat: the ChatTemplate of a chat-layout model (decider.prompt.chat_template); the prefix then starts with the template
+        head and the suffix ends with the template tail and the answer pieces (decider.prompt.build_schema_first with chat)."""
+        self.chat = chat
         self.e = engine; self.core = engine.core; self.W = engine.W; self.tok = engine.tok; self.dev = engine.dev
         self.use_graphs = use_graphs and engine.use_graphs; self.graphs = {}; self.stats = dict(prepared=0, captures=0, replays=0, eager=0)
         self.compile = bool(engine.cfg.get("compile")); self._compiled = {}
@@ -55,7 +58,7 @@ class SchemaEngine:
         independent=True:  one prefix per question, one row per question (a request costs n * (state + 1 slot); no question
                            can influence another)."""
         qs = [_Q(q["question"], list(q["options"])) for q in questions]
-        groups = [[q] for q in qs] if independent else [qs]; pres = [schema_prefix_ids(self.tok, g) for g in groups]
+        groups = [[q] for q in qs] if independent else [qs]; pres = [schema_prefix_ids(self.tok, g, chat=self.chat) for g in groups]
         h = types.SimpleNamespace(P=len(groups), nq=len(qs), slots_per_row=1 if independent else len(qs), nopts=[len(q.options) for q in qs], tps=[len(p) for p in pres],
                                   tpmax=max(len(p) for p in pres), k={}, v={}, conv={}, rec={}, id=self.stats["prepared"],
                                   compile=bool(compile and self.compile))
@@ -114,7 +117,7 @@ class SchemaEngine:
 
     def tokenize(self, h, context, max_ctx_tokens=1536):
         """CPU part of a request (do it outside any GPU lock): -> (suffix ids, slot positions)."""
-        return schema_suffix_ids(self.tok, context, h.slots_per_row, max_ctx_tokens)
+        return schema_suffix_ids(self.tok, context, h.slots_per_row, max_ctx_tokens, chat=self.chat)
 
     @staticmethod
     def bucket(n_tokens):

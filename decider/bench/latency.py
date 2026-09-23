@@ -11,7 +11,8 @@ def _cli():
     _, evals = D.load_cache()
     m = DecisionModel(a.model, grad_ckpt=False).cuda().eval()
     rng = random.Random(0)
-    items = [dict(build(e, m.tok, rng), task=a.task) for e in evals[a.task][:512]]
+    from decider.prompt import chat_for_model
+    items = [dict(build(e, m.tok, rng, chat=chat_for_model(a.model, m.tok)), task=a.task) for e in evals[a.task][:512]]
     dev = "cuda"
     def run(bs, n=20):
         ts = []

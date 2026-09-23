@@ -16,8 +16,8 @@ class _Keep:
 
 
 @torch.no_grad()
-def probs(m, exs, bs=16):
-    items = [build(e, m.tok, _Keep()) for e in exs]; order = sorted(range(len(items)), key=lambda i: len(items[i]["ids"])); out = [None] * len(items)
+def probs(m, exs, bs=16, chat=None):
+    items = [build(e, m.tok, _Keep(), chat=chat) for e in exs]; order = sorted(range(len(items)), key=lambda i: len(items[i]["ids"])); out = [None] * len(items)
     for i in range(0, len(order), bs):
         idx = order[i:i + bs]; b = collate([items[j] for j in idx], m.tok.pad_token_id)
         p = torch.softmax(m.slot_logits(*[b[k].cuda() for k in ("input_ids", "attention_mask", "slot_idx", "slot_batch", "nopts")]), -1).cpu().numpy()
@@ -31,13 +31,15 @@ def main():
     ap = argparse.ArgumentParser(); ap.add_argument("model"); ap.add_argument("--n", type=int, default=300); ap.add_argument("--data", default="data/tasks_v4.pkl"); ap.add_argument("--out", default="")
     a = ap.parse_args()
     _, evals = D.load_cache(a.data); m = DecisionModel(a.model, grad_ckpt=False).cuda().eval(); res = {}
+    from decider.prompt import chat_for_model
+    chat = chat_for_model(a.model, m.tok)
     for t, exs in evals.items():
         exs = [e for e in exs if len(e.qs) > 1 and all(len(q.options) <= 10 and q.gold >= 0 for q in e.qs)][:a.n]
         if len(exs) < 50: continue
         nq = len(exs[0].qs)
-        packed = probs(m, exs)
-        rev = probs(m, [D.Example(e.context, e.qs[::-1], e.task) for e in exs]); rev = [r[::-1] for r in rev]
-        ind = probs(m, [D.Example(e.context, [q], e.task) for e in exs for q in e.qs]); ind = [np.stack([ind[i * nq + k][0] for k in range(nq)]) for i in range(len(exs))]
+        packed = probs(m, exs, chat=chat)
+        rev = probs(m, [D.Example(e.context, e.qs[::-1], e.task) for e in exs], chat=chat); rev = [r[::-1] for r in rev]
+        ind = probs(m, [D.Example(e.context, [q], e.task) for e in exs for q in e.qs], chat=chat); ind = [np.stack([ind[i * nq + k][0] for k in range(nq)]) for i in range(len(exs))]
         G = np.array([[q.gold for q in e.qs] for e in exs])
         acc = lambda P: float(np.mean([[P[i][k].argmax() == G[i, k] for k in range(nq)] for i in range(len(exs))]))
         d = lambda A, B_: np.array([[np.abs(A[i][k] - B_[i][k]).max() for k in range(nq)] for i in range(len(exs))])

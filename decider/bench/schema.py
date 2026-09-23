@@ -23,7 +23,9 @@ def timeit(fn, n=30, warm=5):
 
 def main():
     comp = "compile" in sys.argv[2:]
-    eng = Engine(sys.argv[1], compile=comp, conv_patch=comp); se = SchemaEngine(eng)
+    eng = Engine(sys.argv[1], compile=comp, conv_patch=comp)
+    from decider.prompt import chat_for_model
+    chat = chat_for_model(sys.argv[1], eng.tok); se = SchemaEngine(eng, chat=chat)
     _, evals = D.load_cache("data/tasks_v4.pkl")
     tickets = [e.context for e in evals["support_tickets"][:64]]; chats = [e.context for e in evals["clinc_oos"][:64]]
     jev = {"impact": {"type": "choice", "instructions": "What business impact?", "criteria": {"none": "no effect on the business", "degraded": "slower or partially failing", "outage": "a core flow is down"}},
@@ -40,8 +42,8 @@ def main():
                            ("10 Jev-style questions, short chat (~12 tok)", jq, chats), ("1 question x 151 options, short chat", big, chats)]:
         h = se.prepare([dict(question=q.text, options=q.options) for q in qs], compile=comp)
         hi = se.prepare([dict(question=q.text, options=q.options) for q in qs], independent=True, compile=comp) if len(qs) > 1 else None
-        packed = lambda c: build(D.Example(c, qs, "x"), eng.tok, K(), max_options=255)
-        rows = lambda c: [build(D.Example(c, [q], "x"), eng.tok, K(), max_options=255) for q in qs]
+        packed = lambda c: build(D.Example(c, qs, "x"), eng.tok, K(), max_options=255, chat=chat)
+        rows = lambda c: [build(D.Example(c, [q], "x"), eng.tok, K(), max_options=255, chat=chat) for q in qs]
         n_full = len(packed(ctxs[0])["ids"]); print(f"\n== {name}: schema prefix {h.tpmax} tok, full prompt {n_full} tok")
         for B in (1, 32):
             cs = ctxs[:B]
