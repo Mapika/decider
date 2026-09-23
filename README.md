@@ -10,22 +10,12 @@ forward pass, a probability distribution for every question.
 A typed decision is a question with a fixed answer set: **Choice** over 2 to 255 options, **Score** over 2 to 10 described
 levels, or **Noul**, the probability of yes. There is no decoding, no parsing, and no output outside the options you defined.
 
-![the model playing ten games from text state descriptions, plus Super Mario Bros with the RL checkpoint](https://raw.githubusercontent.com/Mapika/decider/main/media/montage.gif)
+![decider playing Tetris, Breakout, Pong, Snake and Connect Four; each tile shows the three most probable options and the decision time](https://raw.githubusercontent.com/Mapika/decider/main/media/showcase.gif)
 
-*Ten text games and Super Mario Bros, each move one typed decision over the legal actions; see `decider/games/` and
-`docs/HISTORY.md`.*
-
-<p align="center">
-  <img width="55%" src="https://raw.githubusercontent.com/Mapika/decider/main/media/pong_35b.gif" alt="Atari Pong played from RAM-derived text state by decider-35b-a3b as released (left) and with the games-RL overlay (right)">
-  <img width="44%" src="https://raw.githubusercontent.com/Mapika/decider/main/media/vision_2b.gif" alt="decider-2b-vision answering ten held-out image questions with the served probability on every option">
-</p>
-
-*Left: Atari Pong, same seed twice, decider-35b-a3b as released (left half) and the same weights with the games-RL overlay (right half). The model never sees the picture: it reads a text state built from the console RAM and picks
-up, down or stay, one forward pass per decision, 43 ms median on one B300 in bf16 without CUDA graphs. Released weights lose
-21-0; the overlay is at -3 when the clip ends. The overlay is an experiment, not a released checkpoint. Right:
-`decider-2b-vision` on ten held-out image questions, chosen by a fixed rule that includes the confident wrong answers, not the
-ten best. Gold is marked in green; 87% of 71 scored rows were correct; 59 ms median per image. The clips are recorded frames,
-nothing is edited inside a clip; [docs/DEMOS.md](https://github.com/Mapika/decider/blob/main/docs/DEMOS.md) gives checkpoints, seeds, timers and the games-RL run.*
+*Recorded episodes; every move is one forward pass, and the bars are the served probabilities. Tetris: the harness shortlists
+8 placements with a hand-tuned heuristic and states their consequences, and the model picks one (20 lines per game, against
+0.6 for a random pick from the same 8). Pong uses an unreleased games-RL overlay. Sources, seeds and windows:
+[docs/DEMOS.md](https://github.com/Mapika/decider/blob/main/docs/DEMOS.md).*
 
 **Independence.** This is an independent project. It is not affiliated with or endorsed by TypeSafe AI. It is an open
 reproduction of the "System One" model class (TypeSafe AI's *Jev*): a 2B model built on `Qwen/Qwen3.5-2B-Base`, a 4B model built on

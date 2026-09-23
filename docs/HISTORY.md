@@ -5,9 +5,7 @@ implementation in this repository folds all of it into one data pipeline and one
 script names mentioned below are the ones used at the time and no longer exist.
 
 
-![the v4 model playing ten games from text state descriptions, plus Mario with the RL checkpoint](media/montage.gif)
-
-*The v4 model playing every game in `decider/games.py` from text state descriptions (one typed decision per step, ~4 ms each), plus Super Mario Bros with the RL checkpoint. Built by `decider/montage.py`.*
+*The v4 model played every game in `decider/games.py` from text state descriptions (one typed decision per step, ~4 ms each), plus Super Mario Bros with the RL checkpoint; the montage clip `decider/montage.py` built was retired from `media/` on 2026-09-23.*
 
 Goal: reproduce the shape of TypeSafe AI's *Jev* (typed decisions with calibrated
 probabilities, all fields from one forward pass, no token generation) on a

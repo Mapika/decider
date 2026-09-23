@@ -1,43 +1,65 @@
 # Demo clips
 
-How the clips in the README were made. Every clip is built from frames recorded during the run; nothing is interpolated,
-re-ordered or sped up inside a clip. Where a clip shows every n-th recorded frame, the factor against real emulator time is
-stated. Everything was produced on 2026-09-22 on one NVIDIA B300 SXM6, bf16, batch of one, no CUDA graphs and no
-`torch.compile`; these are the plain eager-path latencies, not the CUDA-graph engine `Decider` uses by default.
+How `media/showcase.gif` in the README was made. Every tile is a recorded episode; nothing is re-run for the clip, nothing is
+interpolated or re-ordered, and every probability drawn is the served value logged at that decision (the build script checks
+at every decision shown that the most probable option is the logged action). The script is `make_marketing.py` in the
+research repository; it runs on CPU from the logs.
 
-## `media/pong_35b.gif`
+**Layout.** Five tiles, each looping its own window on a 16 s loop (tile lengths divide the loop, so the GIF has no jump).
+Each tile shows the game, the three most probable options of the decision on screen (the chosen one, always the most probable,
+in green) and the decision time: the median of the per-decision times logged in that episode, first decision excluded as
+warm-up. All five episodes were recorded on one NVIDIA B300 SXM6 in bf16, batch of one, on a machine shared with other jobs,
+so the times move by up to about 1.5x between runs.
 
-**What is shown.** Atari Pong, played twice from the same environment seed: on the left decider-35b-a3b as released, on the
-right the same weights with the games-RL overlay applied. Both panels are the emulator's own RGB output. The model never sees
-the picture; it reads a text state built from the console RAM (ball position, direction, paddle offset) and picks one of
-"move paddle up", "move paddle down", "stay". The choice is the argmax of the served distribution. Under each panel: the
-cumulative score (own points minus opponent points), the chosen action with its probability, and the measured median model
-time.
+| tile | model | input | episode | window shown | decision time |
+|---|---|---|---|---|---|
+| Tetris | decider-2b v10 | text state + 8 shortlisted placements (see below) | NES Tetris, test seed 4: 125 pieces, 35 lines | the 36 pieces in which the line count rises most (+14), every 6th emulator frame | 12 ms (`Decider` with CUDA graphs, whole request) |
+| Breakout | decider-2b-vision | the game frame only | ALE seed 0, 618 decisions, score 18 | the 300 decisions in which the score rises most (+12) | 23 ms |
+| Pong | decider-35b-a3b + games-RL overlay (not released) | text state built from the console RAM | ALE seed 0, 1200-decision cap; the episode is lost 3-6 | the rally ending in the model's first point (decisions 173-312) | 43 ms (eager) |
+| Snake | decider-35b-a3b | text state (10x10 board) | seed 0, 21 food, ends at turn 231 by running into itself | food 7 to 21 (decisions 61-210) | 47 ms (eager) |
+| Connect Four | decider-35b-a3b | text state listing immediate threats | seed 2 against an opponent that wins if it can, else blocks, else plays at random; game 3 of 10 | the model's first won game, moves 35-44 and the final board | 47 ms (eager) |
 
-**Checkpoints.** Left: `Mapika/decider-35b-a3b` v1. Right: the same weights with the trained tensors of the games-RL run
-described below swapped in (learning rate 2e-6, seed 1, iteration 20; 613 non-expert tensors, the routed experts stay at
-base). The overlay is not released.
+**Pictures.** Tetris, Breakout and Pong are the emulator's own frames, scaled 2x with nearest neighbour; the Tetris frame is
+cropped to the well and the LINES, SCORE, NEXT and LEVEL boxes. Snake and Connect Four were recorded as light-coloured
+drawings; for the dark page the boards are redrawn from the board in the logged state text, cell for cell (the build checks
+every decision). The final Connect Four board, after the winning drop, is not a logged decision and is rebuilt by replaying
+the logged moves in the game environment. On-screen Tetris option labels are shortened to piece and columns, plus "clears N"
+from the lines-cleared fact the model saw.
 
-**Environment and seed.** `ALE/Pong-v5` through `decider.games.envs.Pong`, `obs_type="ram"`, `frameskip=4`,
-`repeat_action_probability=0.0`, environment seed 0, decision cap 1200, greedy actions. One decision per environment step,
-that is one decision per four emulator frames.
+## Tetris: shortlist harness
 
-**Result.** The released weights lost the episode 21-0 and it ended after 764 decisions. The overlay arm was at -3 when it
-hit the 1200-decision cap. The clip plays the first 764 decisions of both, so the left panel ends exactly when its episode
-ended.
+The model does not read the board and choose among all legal placements; with that setup (17 to 34 options per piece) every
+model clears 0 lines. The harness follows the one the open jev-tetris project uses for Jev and Laya: every legal placement is
+ranked by the standard four-feature heuristic (aggregate height, lines cleared, holes, bumpiness), the top 8 are offered, each
+option states its measured consequences (lines cleared, holes, bumpiness, total height, and the board after it lands), and the
+instructions say which direction of each fact is better. The model chooses one of the 8. Options are listed in placement
+order, not rank order. NES Tetris, 5 test seeds, 300-piece cap, rule fixed before the test seeds were run:
 
-**Latency.** Median 43.0 ms per decision on the left and 42.7 ms on the right, measured inside this run: the timer wraps the
-single forward pass that produces the answer distribution, with `torch.cuda.synchronize()` on both sides, batch of one.
-Environment stepping, prompt building and frame capture are outside the timer. The MoE experts run through the `grouped_mm`
-kernel, which is how the 35B is served.
+| player | lines per seed | mean lines | mean pieces | median ms |
+|---|---|---|---|---|
+| decider-2b v10 | 25, 16, 11, 14, 35 | 20.2 | 85 | 12.2 |
+| decider-4b v1 | 8, 5, 11, 4, 11 | 7.8 | 54 | 20.5 |
+| decider-35b-a3b v1 | 10, 13, 11, 18, 14 | 13.2 | 65 | 87.2 |
+| heuristic's first choice | 117, 118, 115, 91, 65 | 101.2 | 274 | |
+| random pick from the 8 | 0, 1, 1, 1, 0 | 0.6 | 30 | |
+| always the lowest-ranked of the 8 | 0, 0, 0, 0, 0 | 0.0 | 18 | |
 
-**Time compression.** Every second recorded decision is shown at 20 frames per second, so the clip runs at 2.7 times emulator
-speed.
+Every model beats a random pick from the same shortlist by more than two standard errors, so the choice within the 8 is the
+model's and it matters; none approaches the heuristic's own first choice, and every model tops out between 54 and 125
+pieces. Latency is one full request (batch of one, about 1,300 prompt tokens), CUDA graphs for the 2B and 4B, eager for the
+35B.
 
-**Selection.** Seeds 0, 1 and 2 were played for both arms; seed 0 is shown. All three gave the same outcome (released -21,
-overlay -3), so the choice of seed does not change what the clip says.
+## Snake and Connect Four results
 
-### The games-RL run behind the right panel
+| game | player | per seed | mean | rule-based player |
+|---|---|---|---|---|
+| Snake, food eaten | decider-35b-a3b | 21, 20, 21 | 20.7 | 16.9 (greedy toward the food, avoiding walls and body) |
+| Connect Four vs win-or-block, score rate over 10 games | decider-35b-a3b | 0.25, 0.65, 0.40 | 0.43 | 0.51 (the same win-or-block rule) |
+| Connect Four vs win-or-block | decider-4b v1 | 0.10, 0.20, 0.10, 0.20, 0.10 | 0.14 | |
+
+Random play scores 0.4 food at Snake and 0.05 at Connect Four. decider-2b does not beat random play at either game.
+
+## The games-RL run behind the Pong tile
 
 Outcome-reward RL of decider-35b-a3b on ten text games (Pong, Breakout, Freeway, CliffWalking, FrozenLake, Blackjack, three
 MiniGrid tasks, BabyAI GoTo), 2026-09-20 to 2026-09-21. The reward is the game's own score change plus a bonus when an
@@ -47,7 +69,7 @@ measured on a fixed pool of rows from the supervised training mixture, and a ste
 nats is undone. Four arms (learning rates 1e-6 and 2e-6, two seeds each); the checkpoint per arm is chosen on a validation
 seed set and reported on a fresh test seed set.
 
-Greedy test scores of the arm shown in the clip (2e-6, seed 1, iteration 20), against the untouched model:
+Greedy test scores of the arm used in the Pong tile (2e-6, seed 1, iteration 20), against the untouched model:
 
 | game | released 35B | with overlay | random | rule-based teacher |
 |---|---|---|---|---|
@@ -63,52 +85,16 @@ Greedy test scores of the arm shown in the clip (2e-6, seed 1, iteration 20), ag
 | BabyAI GoTo | 0.59 | 0.45 | 0.12 | 0.34 |
 
 Regression accuracy on the 95-task set after the overlay: in-task 0.855 (untouched 0.855), held-out 0.809 (untouched
-0.811). The Pong test score is -12 over ten test seeds; the clip's seed 0 ends at -3 because the episode is cut at 1200
+0.811). The Pong test score is -12 over ten test seeds; seed 0, the tile's episode, ends at -3 because it is cut at 1200
 decisions. The two 2e-6 seeds disagree on which games they gain (the other seed reaches Breakout 15 and BabyAI 0.83), so no
 overlay from this run has been merged or released; CliffWalking never leaves a -60 wall loop in any arm.
 
-## `media/vision_2b.gif`
+## Image questions (no clip)
 
-**What is shown.** `Mapika/decider-2b-vision` deciding on ten held-out images. Each panel has the image, the question, one row
-per option with the served probability as a bar, the gold answer marked in green, and the model time measured for that image.
-
-**Data.** The evaluation split of the local build of `HuggingFaceM4/the_cauldron` (`decider/vision/data.py`). Twelve rows
-were drawn at random (`random.Random(20260922)`) from each of six subsets: aokvqa, visual7w, vsr, ai2d, scienceqa, iconqa.
-72 rows were scored; the first is discarded as CUDA warm-up (2331 ms against a 59 ms median), leaving 71.
-
-**Result.** Over the 71 scored rows the model picked the gold answer 87.3% of the time. The ten panels in the clip are 7
-correct and 3 wrong.
-
-**Selection.** Deliberately not the ten best. The rule: the most confident correct example from each of the six subsets, then
-the two most confident wrong examples, then examples whose top probability is closest to 60%. Three panels show the model
-confidently wrong.
-
-**Latency.** Per-image model time is printed on each panel; the footer gives the median over the run, 59 ms. The timer wraps
-`VisionDecisionModel.slot_logits` alone with `torch.cuda.synchronize()` on both sides, batch of one. Image decoding and
-prompt building are outside it. Per-image time tracks the number of vision tokens, which is why it ranges from 24 ms to 98 ms.
-
-**Time compression.** Not applicable: each panel is held for 2000 ms.
-
-## `media/vision_35b.gif`
-
-**What is shown.** The text-only `Mapika/decider-35b-a3b` weights loaded onto the vision-language version of their base
-(`Qwen3.5-35B-A3B` VL tower, text weights replaced by the released overlay, temperature 1.08, no image training), deciding on
-the same ten held-out Cauldron images as `media/vision_2b.gif` with the same panel layout.
-
-**Data and selection.** Identical to `vision_2b.gif`: the same 72 rows, the first discarded as warm-up, the same panel rule
-(most confident correct example per subset, the two most confident wrong ones, then the examples closest to 60%).
-
-**Result.** Over the 71 scored rows the overlay picked the gold answer 91.5% of the time (65 of 71) against 87.3% for
-`decider-2b-vision` on exactly the same rows (61 rows right for both, 4 only the 35B, 1 only the 2B). On a larger probe
-(300 rows per subset) the overlay is at 0.871 in-task against 0.880 for `decider-2b-vision`, so the 4-point gap on 71 rows
-is within the sample noise; the finding is that the text-trained weights answer image questions at the level of the
-purpose-trained vision model without any image training. The ten panels are 7 correct and 3 wrong by the selection rule.
-
-**Latency.** Median 85 ms per image (51 to 139 ms), against 59 ms for `decider-2b-vision`, same timer as above.
-
-**Time compression.** Not applicable: each panel is held for 2000 ms.
-
-## `media/montage.gif`
-
-Recorded in 2026-09 on the v8 weights: the ten text games from `decider/games/` and Super Mario Bros from the PPO checkpoint
-of `decider/mario_rl.py`, one typed decision per move. See `docs/HISTORY.md`.
+The earlier vision clips were retired on 2026-09-23; their measurements stand. On 71 held-out rows of the evaluation split of
+`HuggingFaceM4/the_cauldron` (twelve random rows from each of aokvqa, visual7w, vsr, ai2d, scienceqa and iconqa, the first
+discarded as warm-up), `Mapika/decider-2b-vision` picked the gold answer 87.3% of the time (median 59 ms per image). The
+text-only `Mapika/decider-35b-a3b` weights loaded onto the vision-language version of their base, with no image training,
+picked it 91.5% of the time (65 of 71; median 85 ms per image). On a larger probe (300 rows per subset) the two are at 0.871
+and 0.880 in-task, so the 4-point gap on 71 rows is within the sample noise: the text-trained weights answer image questions
+at the level of the purpose-trained vision model.
