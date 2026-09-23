@@ -226,6 +226,10 @@ def patch_mps():
     global _compat_warning_reported
     if not torch.backends.mps.is_available():
         return False
+    import os
+    if os.environ.get("DECIDER_MPS_MOE_PATCH", "1") != "0":     # histc + unit-triangular solve replacements (issue #6, @nassersala)
+        from decider import mps_moe
+        mps_moe.install()
     try:
         import transformers
         import transformers.models.qwen3_5.modeling_qwen3_5 as mq

@@ -69,6 +69,13 @@ as one grouped matrix multiplication; the eager expert loop that `transformers` 
 13x slower. `use_graphs=False` is required: the CUDA-graph engine and the FP8 path of the helper package were built for the
 dense models and are untested with this architecture. Loading takes about 25 seconds from local disk.
 
+Apple Silicon (reported by @nassersala in issue #6): on an M5 Max with 128 GB of unified memory, macOS 26.5, torch 2.14 and
+transformers 5.17, the model loads in bf16 in about 60 s through `Decider(path, device="mps", dtype=torch.bfloat16,
+use_graphs=False)` and reproduces this card's JevBench public-item counts exactly (48/48, 70/72, 75/111).
+`flash-linear-attention` does not install there; install the package with `--no-deps` after `torch`, `transformers>=5.17`,
+`numpy<2` and `huggingface_hub`. From decider-ai 1.1.4 the library's MPS patch replaces two slow MPS operations in the
+MoE reference code (`decider/mps_moe.py`), which takes a decision from 2.8-4 s to 0.23-0.5 s for typical inputs.
+
 Without the helper package, the same computation in plain `transformers`:
 
 ```python
@@ -247,7 +254,8 @@ workloads where the accuracy gain is worth 3 to 4 times the cost per decision, a
 
 * No reinforcement-learning stage: stated beliefs about action outcomes were not trained against exact laws, and the served
   distribution on live browser tasks is less sharp than decider-2b v10's (sampled play 86% against 93%).
-* 65 GB of bf16 weights; one 80 GB GPU is the minimum, and the CUDA-graph and FP8 paths of the helper are untested here.
+* 65 GB of bf16 weights; one 80 GB GPU is the minimum on CUDA (a Mac with 128 GB of unified memory also runs it, see
+  Requirements), and the CUDA-graph and FP8 paths of the helper are untested here.
 * Overconfident on the hardest external items (JevBench hard-tier ECE 0.15) and on some held-out classification sets
   (TREC 0.16, financial sentiment 0.14) although the aggregate ECE is 0.03 / 0.07.
 * English only. Calibration is measured on public datasets and teacher-labelled probes, not on your traffic. Check it on your

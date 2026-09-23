@@ -3,6 +3,32 @@
 Newest first. Every entry names the weights it applies to; the Hub repositories keep earlier weights under tags where noted.
 `HISTORY.md` is the long form: how each stage was trained and what was measured.
 
+## 1.1.4 (2026-09-23): decider-35b-a3b on Apple Silicon, two MPS replacements
+
+Code only; no weights change. Contributed by @nassersala in issue #6. On MPS, decider-35b-a3b ran transformers' Qwen3.5-MoE
+reference code, and two operations in it took most of each decision on an M5 Max: `torch.histc` (tokens per expert, about
+45 ms a call, once per MoE layer) and `torch.linalg.solve_triangular` (about 17 ms a call, twice per linear-attention layer).
+The library's MPS patch (`decider.mps_ops.patch_mps`), which until now covered only the dense Qwen3.5 module, also installs
+`decider/mps_moe.py`: an exact count in place of `histc`, and a block-doubling inverse in place of the unit lower-triangular
+solve. They are installed only into the two transformers modules that make these calls (`transformers.integrations.moe`
+and `modeling_qwen3_5_moe`, each given its own view of `torch`); global `torch` and every other caller are untouched, and
+inside those modules they act only on MPS tensors of the matching call shape. The count drops out-of-range expert ids as
+`histc` does. Reported effect: 2.8-4 s a decision becomes 0.23-0.5 s for typical inputs and 2.5 s for a 3,900-token input
+(was 11 s); the JevBench public-item counts are unchanged (48/48, 70/72, 75/111). `DECIDER_MPS_MOE_PATCH=0` before the first
+`patch_mps()` call leaves them out. Tested here on CPU tensors (the count equals `histc` including dropped ids; the solve matches torch to 1e-10
+in float64). Tested on MPS by @nassersala at commit ac3183d (M5 Max, 128 GB, torch 2.14.0, transformers 5.17.0), JevBench
+public items, 231 items:
+
+| | easy / standard / hard | same answer as before, items | seconds a decision, median / p90 |
+|---|---|---|---|
+| decider-35b-a3b, 1.1.4 | 48/48, 70/72, 75/111 | 231 of 231 | 0.33 / 2.2 |
+| decider-35b-a3b, `DECIDER_MPS_MOE_PATCH=0` | 48/48, 70/72, 75/111 | 231 of 231 | 3.16 / 7.8 |
+| decider-2b, 1.1.4 (dense model; replacements not used) | 48/48, 63/72, 51/111 | 231 of 231 | 0.05 / 0.35 |
+
+With the replacements the 35B's probabilities move by a median of 0.002 (largest 0.29, on a 2,338-token item); rerun with the
+solve done exactly on CPU in float64, the block inverse was closer to the exact result than the MPS solver on 3 of the 4
+most-shifted items. The 35B card now lists the Mac result.
+
 ## 1.1.3 (2026-09-23): `/decide` answers a malformed schema with 422
 
 Code only; no weights change. Reported in issue #8: `POST /decide` with no `schema`, or with a question mapped straight to a
