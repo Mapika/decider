@@ -3,6 +3,21 @@
 Newest first. Every entry names the weights it applies to; the Hub repositories keep earlier weights under tags where noted.
 `HISTORY.md` is the long form: how each stage was trained and what was measured.
 
+## 1.1.3 (2026-09-23): `/decide` answers a malformed schema with 422
+
+Code only; no weights change. Reported in issue #8: `POST /decide` with no `schema`, or with a question mapped straight to a
+list of options (`{"Which team?": ["billing", "technical"]}`), returned 500 with an unhandled traceback, because the request
+model accepted `None` and any dict and the first code to look inside the schema was the question conversion. The schema is
+now checked before any work (`decider.infer.Decider._check_schema`). A missing schema, a schema that is not an object (one
+holding NaN or Infinity was a 500, because the validation error echoed it), a field that is not an object, choice
+options that are not a non-empty list of strings, a scale legend that is empty, has keys that are not finite numbers or holds
+NaN or Infinity, and an unknown type are 422s whose message names the expected form. Legends with non-finite keys or values
+were also a 500 (the answer could not be serialised), and so were non-string options under the default settings. Every
+other schema 1.1.2 answered is still answered the same way, with two exceptions: options or a legend given as a bare string,
+which 1.1.2 split into single characters, and non-string options on a model whose `decider_config.json` sets `neutralize_none` to false, are now 422s. An empty
+schema returns `{}` without a forward pass. The library's `decide_json` raises the same `ValueError`. `/v1/systemone` with an
+empty question map still returns 200 with an empty answer map, as in 1.0.x.
+
 ## 1.1.2 (2026-09-22): the HTTP server runs on MPS and CPU
 
 Code only; no weights change. Reported in issue #5: the server always built its engine on `cuda`, so on a machine without CUDA

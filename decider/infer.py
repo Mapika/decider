@@ -192,8 +192,50 @@ class Decider:
 
     # ---- typed schema interface: {question: {"type": "bool"} | {"type": "choice", "options": [...]}
     #                                         | {"type": "scale", "legend": {"0": "none", "1": "low", ...}}}
+    SCHEMA_FORM = ('schema: a map {question: field}, each field one of {"type": "choice", "options": [option strings]}, '
+                   '{"type": "bool"} or {"type": "scale", "legend": [descriptions] or {level number: description}}')
+
+    @staticmethod
+    def _check_schema(schema):
+        """Raise ValueError naming the expected form when `schema` does not have it (the HTTP server turns this into a 422).
+        Every schema that 1.1.2 answered stays accepted, except options or a legend given as a bare string (1.1.2 split it into
+        characters); an empty schema is answered with {}."""
+        import json, math
+        form = Decider.SCHEMA_FORM
+        if schema is None:
+            raise ValueError("schema is required; " + form)
+        if not isinstance(schema, dict):
+            raise ValueError(f"schema is a {type(schema).__name__}; " + form)
+        for qtext, spec in schema.items():
+            where = f"schema[{qtext!r}]"
+            if not isinstance(spec, dict):
+                raise ValueError(f"{where} is a {type(spec).__name__}, not a field object; " + form)
+            t = spec.get("type", "choice")
+            if t == "choice":
+                opts = spec.get("options")
+                if not isinstance(opts, (list, tuple, dict)) or not opts or not all(isinstance(o, str) for o in opts):
+                    raise ValueError(f'{where}: "options" must be a non-empty list of strings; ' + form)
+            elif t == "scale":
+                leg = spec.get("legend")
+                if not isinstance(leg, (list, tuple, dict)) or not leg:
+                    raise ValueError(f'{where}: "legend" must be a non-empty list or {{level number: description}} map; ' + form)
+                try:                                           # the legend is echoed in the answer, which must serialise
+                    json.dumps(leg, allow_nan=False)
+                except (TypeError, ValueError):
+                    raise ValueError(f'{where}: the "legend" contains a value that is not finite JSON (NaN or Infinity); ' + form)
+                if isinstance(leg, dict):
+                    try:
+                        ok = all(math.isfinite(float(k)) for k in leg)
+                    except (TypeError, ValueError, OverflowError):
+                        ok = False
+                    if not ok:
+                        raise ValueError(f'{where}: the keys of a "legend" map must be finite numbers, e.g. {{"0": "none", "1": "low"}}; ' + form)
+            elif t != "bool":
+                raise ValueError(f"{where}: unknown field type {t!r}; " + form)
+
     @staticmethod
     def _schema_to_questions(schema):
+        Decider._check_schema(schema)
         qs = []
         for qtext, spec in schema.items():
             t = spec.get("type", "choice")

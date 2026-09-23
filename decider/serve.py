@@ -1,5 +1,7 @@
 """HTTP server.
   POST /decide        {"context": str, "schema": {...}}                     -> typed JSON decisions (all questions packed in one row)
+                      schema: {question: {"type": "choice", "options": [...]} | {"type": "bool"} | {"type": "scale", "legend": [...]}};
+                      a missing or malformed schema is a 422 naming this form (decider.infer.Decider._check_schema)
   POST /v1/systemone  {"state": str|object|array, "questions": {id: {...}}} -> the TypeSafe/Jev wire format (decider.systemone):
                       Choice (up to 255 described options), Score, Noul; every question is scored in its own row, so answers
                       are independent of each other ("independent": false packs them behind one copy of the state instead).
@@ -423,7 +425,7 @@ app = FastAPI(title="decider", lifespan=lifespan)
 # ---- routes -------------------------------------------------------------------
 class Req(BaseModel):
     context: str
-    schema_: dict = None
+    schema_: object = None                  # any JSON value: Decider._check_schema gives the 422 (pydantic's echoes NaN/Infinity and cannot be serialised)
     model_config = {"populate_by_name": True}
     def __init__(self, **kw):
         if "schema" in kw: kw["schema_"] = kw.pop("schema")
@@ -460,6 +462,8 @@ async def decide(r: Req):
     except (ValueError, KeyError) as e:
         stats["errors"] += 1
         raise HTTPException(422, str(e))
+    if not qs:                                       # empty schema: nothing to score (the 1.1.2 answer, without a forward)
+        stats["requests"] += 1; return {}
     check_size([len(it["ids"])])
     _admit(1)
     try:

@@ -477,3 +477,52 @@ def test_a_quiet_queue_drops_the_adaptive_window():
         return got
     assert _run(go(0.0)) == ["a"]                                            # idle queue: window dropped
     assert _run(go(1000.0)) == ["a", "b"]                                    # window kept
+
+
+def test_decide_malformed_schema_is_422_with_the_expected_form(served):
+    """Issue #8: a missing schema and a question mapped straight to a list of options were 500s with a traceback; so were
+    non-finite legend levels (the score could not be serialised)."""
+    eng, run = served
+    bad = [{"context": "c"},
+           {"context": "c", "schema": ["a", "b"]},
+           {"context": "c", "schema": {"Which team?": ["billing", "technical"]}},
+           {"context": "c", "schema": {"Which team?": {"type": "choice"}}},
+           {"context": "c", "schema": {"Which team?": {"type": "choice", "options": "ab"}}},
+           {"context": "c", "schema": {"Which team?": {"type": "choice", "options": []}}},
+           {"context": "c", "schema": {"Which team?": {"type": "choice", "options": ["billing", 3]}}},
+           {"context": "c", "schema": {"Mood": {"type": "scale"}}},
+           {"context": "c", "schema": {"Mood": {"type": "scale", "legend": "ab"}}},
+           {"context": "c", "schema": {"Mood": {"type": "scale", "legend": {"low": "a", "high": "b"}}}},
+           {"context": "c", "schema": {"Mood": {"type": "scale", "legend": {"nan": "a", "1": "b"}}}},
+           {"context": "c", "schema": {"Mood": {"type": "scale", "legend": {"1e999": "a", "1": "b"}}}},
+           {"context": "c", "schema": {"Mood": {"type": "scale", "legend": [float("inf"), "b"]}}},
+           {"context": "c", "schema": {"Mood": {"type": "scale", "legend": ["a", {"x": [float("nan")]}]}}},
+           {"context": "c", "schema": [float("inf")]},
+           {"context": "c", "schema": float("nan")},
+           {"context": "c", "schema": {"Q": {"type": "text"}}}]
+
+    async def fn(cl):
+        return [await cl.post("/decide", content=json.dumps(b), headers={"content-type": "application/json"}) for b in bad]
+    for b, r in zip(bad, run(fn)):
+        assert r.status_code == 422, (b, r.status_code, r.text)
+        assert '"type": "choice"' in r.json()["detail"], r.json()
+    assert not eng.calls                                   # rejected before any scoring
+
+
+def test_decide_schemas_1_1_2_answered_still_answer(served):
+    """Compatibility: forms 1.1.2 answered with 200 keep answering (Codex review of the #8 fix)."""
+    eng, run = served
+    ok = [({}, {}),
+          ({"Q": {"options": ["only"]}}, None),
+          ({"Q": {"options": {"a": 1, "b": 2}}}, None),
+          ({"Q": {"type": "scale", "legend": ["one"]}}, None),
+          ({"Q": {"type": "scale", "legend": {"0.5": "half", "1e1": "ten"}}}, None),
+          ({"Q": {"type": "choice", "options": ("a", "a")}, "B": {"type": "bool", "extra": 1}}, None)]      # more than 255 options (truncated, as in 1.1.2) needs the real tokenizer's wide labels; checked by hand for 1.1.3
+
+    async def fn(cl):
+        return [await cl.post("/decide", json={"context": "c", "schema": s}) for s, _ in ok]
+    for (s, want), r in zip(ok, run(fn)):
+        assert r.status_code == 200, (s, r.status_code, r.text)
+        assert list(r.json()) == list(s)
+        if want is not None:
+            assert r.json() == want
