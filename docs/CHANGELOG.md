@@ -3,6 +3,13 @@
 Newest first. Every entry names the weights it applies to; the Hub repositories keep earlier weights under tags where noted.
 `HISTORY.md` is the long form: how each stage was trained and what was measured.
 
+## 1.2.1 (2026-09-23): jinja2 is a dependency
+
+Code only; no weights change. The chat layout of 1.2.0 builds its prompts with the tokenizer's chat template
+(`tok.apply_chat_template`), which needs `jinja2`; transformers does not install it. 1.2.0 did not list it, so loading a
+chat-layout model in an environment without `jinja2` stopped with an `ImportError`. No released model uses the chat
+layout, so no released model was affected. `jinja2` is now a dependency of the package, and the test workflow installs it.
+
 ## 1.2.0 (2026-09-23): the chat prompt layout
 
 Code only; no weights change: `Mapika/decider-2b` stays v10. decider-2b v11, a research checkpoint that is not released, was

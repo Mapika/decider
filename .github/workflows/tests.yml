@@ -13,7 +13,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install pytest "transformers>=5" numpy
+      - run: pip install pytest "transformers>=5" numpy jinja2
       - run: python -m pytest -q tests
         env:
           PYTHONPATH: .
@@ -27,7 +27,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
-      - run: pip install pytest "transformers>=5" "numpy<2" fastapi httpx
+      - run: pip install pytest "transformers>=5" "numpy<2" fastapi httpx jinja2
       - run: python -m pytest -q tests
         env:
           PYTHONPATH: .

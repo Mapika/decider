@@ -305,6 +305,7 @@ def test_scripts_resolve_the_layout_from_a_folder_and_refuse_nothing_for_plain(t
 
 
 def test_run_eval_passes_chat_to_build(monkeypatch):
+    pytest.importorskip("torch")
     from decider import evaluate as E
     seen = []
 

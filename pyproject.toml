@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "decider-ai"
-version = "1.2.0"
+version = "1.2.1"
 description = "One-pass typed decisions with calibrated probabilities: decider-2b, decider-35b-a3b and the training recipe"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 authors = [{ name = "Mark Marosi" }]
-dependencies = ["torch", "transformers>=5", "flash-linear-attention", "numpy<2", "huggingface_hub"]
+dependencies = ["torch", "transformers>=5", "flash-linear-attention", "numpy<2", "huggingface_hub", "jinja2"]
 
 [project.optional-dependencies]
 serve = ["fastapi", "uvicorn[standard]", "httpx"]
