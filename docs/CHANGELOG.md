@@ -3,6 +3,24 @@
 Newest first. Every entry names the weights it applies to; the Hub repositories keep earlier weights under tags where noted.
 `HISTORY.md` is the long form: how each stage was trained and what was measured.
 
+## decider-4b v2 (2026-09-24): a LoRA stage on harder decisions
+
+[Mapika/decider-4b](https://huggingface.co/Mapika/decider-4b) (bf16, 8.4 GB) now holds v2; the v1 weights stay under the Hub tag
+`v1`. v2 is v1 plus a LoRA of rank 64 on the attention and MLP weights, trained for 2 epochs on 29,356 rows and merged: generated
+decision families with code-computed answers, questions over business documents written by Qwen3.6-27B and kept only when two
+independent answers agreed, human-labelled public sets, and replay of v1's mixture v2. No JevBench or Decision Index item was
+used for training, selection or temperature. Temperature 1.935 (v1 1.05), fitted on 61 in-task regression tasks. Plain layout,
+as v1: decider-ai 1.0.2, 1.1.4, 1.2.1 and 1.2.2 were checked to load it and give the same answers; no package change is needed.
+
+Against v1 on the same rows: JevBench public hard tier 0.676 against 0.550 (read once, after selection) with hard-tier ECE 0.071
+against 0.288 (recomputed at 1.935 from the stored probabilities, 6 Score items kept at 1.719); OpenJev +2.8 points; TypeSafe +4.9 (interval includes zero); Bespoke's suite 0.773 against 0.757 macro; Decision
+Index sample calibration error 0.074 against 0.086. Worse: regression set −1.0 in-task and −0.9 held-out points (0.824 / 0.779),
+in-task ECE 0.041 against 0.027; bag-draw games in sampled play 37.9% against 56.6% wins and zero-shot games sampled 22.4%
+against 27.8%; sampled browser play −2.8 points; CliffWalking −60 against −13 and BabyAI-GoTo 0.35 against 0.54; model-router
+probe 0.935 against 0.968. The pre-registered rule of the training run (beat an earlier candidate on our own held-out hard sets)
+was not met by 0.5 to 0.8 points; the release was decided on the full comparison with v1. If you rely on sampled play, load
+revision `v1` (`Decider(snapshot_download("Mapika/decider-4b", revision="v1"))`). The model card has every row with its interval.
+
 ## 1.2.2 (2026-09-24): validation and release-script fixes
 
 Code only; no weights change.

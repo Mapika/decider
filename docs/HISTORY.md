@@ -393,6 +393,33 @@ the teacher's 22, Pong not learned. Decision Index 4,000-request sample: index 4
 0.086 (2B 0.093, 35B 0.027); the 4B is over-confident outside its regression set. Every number with its source is in
 `docs/RESULTS.md` and in `eval_results.json` on the Hub.
 
+## decider-4b v2: a LoRA stage on harder decisions
+
+Released 2026-09-24 at [Mapika/decider-4b](https://huggingface.co/Mapika/decider-4b); v1 stays under the Hub tag `v1`.
+
+**Data and training.** decider-4b v1 plus a LoRA of rank 64 (alpha 128) on the attention and MLP weights, learning rate 1e-4,
+2 epochs, 1,517 steps of 65,536 tokens, in v1's plain state-first layout with isolated Score levels, merged into the bf16 weights
+after training. 29,356 rows: 8,000 from ten generated decision families whose answers the generating code computes; 11,356
+questions over business documents written by Qwen3.6-27B with thinking on, each kept only when two further independent answers
+by the same model agreed with the writer's; 3,300 human-labelled rows from the training halves of twelve public sets; 6,700
+replay rows of mixture v2 (100 per in-task regression task). No JevBench or Decision Index item was used for training,
+selection or temperature; the generators were written from the family names JevBench publishes for its sealed set.
+
+**Selection.** The pre-registered rule required the candidate to beat an earlier candidate (the Qwen3.5-4B instruct
+model plus a LoRA on 15,768 of the same rows) on our held-out hard sets. v2 tied it (0.8 and 0.5 points short of the required margins), so by the
+rule nothing replaced v1. The earlier candidate had lost v1's everyday skills and v2 kept them within about 1 point, so v2 was
+measured on every set of the model card and released on that full comparison with v1.
+
+**Temperature.** 1.935, fitted by NLL on 61 of the 67 in-task regression tasks (without Banking77, CLINC-OOS, MMLU, ARC,
+Winogrande and HellaSwag); 1.942 on all 67.
+
+**What was measured, against v1.** Better: JevBench public hard tier 0.676 against 0.550 (read once, after selection),
+hard-tier ECE 0.071 against 0.288 (recomputed at 1.935 from stored probabilities, 6 Score items kept at 1.719), OpenJev +2.8 points, TypeSafe +4.9 (interval includes zero), Bespoke's suite 0.773 against
+0.757, Decision Index sample calibration error 0.074 against 0.086. Worse: regression set in-task −1.0 and held-out −0.9 points,
+regression in-task ECE 0.041 against 0.027, bag-draw games in sampled play 37.9% against 56.6%, zero-shot games sampled 22.4%
+against 27.8%, sampled browser play −2.8 points, CliffWalking −60 against −13, BabyAI-GoTo 0.35 against 0.54, model-router
+probe 0.935 against 0.968. The model card lists every row with its interval and says who should keep v1.
+
 ## Vision: decisions from pixels
 
 Qwen3.5-2B is a vision-language model; `decider/vision.py` uses the full model with the same

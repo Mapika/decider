@@ -28,6 +28,11 @@ local Qwen3.5-27B teacher (`teacher_data/`, `decider/data/mixture.py`). Nothing 
 
 ## What's new
 
+* **2026-09-24 — decider-4b v2.** v1 plus a LoRA stage on harder decisions (generated decision families, document questions
+  written by Qwen3.6-27B and kept when two independent answers agreed, human-labelled sets, replay of v1's data). JevBench
+  public hard tier 0.676 against v1's 0.550 with hard-tier ECE 0.071 against 0.288 (recomputed at the release temperature from stored probabilities; 6 Score items kept at the candidate temperature), OpenJev +2.8 points, Bespoke's suite 0.773;
+  about 1 point lower on the regression set (0.824 / 0.779) and worse in sampled play (bag-draw games 38% against 57% wins).
+  v1 stays under the Hub tag `v1`; the model card says who should keep it. Same size and prompt layout, so no package change.
 * **2026-09-22 — decider-4b v1.** Qwen3.5-4B-Base, one pass over mixture v2 (the public mixture plus 26 further public
   datasets and ten programmatic families), AdamW on bf16 parameters, no RL stage. Above decider-2b v10 on 87 of 95 regression
   tasks (0.834 / 0.788 against 0.805 / 0.755), JevBench hard tier 0.541, Bespoke's suite 0.757; level with the 2B on TypeSafe
@@ -95,7 +100,7 @@ The gap to Jev is the knowledge area. Per-area scores on the Decision Index pane
 
 Language, retrieval, tools and arts are within 0.03. Knowledge is 0.18 behind, on GPQA, GSM8K, CRUXEval and MMLU. The same
 weakness shows on JevBench's 111 public hard items, which are long policy texts, multi-hop and temporal-numeric reasoning:
-decider-35b-a3b 0.676 and decider-2b 0.459 against Jev's 0.730 (our runner and the harness's own per-task file, same items). The other axis we lose there is calibration on hard items; see
+decider-35b-a3b 0.676, decider-4b v2 0.676 and decider-2b 0.459 against Jev's 0.730 (our runner and the harness's own per-task file, same items). The other axis we lose there is calibration on hard items; see
 [Limits](#limits-stated-plainly).
 
 ## Models
@@ -107,13 +112,13 @@ two are not comparable to each other, and the NVFP4 row is measured against the 
 | model | base | parameters | context | held-out accuracy | weights |
 |---|---|---|---|---|---|
 | decider-2b **v10** | Qwen3.5-2B-Base | 1.9B | 32k tokens | 0.755 (regression set) | [Mapika/decider-2b](https://huggingface.co/Mapika/decider-2b) |
-| decider-4b **v1** | Qwen3.5-4B-Base | 4.2B | 32k tokens | 0.788 (regression set) | [Mapika/decider-4b](https://huggingface.co/Mapika/decider-4b) |
+| decider-4b **v2** | Qwen3.5-4B-Base | 4.2B | 32k tokens | 0.779 (regression set) | [Mapika/decider-4b](https://huggingface.co/Mapika/decider-4b) |
 | decider-35b-a3b **v1** | Qwen3.5-35B-A3B-Base | 34.7B total, 3B active | 32k tokens | 0.810 (regression set) | [Mapika/decider-35b-a3b](https://huggingface.co/Mapika/decider-35b-a3b) |
 | decider-35b-a3b-nvfp4 | the 35B in NVFP4, 19.6 GB | 34.7B total, 3B active | 32k tokens | 1.0 to 1.5 points under bf16 in vLLM | [Mapika/decider-35b-a3b-nvfp4](https://huggingface.co/Mapika/decider-35b-a3b-nvfp4) |
 | decider-0.8b | Qwen3.5-0.8B-Base | 0.8B | 32k tokens | 0.71 (94-task set) | [Mapika/decider-0.8b](https://huggingface.co/Mapika/decider-0.8b) |
 | decider-2b-vision | Qwen3.5-2B vision-language, v5 text weights | 1.9B | 32k tokens | Visual7W 0.89 (see MODEL_CARD_VISION.md) | [Mapika/decider-2b-vision](https://huggingface.co/Mapika/decider-2b-vision) |
 
-The v8 weights stay available under the Hub tag `v8`. decider-4b is the first model trained on mixture v2 (the public mixture
+The v8 weights stay available under the Hub tag `v8`, and decider-4b v1 under the tag `v1` of Mapika/decider-4b. decider-4b is the first model trained on mixture v2 (the public mixture
 plus 26 further public decision datasets and ten programmatic families with verifiable gold); the mixture-v2 builders are not
 yet in this package, `scripts/train.sh full` reproduces the public 60% of its data. decider-2b-vision has a
 [browser demo](https://huggingface.co/spaces/hugging-apps/decider-2b-vision-demo), a Space built by the Hugging Face team.
@@ -226,10 +231,10 @@ law where v8 was 0.47. In the browser it predicts the outcome of its own click a
 * **One pass cannot do multi-step arithmetic.** There is no chain of thought and no intermediate state, so GSM8K-type items,
   temporal arithmetic and multi-hop chains are out of reach. Split such a judgment into several questions.
 * **Calibration on hard items is the weak axis.** decider-2b's top-label ECE on JevBench's hard items is 0.30: it is
-  confident where it is wrong there, which is what pulls its calibration axis to 46.6. The 35B's hard-tier ECE is 0.15.
+  confident where it is wrong there, which is what pulls its calibration axis to 46.6. The 35B's hard-tier ECE is 0.15, decider-4b v2's 0.07.
 * **Knowledge-heavy multiple choice.** decider-2b improves little over its base model on MMLU and MedQA. decider-4b closes
-  part of it (MMLU +11, MedQA +17 points over the 2B, hard tier 0.54) and decider-35b-a3b more (MMLU +19 points, hard tier 0.68)
-  at 3 to 4 times the cost per decision; neither has the RL stage.
+  part of it (MMLU +11, MedQA +13 points over the 2B) and decider-35b-a3b more (MMLU +19 points) at 3 to 4 times the cost per
+  decision; both are at 0.68 on JevBench's public hard tier, and neither has the RL stage.
 * **Optimizer setting on the 35B.** decider-35b-a3b was trained with FP32 master weights (Muon on the block matrices, AdamW
   elsewhere). In later controlled runs that setting moved small models further from their base than the same schedule
   without a master copy, and cost accuracy on knowledge tasks. The 2B and the 4B were trained without a master copy and are not affected.
