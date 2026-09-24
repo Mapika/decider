@@ -3,7 +3,8 @@
     state      str | dict | list            JSON state is serialised compactly; questions may name a part by path (`ticket.messages[0].text`)
     questions  {id: {"type": "choice", "instructions": ..., "criteria": {name: description | {...} | [...] | None}}      up to 255 options
                      {"type": "score",  "instructions": ..., "criteria": [level 0 description, level 1 description, ...]}  2..10 levels
-                     {"type": "noul",   "instructions": ..., "criteria": {"true": ..., "false": ...} (optional)}}
+                     {"type": "noul",   "instructions": ... (optional), "criteria": {"true": ..., "false": ...} (optional)}}
+    a noul question needs instructions or at least one true/false description.
     ids are never shown to the model.  `instructions` and every description may be a string or any JSON value.
 """
 import json, math
@@ -38,7 +39,15 @@ def render_state(state, index_arrays=True):
 
 def render_question(spec):
     """-> dict(question=str, options=[str], type=..., names=[...])  (names: what the answer reports for each option)"""
-    t = spec.get("type", "choice"); ins = _txt(spec.get("instructions", spec.get("question", ""))); crit = spec.get("criteria", spec.get("options"))
+    t = spec.get("type", "choice"); crit = spec.get("criteria", spec.get("options"))
+    raw = spec.get("instructions", spec.get("question", ""))
+    if t in ("noul", "bool") and raw in (None, ""):          # the criteria carry the question (NOUL_WITHOUT_INSTRUCTIONS)
+        ins = NOUL_WITHOUT_INSTRUCTIONS
+        described = isinstance(crit, dict) and any(d not in (None, "") for d in (crit.get("true", crit.get(True)), crit.get("false", crit.get(False))))
+        if not described and (crit is None or isinstance(crit, dict)):     # a non-map is rejected below with the criteria message
+            raise ValueError("noul question without instructions: criteria must describe true or false")
+    else:
+        ins = _txt(raw)
     if not ins:
         raise ValueError("question without instructions")
     if t == "choice":
@@ -63,6 +72,12 @@ def render_question(spec):
         raise ValueError(f"unknown question type {t!r}")
     return dict(question=ins, options=opts, type="noul" if t == "bool" else t, names=names, legend=[_txt(c) for c in crit] if t == "score" else None,
                 isolated=bool(spec.get("isolated", True)))
+
+
+# A noul question may omit `instructions` (TypeSafe's OpenAPI file marks it optional).  The question id is never shown to the
+# model, so the question text is this fixed sentence and the true/false descriptions, rendered as the options "no: ..." and
+# "yes: ...", say what is being asked.  A request that gives instructions is rendered exactly as before.
+NOUL_WITHOUT_INSTRUCTIONS = "Which answer fits the context?"
 
 
 # ---- isolated levels: every Score level is judged in its own row, without its number or its neighbours
@@ -118,16 +133,50 @@ def certainty(p):
     return max(0.0, 1.0 - h / math.log(len(p))) if len(p) > 1 else 1.0
 
 
+def _clip01(x):
+    return min(1.0, max(0.0, x))
+
+
+def _normalised(p):
+    """As the adapter's _normalize: a distribution with zero total counts as uniform."""
+    tot = sum(p)
+    return [1.0 / len(p)] * len(p) if tot == 0 else [x / tot for x in p]
+
+
+def choice_confidence(p):
+    """TypeSafe's Choice confidence: the largest probability rescaled so that a uniform distribution gives 0 and all mass on one
+    option gives 1, (n * p_max - 1) / (n - 1); 1 for a single option."""
+    n = len(p); p = _normalised(p)
+    return 1.0 if n <= 1 else _clip01((n * max(p) - 1) / (n - 1))
+
+
+def score_confidence(p):
+    """TypeSafe's Score confidence (system-one-adapter-python, confidence_metrics.score_confidence): 1 minus the expected distance
+    from the most likely level, divided by D = mean over levels i of |i - (n - 1)/2| (the mean distance of the levels from the
+    middle of the scale), floored at 0; 1 for a single level.
+    With two levels it equals choice_confidence."""
+    n = len(p); p = _normalised(p)
+    if n <= 1:
+        return 1.0
+    k = max(range(n), key=p.__getitem__)
+    spread = sum(x * abs(i - k) for i, x in enumerate(p))
+    uniform = sum(abs(i - (n - 1) / 2) for i in range(n)) / n
+    return _clip01(1.0 - spread / uniform)
+
+
 def format_answer(rq, p, nd=4):
-    """rq: render_question output; p: probabilities in option order."""
+    """rq: render_question output; p: probabilities in option order.
+    `confidence` is TypeSafe's (choice_confidence / score_confidence); `x_p_max` is the largest probability, which was
+    `confidence` before 1.3.0."""
     p = [float(x) for x in p[:len(rq["options"])]]; s = sum(p) or 1.0; p = [x / s for x in p]
     j = max(range(len(p)), key=p.__getitem__)
     if rq["type"] == "noul":
         return {"type": "noul", "noul": round(p[1], nd)}
     if rq["type"] == "choice":
-        return {"type": "choice", "choice": rq["names"][j], "confidence": round(p[j], nd), "certainty": round(certainty(p), nd),
-                "probabilities": {n: round(x, nd) for n, x in zip(rq["names"], p)}}
-    return {"type": "score", "score": round(sum(i * x for i, x in enumerate(p)), 2), "confidence": round(p[j], nd), "certainty": round(certainty(p), nd),
+        return {"type": "choice", "choice": rq["names"][j], "confidence": round(choice_confidence(p), nd), "x_p_max": round(p[j], nd),
+                "certainty": round(certainty(p), nd), "probabilities": {n: round(x, nd) for n, x in zip(rq["names"], p)}}
+    return {"type": "score", "score": round(sum(i * x for i, x in enumerate(p)), 2), "confidence": round(score_confidence(p), nd), "x_p_max": round(p[j], nd),
+            "certainty": round(certainty(p), nd),
             "legend": {str(i): d for i, d in enumerate(rq["legend"])}, "probabilities": {str(i): round(x, nd) for i, x in enumerate(p)}}
 
 

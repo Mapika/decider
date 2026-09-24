@@ -3,6 +3,43 @@
 Newest first. Every entry names the weights it applies to; the Hub repositories keep earlier weights under tags where noted.
 `HISTORY.md` is the long form: how each stage was trained and what was measured.
 
+## 1.3.0 (2026-09-24): TypeSafe's confidence, noul questions without instructions
+
+Code only; no weights change. Both changes follow the conformance report in #15.
+
+* **`confidence` values change.** In `POST /v1/systemone` answers and in the Python API that builds the same answers
+  (`Decider.system_one()` and `Decider.schema()`), `confidence` on a Choice or Score answer now follows TypeSafe's definition.
+  Before 1.3.0 it was the largest probability, p_max.
+  * Choice with n options: `(n·p_max − 1)/(n − 1)`, clipped to [0, 1]. A uniform distribution gives 0, all probability on one
+    option gives 1. Example from #15: probabilities 0.195, 0.1994, 0.2252, 0.2286, 0.1518 gave `confidence` 0.2286 and now give
+    0.0358.
+  * Score with n levels: `max(0, 1 − Σ pᵢ·|i − k| / D)`, where k is the most likely level and
+    `D = (1/n)·Σ |i − (n − 1)/2|` is the mean distance of the n levels from the middle of the scale. This is the formula of TypeSafe's `system-one-adapter-python` (`score_confidence`). For
+    TypeSafe's documented Score example (probabilities 0, 0.95, 0.05) it gives 0.925, as does the Choice formula applied to the
+    levels; the two differ on other distributions, and we use the adapter's because it is TypeSafe's own code. With two levels
+    the two formulas are equal.
+  * Noul answers have no `confidence`, as before and as TypeSafe documents.
+  * **To keep the old value, read `x_p_max`.** Every Choice and Score answer now also has `x_p_max`, the largest probability,
+    which is exactly the old `confidence`. A threshold tuned on `confidence` before 1.3.0 can be moved to `x_p_max` unchanged.
+    For a Choice with a fixed number of options n, the new `confidence` is an increasing function of `x_p_max`, so a threshold t
+    on the old value corresponds to about `(n·t − 1)/(n − 1)` on the new one (the two fields are rounded separately, so values
+    at the boundary can fall on different sides). For a Score there is no such conversion: two answers with the same `x_p_max`
+    can have different `confidence`. `examples/routing_with_confidence.py` and `examples/composite_scoring.py` now read `x_p_max`,
+    so their routing decisions and printed probabilities are as before; the routing example also prints `confidence`.
+  * Unchanged: `POST /decide` and `Decider.decide()` / `decide_batch()` (the plain form, which is not TypeSafe's format) still
+    report the top probability as `confidence`. `certainty`, `probabilities`, `score`, `level_fit` and `fit_mass` are unchanged.
+  * `decider.bench.public_suite` computes its calibration error from `x_p_max`, so its numbers are comparable with earlier runs.
+* **A noul question may omit `instructions`.** TypeSafe's OpenAPI file marks `instructions` optional; 1.2.2 answered such a
+  question with HTTP 422 (`question without instructions`). A noul (or bool) question whose `instructions` is missing, `null` or
+  empty is now answered when its `criteria` describe true or false. The question text shown to the model is then the fixed
+  sentence `Which answer fits the context?` and the options are rendered from the criteria as before (`no: <false description>`,
+  `yes: <true description>`). The question id is not used, because ids are never shown to the model. A noul question with
+  neither instructions nor a true or false description still gets 422, now with the message
+  `noul question without instructions: criteria must describe true or false`; this includes `"instructions": null` without
+  criteria, which 1.2.2 answered with the text `null` as the question. Questions that give instructions are rendered exactly as
+  before. Choice and Score questions still require `instructions`. On 12 hand-written noul questions, decider-2b answered 12 of
+  12 correctly with instructions and 11 of 12 with the criteria alone.
+
 ## decider-4b v2 (2026-09-24): a LoRA stage on harder decisions
 
 [Mapika/decider-4b](https://huggingface.co/Mapika/decider-4b) (bf16, 8.4 GB) now holds v2; the v1 weights stay under the Hub tag

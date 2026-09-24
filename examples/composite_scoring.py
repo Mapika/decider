@@ -19,4 +19,4 @@ reports = ["The export button is misaligned by a few pixels on the settings page
 for r in reports:
     a = d.system_one(r, QUESTIONS)["answers"]
     prio = sum(WEIGHTS[k] * a[k]["score"] / (len(QUESTIONS[k]["criteria"]) - 1) for k in WEIGHTS)       # each score normalised to 0..1
-    print(f"priority {prio:.2f}  " + "  ".join(f"{k}={a[k]['score']:.2f} (p={a[k]['confidence']:.2f})" for k in WEIGHTS) + f"  | {r[:60]}")
+    print(f"priority {prio:.2f}  " + "  ".join(f"{k}={a[k]['score']:.2f} (p={a[k]['x_p_max']:.2f})" for k in WEIGHTS) + f"  | {r[:60]}")

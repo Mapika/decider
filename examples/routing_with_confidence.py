@@ -19,10 +19,11 @@ QUESTIONS = {
 for msg in ["how much do i have left in checking?", "yes go ahead and send the 2,400 to Marta", "third time I'm asking. the app logs me out every time. fix it today or I'm gone",
             "did my transfer to Marta go through or not"]:
     a = d.system_one(msg, QUESTIONS)["answers"]; act = a["action"]
-    if act["confidence"] < 0.5:
+    # x_p_max is the top probability (`confidence` before decider-ai 1.3.0; `confidence` is now (3 * x_p_max - 1) / 2 here)
+    if act["x_p_max"] < 0.5:
         route = "-> human (model unsure)"
     elif act["choice"] == "approve_transfer":
-        route = "-> execute" if act["confidence"] > 0.9 else "-> ask the user to confirm"        # destructive action: higher bar
+        route = "-> execute" if act["x_p_max"] > 0.9 else "-> ask the user to confirm"        # destructive action: higher bar
     else:
         route = f"-> {act['choice']}"
-    print(f"{msg[:70]:72s} {act['choice']:17s} p={act['confidence']:.2f}  urgent={a['urgent']['noul']:.2f}  frustration={a['frustration']['score']:.2f}  {route}")
+    print(f"{msg[:70]:72s} {act['choice']:17s} p={act['x_p_max']:.2f} conf={act['confidence']:.2f}  urgent={a['urgent']['noul']:.2f}  frustration={a['frustration']['score']:.2f}  {route}")

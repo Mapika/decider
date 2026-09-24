@@ -151,7 +151,7 @@ d.system_one(
                     "criteria": {"returns": "Exchanges, refunds, wrong or damaged items", "billing": {"what": "Charges, invoices", "not_for": "delivery"}, "other": None}},
      "refund_requested": {"type": "noul", "instructions": "Does `ticket.messages[0].text` request a refund?"},
      "frustration": {"type": "score", "instructions": "How frustrated is the customer?", "criteria": ["calm", "frustrated", "very frustrated"]}})
-# {"answers": {"department": {"choice": "billing", "confidence": 0.56, "certainty": 0.37, "probabilities": {"returns": 0.44, "billing": 0.56, "other": 0.00}},
+# {"answers": {"department": {"choice": "billing", "confidence": 0.34, "x_p_max": 0.56, "certainty": 0.37, "probabilities": {"returns": 0.44, "billing": 0.56, "other": 0.00}},
 #              "refund_requested": {"noul": 0.99},
 #              "frustration": {"score": 0.76, "probabilities": {"0": 0.34, "1": 0.55, "2": 0.10}, "level_fit": {"0": 0.34, "1": 0.55, "2": 0.10}, "fit_mass": 0.99}}}
 #                                                             (v10 weights; "returns" also mentions refunds, so the mass is split)
@@ -159,6 +159,13 @@ d.system_one(
 d.decide("My card was charged twice.", [{"question": "Which team?", "options": ["billing", "technical", "sales"]}])
 # [{"choice": "billing", "confidence": 0.77, "probs": {"billing": 0.77, "technical": 0.19, "sales": 0.04}}]      the plain form
 ```
+
+`confidence` on a Choice or Score answer follows TypeSafe's definition since decider-ai 1.3.0. For a Choice with n options it is
+`(n·p_max − 1)/(n − 1)`, where p_max is the largest probability: 0 when the probabilities are uniform, 1 when one option has all
+of them. For a Score it is `max(0, 1 − Σ pᵢ·|i − k| / D)`, where k is the most likely level and
+`D = (1/n)·Σ |i − (n − 1)/2|` is the mean distance of the n levels from the middle of the scale. Before 1.3.0, `confidence` was p_max. `x_p_max` reports p_max on every Choice and Score answer; if
+you tuned thresholds on `confidence` before 1.3.0, compare them with `x_p_max` instead. A Noul answer has no `confidence`; its
+`noul` value is the probability of yes. A Noul question may omit `instructions` if its `criteria` describe true or false.
 
 `examples/` has three complete programs: confidence-gated routing, composite scoring, and a hierarchical beam over Choice
 probabilities.

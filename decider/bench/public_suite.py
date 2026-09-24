@@ -34,13 +34,13 @@ def main():
             ans = d.system_one(r["input"]["state"], {"decision": q}, isolated=None if a.isolated is None else bool(a.isolated))["answers"]["decision"]
             if q["type"] == "choice":
                 probs = ans["probabilities"]; pred = ans["choice"]; ok = pred == tgt; ptrue = probs.get(tgt, 0.0)
-                brier += sum((p - (k == tgt)) ** 2 for k, p in probs.items()); conf_ok.append((ans["confidence"], ok))
+                brier += sum((p - (k == tgt)) ** 2 for k, p in probs.items()); conf_ok.append((ans["x_p_max"], ok))
             elif q["type"] == "noul":
                 p1 = ans["noul"]; pred = p1 >= 0.5; ok = pred == tgt; ptrue = p1 if tgt else 1 - p1
                 brier += 2 * (p1 - float(tgt)) ** 2; conf_ok.append((max(p1, 1 - p1), ok))
             else:
                 probs = ans["probabilities"]; pred = int(max(probs, key=probs.get)); ok = pred == tgt; ptrue = probs[str(tgt)]
-                brier += sum((p - (int(k) == tgt)) ** 2 for k, p in probs.items()); conf_ok.append((ans["confidence"], ok))
+                brier += sum((p - (int(k) == tgt)) ** 2 for k, p in probs.items()); conf_ok.append((ans["x_p_max"], ok))
                 mae += abs(ans["score"] - tgt)
             kinds[q["type"]] += 1; rows.append((r["id"], ok, ptrue))
         n = len(rows); acc = sum(ok for _, ok, _ in rows) / n

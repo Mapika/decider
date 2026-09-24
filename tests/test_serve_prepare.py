@@ -80,9 +80,9 @@ def test_assemble_shape_is_unchanged(tok):
         probs.append([x / s for x in v] + [0.0] * (MAX_OPTIONS - n))
     ans = S1.assemble(rqs, index, probs)
     assert set(ans) == set(QUESTIONS)
-    assert set(ans["queue"]) == {"type", "choice", "confidence", "certainty", "probabilities"}
+    assert set(ans["queue"]) == {"type", "choice", "confidence", "x_p_max", "certainty", "probabilities"}
     assert set(ans["flag"]) == {"type", "noul"}
-    assert {"type", "score", "confidence", "certainty", "legend", "probabilities", "level_fit", "fit_mass"} == set(ans["sev"])
+    assert {"type", "score", "confidence", "x_p_max", "certainty", "legend", "probabilities", "level_fit", "fit_mass"} == set(ans["sev"])
 
 
 def test_bad_questions_raise_value_error(tok):

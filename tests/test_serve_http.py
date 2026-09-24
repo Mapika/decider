@@ -117,7 +117,7 @@ def test_systemone_wire_format(served):
     assert list(body) == ["model", "answers", "usage"] and body["model"] == "decider-test"
     assert list(body["usage"]) == ["input_tokens", "output_tokens"] and body["usage"]["output_tokens"] == 0
     assert set(body["answers"]) == set(QUESTIONS)
-    assert set(body["answers"]["queue"]) == {"type", "choice", "confidence", "certainty", "probabilities"}
+    assert set(body["answers"]["queue"]) == {"type", "choice", "confidence", "x_p_max", "certainty", "probabilities"}
     assert set(body["answers"]["flag"]) == {"type", "noul"}
     assert body["usage"]["input_tokens"] > 0
     assert eng.calls and all(k == "items" for k, _ in eng.calls)
@@ -154,6 +154,43 @@ def test_invalid_noul_criteria_is_422_with_detail(served, question_type, criteri
     assert r.status_code == 422
     assert r.json() == {"detail": "noul criteria: a map of optional true/false descriptions"}
     assert eng.stats["forwards"] == 0
+
+
+def test_noul_without_instructions_is_answered(served):
+    eng, run = served
+
+    async def fn(cl):
+        return await cl.post("/v1/systemone", json={"state": "please refund the duplicate charge", "questions": {
+            "refund": {"type": "noul", "criteria": {"true": "the customer asks for money back", "false": "anything else"}}}})
+    r = run(fn)
+    assert r.status_code == 200
+    a = r.json()["answers"]["refund"]
+    assert set(a) == {"type", "noul"} and a["type"] == "noul" and 0.0 <= a["noul"] <= 1.0
+
+
+def test_noul_without_instructions_or_criteria_is_422(served):
+    eng, run = served
+
+    async def fn(cl):
+        return await cl.post("/v1/systemone", json={"state": "s", "questions": {"q": {"type": "noul"}}})
+    r = run(fn)
+    assert r.status_code == 422
+    assert r.json() == {"detail": "noul question without instructions: criteria must describe true or false"}
+    assert eng.stats["forwards"] == 0
+
+
+def test_confidence_fields_on_the_wire(served):
+    eng, run = served
+
+    async def fn(cl):
+        return await cl.post("/v1/systemone", json={"state": "the checkout is down", "questions": QUESTIONS})
+    ans = run(fn).json()["answers"]
+    for k in ("queue", "sev"):
+        a = ans[k]; p = list(a["probabilities"].values())
+        assert a["x_p_max"] == pytest.approx(max(p), abs=1e-4)
+        assert 0.0 <= a["confidence"] <= 1.0
+    q = ans["queue"]; n = len(q["probabilities"])
+    assert q["confidence"] == pytest.approx((n * q["x_p_max"] - 1) / (n - 1), abs=5e-4)
 
 
 def test_shared_path_is_used_for_long_multi_question_states(served, monkeypatch):

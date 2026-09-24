@@ -113,10 +113,15 @@ so the model conditions on the supplied candidates rather than on a fixed head.
 ## Field types
 
 * **noul**: probability of "yes".
-* **choice** with `criteria` {name: description | JSON | null}: the argmax option, its probability (`confidence`, the calibrated
-  number), `certainty` (1 minus the normalised entropy) and the full distribution.
-* **score** with `criteria` [level descriptions]: the expected level, the probability of the most likely level, the
-  distribution, and the per-level fits.
+* **choice** with `criteria` {name: description | JSON | null}: the argmax option, its probability (`x_p_max`, the calibrated
+  number), `confidence` (TypeSafe's definition, `(n·x_p_max − 1)/(n − 1)` for n options), `certainty` (1 minus the normalised
+  entropy) and the full distribution.
+* **score** with `criteria` [level descriptions]: the expected level, the probability of the most likely level (`x_p_max`),
+  `confidence` (TypeSafe's definition: 1 minus the expected distance from the most likely level, divided by the mean distance of
+  the levels from the middle of the scale, floored at 0), the distribution, and the per-level fits.
+
+Before decider-ai 1.3.0, `confidence` in `system_one` and `POST /v1/systemone` answers was the probability that is now `x_p_max`.
+The plain form (`decide`, `POST /decide`) still reports the top probability as `confidence`.
 
 ## Training
 
