@@ -2,7 +2,7 @@
 # The reference recipe, end to end.  One GH200 / H100-class GPU; PY points at the project venv.
 #   scripts/train.sh full     Qwen3.5-2B-Base -> decider, one epoch over the full mixture (about 1.3M examples)
 #   scripts/train.sh delta M  continue from an existing decider checkpoint M on the new formats + a replay sample
-set -e; cd "$(dirname "$0")/.."; export PYTHONUNBUFFERED=1
+set -eo pipefail; cd "$(dirname "$0")/.."; export PYTHONUNBUFFERED=1
 PY=${PY:-.venv312/bin/python}; MODE=${1:-full}; INIT=${2:-Qwen/Qwen3.5-2B-Base}; OUT=${OUT:-runs/decider_$MODE}; BASE=${BASE:-data/tasks.pkl}
 mkdir -p data logs
 [ -f "$BASE" ] || $PY -m decider.data.core --out "$BASE"                 # download + convert ~95 public datasets (teacher_data/ is in the repo)

@@ -3,6 +3,24 @@
 Newest first. Every entry names the weights it applies to; the Hub repositories keep earlier weights under tags where noted.
 `HISTORY.md` is the long form: how each stage was trained and what was measured.
 
+## 1.2.2 (2026-09-24): validation and release-script fixes
+
+Code only; no weights change.
+
+* `/v1/systemone`: a noul (or bool) question whose `criteria` is not a map or null, for example `["bad"]`, returned HTTP 500.
+  It now returns 422 with `noul criteria: a map of optional true/false descriptions`, before any forward pass. Empty non-map
+  values (`[]`, `""`, `false`, `0`) were read as "no criteria" before and are now also rejected. Omitted or `null` criteria
+  and one-sided maps are accepted as before. The same check is in the shared question renderer, so in the Python API
+  `Decider.system_one()` and `Decider.schema()` now raise `ValueError` for these values. Contributed by @dajiaohuang (#11,
+  fixes #10).
+* `scripts/stage_release.py` now copies the four modules the server imports (`batching`, `prompt_fast`, `engine_v2`,
+  `shared_prefix`) and the two Apple Silicon modules the engine loads on MPS (`mps_ops`, `mps_moe`). Before this, a staged
+  bundle could not import `decider.serve`. A test stages a bundle and imports the server. Contributed by @dajiaohuang (#13,
+  fixes #12).
+* `scripts/train.sh` sets `pipefail`, so a failed training step stops the script before evaluation. `scripts/run_full.sh`
+  writes `FULL_RUN_DONE` only when training and evaluation both succeed; otherwise it writes `FULL_RUN_FAILED` with the
+  exit status (fixes #14, reported by @dajiaohuang).
+
 ## 1.2.1 (2026-09-23): jinja2 is a dependency
 
 Code only; no weights change. The chat layout of 1.2.0 builds its prompts with the tokenizer's chat template
