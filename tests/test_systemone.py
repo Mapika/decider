@@ -36,6 +36,13 @@ def test_noul_with_and_without_criteria():
     assert desc["options"] == ["no: anything else", "yes: money back"]
 
 
+@pytest.mark.parametrize("question_type", ["noul", "bool"])
+@pytest.mark.parametrize("criteria", [["bad"], [], "bad", False])
+def test_noul_criteria_must_be_a_map(question_type, criteria):
+    with pytest.raises(ValueError, match="noul criteria: a map of optional true/false descriptions"):
+        s1.render_question({"type": question_type, "instructions": "Refund asked?", "criteria": criteria})
+
+
 def test_render_state_serialises_json_and_indexes_long_arrays():
     assert s1.render_state("plain text") == "plain text"
     short = json.loads(s1.render_state({"items": [{"a": 1}, {"a": 2}]}))

@@ -142,6 +142,20 @@ def test_invalid_question_is_422_with_detail(served):
     assert r.status_code == 422 and r.json() == {"detail": "choice criteria: a map of 2..255 options"}
 
 
+@pytest.mark.parametrize("question_type", ["noul", "bool"])
+@pytest.mark.parametrize("criteria", [["bad"], []])
+def test_invalid_noul_criteria_is_422_with_detail(served, question_type, criteria):
+    eng, run = served
+
+    async def fn(cl):
+        return await cl.post("/v1/systemone", json={"state": "s", "questions": {"q": {
+            "type": question_type, "instructions": "Is this true?", "criteria": criteria}}})
+    r = run(fn)
+    assert r.status_code == 422
+    assert r.json() == {"detail": "noul criteria: a map of optional true/false descriptions"}
+    assert eng.stats["forwards"] == 0
+
+
 def test_shared_path_is_used_for_long_multi_question_states(served, monkeypatch):
     eng, run = served
     monkeypatch.setattr(serve, "SHARED", True); monkeypatch.setattr(serve, "SHARED_MIN_TOKENS", 100)
