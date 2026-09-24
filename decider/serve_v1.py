@@ -1,6 +1,6 @@
 """The 1.0.x HTTP server, kept for one release.  `decider.serve` is the 1.1.0 server (docs/CHANGELOG.md); this module is the
-previous implementation with its code unchanged (only this docstring and, since 1.2.0, a start-up refusal of chat-layout
-models differ), for anyone who needs to compare or roll back:
+previous implementation with its code unchanged (only this docstring, since 1.2.0 a start-up refusal of chat-layout models,
+and since 1.4.0 the per-answer-type temperatures of decider.temperature differ), for anyone who needs to compare or roll back:
 
    uvicorn decider.serve_v1:app --host 0.0.0.0 --port 8000
 
@@ -20,6 +20,7 @@ from decider.engine import Engine, T_BUCKETS, _bucket
 from decider.prompt import build, MAX_OPTIONS
 from decider.infer import Decider, Example, Q, neutralize_options
 from decider import systemone as S1
+from decider import temperature as TT
 
 MODEL = os.environ.get("DECIDER_MODEL", "runs/r3_v2/model")
 MAX_BATCH = int(os.environ.get("DECIDER_MAX_BATCH", "32"))
@@ -30,7 +31,7 @@ MAX_FWD_TOKENS = int(os.environ.get("DECIDER_MAX_FWD_TOKENS", "65536"))     # pa
 COMPILE = os.environ.get("DECIDER_COMPILE", "1") == "1"
 FP8 = os.environ.get("DECIDER_FP8", "1") == "1"
 app = FastAPI(title="decider")
-MODEL_NAME = "decider"; TEMP = 1.0; TEMP_SCHEMA = 1.0; RELEASE_DATE = "2026-09-17"
+MODEL_NAME = "decider"; TEMP = 1.0; TEMP_SCHEMA = 1.0; TEMP_BY_TYPE = {}; TEMP_SCHEMA_BY_TYPE = {}; RELEASE_DATE = "2026-09-17"
 gpu_lock = threading.Lock()            # one GPU job at a time: batched graph replays and shared-prefix requests must not interleave
 SHARED_MIN_TOKENS = int(os.environ.get("DECIDER_SHARED_MIN_TOKENS", "768"))   # independent rows over a state this long share one prefix pass
 eng = None; queue = None; stats = dict(requests=0, batches=0, decisions=0, batch_hist={})
@@ -57,6 +58,7 @@ def _prepare(context, schema):
             q["options"], q["_back"] = neutralize_options(q["options"])
     ex = Example(context, [Q(q["question"], list(q["options"]), 0) for q in qs])
     it = build(ex, eng.tok, _NoShuffle(), max_options=MAX_OPTIONS, max_ctx_tokens=eng.max_ctx)
+    it["types"] = [q["_type"] for q in qs]
     return qs, it
 
 
@@ -129,13 +131,14 @@ async def _start():
     global eng, queue
     eng = Engine(MODEL, compile=COMPILE, fp8=FP8, conv_patch=COMPILE); print("[serve] engine", eng.cfg, flush=True)
     import json
-    global MODEL_NAME, TEMP
+    global MODEL_NAME, TEMP, TEMP_BY_TYPE, TEMP_SCHEMA_BY_TYPE
     from decider.prompt import resolve_layout, load_decider_config
     cfg = load_decider_config(MODEL)                  # a folder or a Hub id, as decider.serve reads it
     if resolve_layout(cfg) != "plain":             # 1.2.0: this server only renders the plain layout
         raise RuntimeError(f"{MODEL} is a {resolve_layout(cfg)}-layout model; decider.serve_v1 renders only the plain layout. Use decider.serve.")
     eng.neutralize_none = bool(cfg.get("neutralize_none", True)); MODEL_NAME = "decider-" + str(cfg.get("version", "dev"))
-    TEMP = float(os.environ.get("DECIDER_TEMPERATURE", cfg.get("temperature", 1.0)))
+    global TEMP_SCHEMA
+    (TEMP, TEMP_BY_TYPE), (TEMP_SCHEMA, TEMP_SCHEMA_BY_TYPE) = TT.from_config(cfg, os.environ.get("DECIDER_TEMPERATURE"))
     global RELEASE_DATE; RELEASE_DATE = str(cfg.get("release_date", RELEASE_DATE))
     global SCHEMA_FIRST, se, squeue, ISOLATED
     ISOLATED = bool(cfg.get("isolated_levels", False))
@@ -143,7 +146,8 @@ async def _start():
     # label sets and long states): on when the model's config makes it the default, or with DECIDER_SCHEMA_CACHE=1
     trained = bool(cfg.get("schema_first", False) or cfg.get("schema_first_trained", False))
     SCHEMA_FIRST = trained and (bool(cfg.get("schema_first", False)) or os.environ.get("DECIDER_SCHEMA_CACHE", "0") == "1")
-    global TEMP_SCHEMA; TEMP_SCHEMA = float(cfg.get("temperature_schema_first", TEMP))
+    print("[serve] temperature", TEMP, "by type", TT.effective(TEMP, TEMP_BY_TYPE),
+          *(("schema cache by type", TT.effective(TEMP_SCHEMA, TEMP_SCHEMA_BY_TYPE)) if SCHEMA_FIRST else ()), flush=True)
     if SCHEMA_FIRST:
         from decider.schema_engine import SchemaEngine
         se = SchemaEngine(eng); squeue = asyncio.Queue(); asyncio.create_task(schema_batcher()); print("[serve] schema cache on", flush=True)
@@ -186,6 +190,7 @@ def _schema_handle(questions, independent, compile=False):
                 old = next(iter(schemas)); hid = schemas.pop(old)[1].id
                 for k in [k for k in se.graphs if k[0] == hid]: del se.graphs[k]
             h = se.prepare(rows, independent=independent, compile=compile)
+        h.types = S1.row_types(rqs, index)
         schemas[key] = (rqs, h, index)
     return schemas[key]
 
@@ -206,7 +211,7 @@ def _worth_caching(questions, independent):
 
 def _score_schema(h, rows):
     with gpu_lock:
-        return se.score_rows(h, rows, temperature=TEMP_SCHEMA)
+        return se.score_rows(h, rows, temperature=TT.for_types(TEMP_SCHEMA, TEMP_SCHEMA_BY_TYPE, h.types))
 
 
 async def schema_batcher():
@@ -232,7 +237,7 @@ async def schema_batcher():
 
 def _locked(fn, items):
     with gpu_lock:
-        return fn(items, temperature=TEMP)          # fitted temperature from decider_config.json
+        return fn(items, temperature=TT.for_items(TEMP, TEMP_BY_TYPE, items))    # fitted temperature(s) from decider_config.json
 
 
 class S1Req(BaseModel):
@@ -249,6 +254,9 @@ def _prepare_s1(state, questions, independent):
     rows = [[r] for r in flat] if independent else [flat]
     items = [build(Example(ctx, [Q(r["question"], list(r["options"]), 0) for r in row]), eng.tok, _NoShuffle(), max_options=MAX_OPTIONS,
                    max_ctx_tokens=MAX_STATE_TOKENS) for row in rows]
+    types = S1.row_types(rqs, index)
+    for it, ts in zip(items, [[t] for t in types] if independent else [types]):
+        it["types"] = ts
     return (rqs, index), items
 
 
@@ -290,7 +298,8 @@ async def models():
 
 @app.get("/health")
 async def health():
-    return {"ok": eng is not None, "model": MODEL}
+    return {"ok": eng is not None, "model": MODEL, "temperature": TEMP, "temperature_by_type": TT.effective(TEMP, TEMP_BY_TYPE),
+            **({"temperature_schema_first_by_type": TT.effective(TEMP_SCHEMA, TEMP_SCHEMA_BY_TYPE)} if SCHEMA_FIRST else {})}
 
 
 @app.get("/stats")

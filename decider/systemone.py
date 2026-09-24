@@ -115,6 +115,15 @@ def plan_rows(rqs, isolated=True):
     return rows, index
 
 
+def row_types(rqs, index):
+    """The answer type ("choice", "noul" or "score") of every plan_rows row, in row order.  An isolated Score question's
+    yes/no level rows carry "score": together they are one Score answer (decider.temperature)."""
+    types = [None] * sum(n for _, _, _, n in index)
+    for k, _, s, n in index:
+        types[s:s + n] = [rqs[k]["type"]] * n
+    return types
+
+
 def assemble(rqs, index, probs):
     """probs: one probability list per row (plan_rows order) -> {id: answer}."""
     out = {}

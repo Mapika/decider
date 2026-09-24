@@ -96,7 +96,9 @@ probs = torch.softmax(logits[letters].float() / 1.08, -1)      # 1.08 is the sto
 The prompt is `Context: ...` followed by, for each question, the question text, the lettered options `(A) ... (B) ...` and an
 answer slot `Answer k: (`. The hidden state at each slot is projected with the option-letter rows of the LM head and softmaxed
 over the valid letters, divided by the temperature in `decider_config.json`. Letters are never generated, so all slots are read
-from one pass. Large label sets were sub-sampled to at most 10 options per training example (gold always kept, order shuffled),
+from one pass. From decider-ai 1.4.0 the config may also hold `temperature_by_type`, one temperature per answer type
+(`choice`, `noul`, `score`; a missing type uses `temperature`); this release's config has no such map, so every answer uses
+`temperature`. Large label sets were sub-sampled to at most 10 options per training example (gold always kept, order shuffled),
 so the model conditions on the supplied candidates rather than on a fixed head.
 
 ## Training

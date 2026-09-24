@@ -28,6 +28,15 @@ local Qwen3.5-27B teacher (`teacher_data/`, `decider/data/mixture.py`). Nothing 
 
 ## What's new
 
+* **2026-09-24 — decider-4b v2.1, decider-2b v11 and decider-ai 1.4.0.** Both models are their parent plus a LoRA stage on
+  harder decisions whose replay rows are trained toward the parent's own answers, and both configs set one temperature per
+  answer type (`temperature_by_type`, read by decider-ai 1.4.0; older versions use the single `temperature`). decider-4b v2.1
+  gets back most of the sampled play v2 lost (bag-draw games 52% against 38% wins, live browser 93% against 88%) at v2's level
+  on hard sets (JevBench public hard tier 0.649 against 0.676), and is less well calibrated on hard items than v2. decider-2b
+  v11 is 10 to 11 points above v10 on our held-out hard sets and at 0.577 against 0.459 on the JevBench public hard tier, and
+  2.2 points lower on human-labelled public sets. Neither passed its pre-registered release rules; the model cards list every
+  failure. v2 and v10 stay under the Hub tags `v2` and `v10`. 1.4.0 also adds `python -m decider.calibrate`, which fits the
+  per-type map from your own labelled answers.
 * **2026-09-24 — decider-4b v2.** v1 plus a LoRA stage on harder decisions (generated decision families, document questions
   written by Qwen3.6-27B and kept when two independent answers agreed, human-labelled sets, replay of v1's data). JevBench
   public hard tier 0.676 against v1's 0.550 with hard-tier ECE 0.071 against 0.288 (recomputed at the release temperature from stored probabilities; 6 Score items kept at the candidate temperature), OpenJev +2.8 points, Bespoke's suite 0.773;
@@ -100,7 +109,7 @@ The gap to Jev is the knowledge area. Per-area scores on the Decision Index pane
 
 Language, retrieval, tools and arts are within 0.03. Knowledge is 0.18 behind, on GPQA, GSM8K, CRUXEval and MMLU. The same
 weakness shows on JevBench's 111 public hard items, which are long policy texts, multi-hop and temporal-numeric reasoning:
-decider-35b-a3b 0.676, decider-4b v2 0.676 and decider-2b 0.459 against Jev's 0.730 (our runner and the harness's own per-task file, same items). The other axis we lose there is calibration on hard items; see
+decider-35b-a3b 0.676, decider-4b v2.1 0.649 and decider-2b v11 0.577 against Jev's 0.730 (our runner and the harness's own per-task file, same items). The other axis we lose there is calibration on hard items; see
 [Limits](#limits-stated-plainly).
 
 ## Models
@@ -111,14 +120,15 @@ two are not comparable to each other, and the NVFP4 row is measured against the 
 
 | model | base | parameters | context | held-out accuracy | weights |
 |---|---|---|---|---|---|
-| decider-2b **v10** | Qwen3.5-2B-Base | 1.9B | 32k tokens | 0.755 (regression set) | [Mapika/decider-2b](https://huggingface.co/Mapika/decider-2b) |
-| decider-4b **v2** | Qwen3.5-4B-Base | 4.2B | 32k tokens | 0.779 (regression set) | [Mapika/decider-4b](https://huggingface.co/Mapika/decider-4b) |
+| decider-2b **v11** | Qwen3.5-2B-Base | 1.9B | 32k tokens | 0.752 (regression set) | [Mapika/decider-2b](https://huggingface.co/Mapika/decider-2b) |
+| decider-4b **v2.1** | Qwen3.5-4B-Base | 4.2B | 32k tokens | 0.784 (regression set) | [Mapika/decider-4b](https://huggingface.co/Mapika/decider-4b) |
 | decider-35b-a3b **v1** | Qwen3.5-35B-A3B-Base | 34.7B total, 3B active | 32k tokens | 0.810 (regression set) | [Mapika/decider-35b-a3b](https://huggingface.co/Mapika/decider-35b-a3b) |
 | decider-35b-a3b-nvfp4 | the 35B in NVFP4, 19.6 GB | 34.7B total, 3B active | 32k tokens | 1.0 to 1.5 points under bf16 in vLLM | [Mapika/decider-35b-a3b-nvfp4](https://huggingface.co/Mapika/decider-35b-a3b-nvfp4) |
 | decider-0.8b | Qwen3.5-0.8B-Base | 0.8B | 32k tokens | 0.71 (94-task set) | [Mapika/decider-0.8b](https://huggingface.co/Mapika/decider-0.8b) |
 | decider-2b-vision | Qwen3.5-2B vision-language, v5 text weights | 1.9B | 32k tokens | Visual7W 0.89 (see MODEL_CARD_VISION.md) | [Mapika/decider-2b-vision](https://huggingface.co/Mapika/decider-2b-vision) |
 
-The v8 weights stay available under the Hub tag `v8`, and decider-4b v1 under the tag `v1` of Mapika/decider-4b. decider-4b is the first model trained on mixture v2 (the public mixture
+decider-2b v10 and v8 stay available under the Hub tags `v10` and `v8` of Mapika/decider-2b, and decider-4b v2 and v1 under the
+tags `v2` and `v1` of Mapika/decider-4b. decider-4b is the first model trained on mixture v2 (the public mixture
 plus 26 further public decision datasets and ten programmatic families with verifiable gold); the mixture-v2 builders are not
 yet in this package, `scripts/train.sh full` reproduces the public 60% of its data. decider-2b-vision has a
 [browser demo](https://huggingface.co/spaces/hugging-apps/decider-2b-vision-demo), a Space built by the Hugging Face team.
@@ -184,6 +194,26 @@ answers 503 (limits, defaults and measurements in `docs/SERVING.md`). The schema
 and its own graphs, captured the first time that schema is used) is on only for a model whose `decider_config.json` sets
 `schema_first`, or with `DECIDER_SCHEMA_CACHE=1`.
 
+### Temperatures in `decider_config.json`
+
+Every answer is a softmax over its option letters divided by a temperature from the model's `decider_config.json`:
+
+| key | meaning |
+|---|---|
+| `temperature` | one value for every answer (default 1.0) |
+| `temperature_by_type` | optional, decider-ai 1.4.0 and later: `{"choice": T, "noul": T, "score": T}`; a missing type uses `temperature` |
+| `temperature_schema_first` | optional: the schema cache (questions-first layout); without it the cache uses the two keys above |
+| `temperature_schema_first_by_type` | optional, 1.4.0 and later: per type on the schema cache; a missing type uses `temperature_schema_first` |
+
+The keys of the maps are the `/v1/systemone` question types. A `/decide` field of type `bool` is a `noul`, `scale` is a
+`score`, `choice` is a `choice`; `Decider.decide()` questions are `choice`. A Score question read with isolated levels (one
+yes/no row per level) uses the `score` temperature on each of its level rows, because the rows form one Score answer.
+Every value must be a finite number > 0, and any other key in a map is refused when the model is loaded.
+`Decider(path, temperature=T)` and `DECIDER_TEMPERATURE` replace `temperature` and switch `temperature_by_type` off.
+decider-4b v2.1 and decider-2b v11 have a map; the other released models have one `temperature`. decider-ai 1.3.0 and earlier
+ignore the map and use `temperature` for every answer. `python -m decider.calibrate records.jsonl` fits the map by NLL
+from answers read at temperature 1 (record format in `decider/calibrate.py`). `/health` reports the temperature each type gets.
+
 ## Train your own
 
 ```bash
@@ -237,25 +267,30 @@ law where v8 was 0.47. In the browser it predicts the outcome of its own click a
 
 * **One pass cannot do multi-step arithmetic.** There is no chain of thought and no intermediate state, so GSM8K-type items,
   temporal arithmetic and multi-hop chains are out of reach. Split such a judgment into several questions.
-* **Calibration on hard items is the weak axis.** decider-2b's top-label ECE on JevBench's hard items is 0.30: it is
-  confident where it is wrong there, which is what pulls its calibration axis to 46.6. The 35B's hard-tier ECE is 0.15, decider-4b v2's 0.07.
-* **Knowledge-heavy multiple choice.** decider-2b improves little over its base model on MMLU and MedQA. decider-4b closes
-  part of it (MMLU +11, MedQA +13 points over the 2B) and decider-35b-a3b more (MMLU +19 points) at 3 to 4 times the cost per
-  decision; both are at 0.68 on JevBench's public hard tier, and neither has the RL stage.
+* **Calibration on hard items is the weak axis.** decider-2b v10's top-label ECE on JevBench's public hard items is 0.31: it is
+  confident where it is wrong there, and its calibration score on the JevBench leaderboard is 46.6. decider-2b v11 is at 0.18 there, decider-4b
+  v2.1 at 0.18, the 35B at 0.15 and decider-4b v2 at 0.10 (0.07 at its release temperature). On our own held-out generated
+  families v2.1 and v11 are at 0.15 and 0.16 against a limit of 0.08 that we set for release.
+* **Knowledge-heavy multiple choice.** decider-2b improves little over its base model on MMLU and MedQA. decider-4b is higher
+  (v2: MMLU +11, MedQA +13 points over decider-2b v10) and decider-35b-a3b more (MMLU +19 points) at 3 to 4 times the cost per
+  decision; decider-4b v2.1 is at 0.649 and the 35B at 0.676 on JevBench's public hard tier, and neither has the RL stage.
 * **Optimizer setting on the 35B.** decider-35b-a3b was trained with FP32 master weights (Muon on the block matrices, AdamW
   elsewhere). In later controlled runs that setting moved small models further from their base than the same schedule
   without a master copy, and cost accuracy on knowledge tasks. The 2B and the 4B were trained without a master copy and are not affected.
   A 35B retrain without it is planned.
 * **English only.** Calibration is measured on public datasets and teacher-labelled probes, not on your traffic.
 * **The schema cache costs accuracy.** Use it for fixed classification-style schemas with short states; see docs/RESULTS.md.
-* **Generic options need to look like buckets.** v10 continues the v8 weights, so the v9 terse-bucket result (generic 0.86)
-  does not apply to it; v8's 0.59 does. A plain `support` next to `other` sends an in-scope complaint to `other`.
+* **Generic options need to look like buckets.** v10 and v11 continue the v8 weights, so the v9 terse-bucket result (generic
+  0.86) does not apply to them; v8's 0.59 does. A plain `support` next to `other` sends an in-scope complaint to `other`.
 * **Rules written into the question are not followed at this size.** On the form-filling probe a one-sentence question scores
   0.67 and a paragraph of rules 0.24. A fixed convention has to be in the training data, not in the question.
 * **Picking a record out of a long JSON array by position is the least accurate input shape** (0.51 with 64 records against
   0.70 with one). Address records by key, or let `render_state` write the index into the array (0.62).
 * **Known regressions.** TREC-fine with all 50 labels fell from 0.76 (v6) to 0.72 (v8). Held-out Freeway play fell to 0 and
-  did not come back when the game data was replayed. OpenJev is 0.8 points lower on v10 than on v8.
+  did not come back when the game data was replayed. OpenJev is 0.8 points lower on v10 than on v8. decider-2b v11 against v10:
+  human-labelled public sets −2.2 points, knowledge guard −1.6, greedy bag-draw play −10.9, sampled browser play −2.8 (interval
+  includes zero). decider-4b v2.1 against v1: BabyAI-GoTo 0.19 against 0.54, greedy bag-draw play −9.4, and issue #9's form case
+  c_1 is answered wrongly.
 * **Teacher bias.** The custom-question data is labelled by a 27B teacher that shares some of the biases it is meant to fix;
   it agreed with only 72% of its own generic-option labels. `decider/data/mixture.py` shows how they are filtered.
 * **Browser results are narrow.** They are on the 22 click-only MiniWoB++ tasks: small synthetic pages, elements listed as

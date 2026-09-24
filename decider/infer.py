@@ -12,6 +12,7 @@ import logging
 import torch
 from decider.model import DecisionModel, collate
 from decider.prompt import build, MAX_OPTIONS, resolve_layout, chat_template
+from decider import temperature as TT
 from dataclasses import dataclass
 
 
@@ -49,11 +50,15 @@ class _NoShuffle:                              # keep option order as given
 
 
 class CompiledSchema:
-    def __init__(self, d, rqs, h, index): self.d, self.rqs, self.h, self.index = d, rqs, h, index
+    def __init__(self, d, rqs, h, index):
+        from decider.systemone import row_types
+        self.d, self.rqs, self.h, self.index = d, rqs, h, index
+        self.types = row_types(rqs, index)                         # answer type of every schema row (decider.temperature)
 
     def batch(self, states, max_state_tokens=32768):
         from decider.systemone import render_state, assemble
-        probs = self.d._se.score(self.h, [render_state(s) for s in states], temperature=self.d.T_schema, max_ctx_tokens=max_state_tokens)
+        T = TT.for_types(self.d.T_schema, self.d.T_schema_by_type, self.types)
+        probs = self.d._se.score(self.h, [render_state(s) for s in states], temperature=T, max_ctx_tokens=max_state_tokens)
         return [{"model": self.d.name, "answers": assemble(self.rqs, self.index, [p.tolist() for p in pr])} for pr in probs]
 
     def __call__(self, state, max_state_tokens=32768):
@@ -67,10 +72,15 @@ class Decider:
     the optional MPS patch; CPU defaults to bfloat16. Set ``use_graphs=False``
     for eager execution or debugging.
     """
-    def __init__(self, path, device=None, dtype=None, temperature=None, abstain_below=0.0, use_graphs=None):
+    def __init__(self, path, device=None, dtype=None, temperature=None, abstain_below=0.0, use_graphs=None, temperature_by_type=None):
         """The prompt layout comes from decider_config.json: "layout": "chat" (chat-trained checkpoints) wraps every prompt in the
         tokenizer's chat template (decider.prompt.build_chat); no "layout" key is the plain layout of every earlier model.
-        An unknown layout raises ValueError before the weights are loaded."""
+        An unknown layout raises ValueError before the weights are loaded.
+
+        Temperatures (decider.temperature): decider_config.json "temperature" and the optional "temperature_by_type"
+        {"choice": T, "noul": T, "score": T}.  temperature= overrides "temperature" and switches the config's by-type map off;
+        temperature_by_type= sets the map explicitly.  An invalid temperature or map key raises ValueError before the weights
+        are loaded."""
         if device is None:
             device = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
         if dtype is None:
@@ -85,8 +95,7 @@ class Decider:
         except Exception:
             pass
         self.layout = resolve_layout(cfg)
-        if temperature is None:
-            temperature = float(cfg.get("temperature", 1.0))
+        (temperature, self.T_by_type), (T_schema, self.T_schema_by_type) = TT.from_config(cfg, temperature, temperature_by_type)
         self.neutralize_none = bool(cfg.get("neutralize_none", True))   # v4 and earlier learned the literal string as an abstain signal
         if use_graphs is None:
             use_graphs = str(device).startswith("cuda")
@@ -102,7 +111,7 @@ class Decider:
         self.dev = device; self.T = temperature; self.abstain_below = abstain_below
         self.name = "decider-" + str(cfg.get("version", "dev"))
         self.schema_first = bool(cfg.get("schema_first", False)) and self.eng is not None      # default layout. Questions-first (the cacheable one) costs accuracy
-        self.T_schema = float(cfg.get("temperature_schema_first", temperature))                # (about 1.5 points on fixed label sets, more elsewhere): opt in with schema()
+        self.T_schema = T_schema                                              # (about 1.5 points on fixed label sets, more elsewhere): opt in with schema()
         self.isolated_levels = bool(cfg.get("isolated_levels", False))      # Score levels judged one per row (v8+)
         self._se = None; self._schemas = {}
 
@@ -116,19 +125,22 @@ class Decider:
                 assert 2 <= len(q["options"]) <= MAX_OPTIONS, f"2..{MAX_OPTIONS} options required"
             exs.append(Example(context, [Q(q["question"], list(q["options"]), 0) for q in qs], "infer"))
         items = [build(e, self.m.tok, _NoShuffle(), max_options=MAX_OPTIONS, max_ctx_tokens=max_ctx_tokens, chat=self.chat) for e in exs]
+        for it, (_, qs) in zip(items, requests):                     # answer type per slot: a plain question is "choice"
+            it["types"] = [q.get("_type", "choice") for q in qs]
         return requests, items
 
     @torch.no_grad()
     def decide_batch(self, requests, max_ctx_tokens=1536):
         """requests: list of (context:str, questions:list[dict(question, options)]). One forward pass for everything."""
         requests, items = self._decide_items(requests, max_ctx_tokens)
+        T = TT.for_items(self.T, self.T_by_type, items)                  # the scalar self.T when there is no by-type map
         if self.eng is not None:
-            probs = torch.cat(self.eng.score_items(items, temperature=self.T))
+            probs = torch.cat(self.eng.score_items(items, temperature=T))
         else:
             b = collate(items, self.m.tok.pad_token_id)
             logits = self.m.slot_logits(b["input_ids"].to(self.dev), b["attention_mask"].to(self.dev), b["slot_idx"].to(self.dev),
                                         b["slot_batch"].to(self.dev), b["nopts"].to(self.dev))
-            probs = torch.softmax(logits / self.T, -1).cpu()
+            probs = TT.scaled_softmax(logits, TT.slot_temperatures(T, items)).cpu()
         out, k = [], 0
         for context, qs in requests:
             res = []
@@ -176,27 +188,33 @@ class Decider:
         (later questions can then see earlier question texts)."""
         from decider.systemone import unique_tokens, assemble
         rqs, index, items = self._system_one_items(state, questions, independent, max_state_tokens, layout, isolated)
-        with torch.no_grad():
-            if self.eng is not None and len(items) > 1 and layout == "state_first":
-                probs = self.eng.score_shared(items, temperature=self.T)
-            else:
-                probs = []; per = max(1, max_fwd_tokens // max(len(it["ids"]) for it in items))
-                for i in range(0, len(items), per):
-                    if self.eng is not None:
-                        probs += self.eng.score_items(items[i:i + per], temperature=self.T)
-                    else:
-                        bt = collate(items[i:i + per], self.m.tok.pad_token_id)
-                        lg = self.m.slot_logits(*[bt[k].to(self.dev) for k in ("input_ids", "attention_mask", "slot_idx", "slot_batch", "nopts")])
-                        pr = torch.softmax(lg / self.T, -1).cpu(); c = 0
-                        for it in items[i:i + per]:
-                            probs.append(pr[c:c + len(it["slots"])]); c += len(it["slots"])
-        flatp = [p.tolist() for ps in probs for p in ps]
+        flatp = self._system_one_probs(items, layout, max_fwd_tokens, TT.for_items(self.T, self.T_by_type, items))
         return {"model": self.name, "answers": assemble(rqs, index, flatp),
                 "usage": {"input_tokens": unique_tokens(items), "output_tokens": 0}}
 
+    @torch.no_grad()
+    def _system_one_probs(self, items, layout, max_fwd_tokens=65536, temperature=None):
+        """Score system_one's uncached rows.  temperature: as Engine.score_items takes it (a number, or one entry per item).
+        -> one probability list per question row, in row order."""
+        if self.eng is not None and len(items) > 1 and layout == "state_first":
+            probs = self.eng.score_shared(items, temperature=temperature)
+        else:
+            probs = []; per = max(1, max_fwd_tokens // max(len(it["ids"]) for it in items))
+            for i in range(0, len(items), per):
+                T = TT.item_slice(temperature, i, i + per)
+                if self.eng is not None:
+                    probs += self.eng.score_items(items[i:i + per], temperature=T)
+                else:
+                    bt = collate(items[i:i + per], self.m.tok.pad_token_id)
+                    lg = self.m.slot_logits(*[bt[k].to(self.dev) for k in ("input_ids", "attention_mask", "slot_idx", "slot_batch", "nopts")])
+                    pr = TT.scaled_softmax(lg, TT.slot_temperatures(T, items[i:i + per])).cpu(); c = 0
+                    for it in items[i:i + per]:
+                        probs.append(pr[c:c + len(it["slots"])]); c += len(it["slots"])
+        return [p.tolist() for ps in probs for p in ps]
+
     def _system_one_items(self, state, questions, independent=True, max_state_tokens=32768, layout=None, isolated=None):
         """The prompt rows of system_one's uncached path: -> (rendered questions, answer index, items)."""
-        from decider.systemone import render_state, render_question, plan_rows
+        from decider.systemone import render_state, render_question, plan_rows, row_types
         layout = layout or ("schema_first" if self.schema_first else "state_first")
         isolated = (self.isolated_levels if isolated is None else isolated) and independent
         ctx = render_state(state); rqs = {k: render_question(v) for k, v in questions.items()}
@@ -205,6 +223,9 @@ class Decider:
         rows = [[r] for r in flat] if independent else [flat]
         items = [build(Example(ctx, [Q(r["question"], opts(r), 0) for r in row]), self.m.tok, _NoShuffle(), max_options=MAX_OPTIONS,
                        max_ctx_tokens=max_state_tokens, layout=layout, chat=self.chat) for row in rows]
+        types = row_types(rqs, index)                                 # answer type per row (decider.temperature)
+        for it, ts in zip(items, [[t] for t in types] if independent else [types]):
+            it["types"] = ts
         return rqs, index, items
 
     # ---- typed schema interface: {question: {"type": "bool"} | {"type": "choice", "options": [...]}
@@ -257,14 +278,14 @@ class Decider:
         for qtext, spec in schema.items():
             t = spec.get("type", "choice")
             if t == "bool":
-                qs.append(dict(question=qtext, options=["no", "yes"]))
+                qs.append(dict(question=qtext, options=["no", "yes"], _type="noul"))
             elif t == "choice":
-                qs.append(dict(question=qtext, options=list(spec["options"])))
+                qs.append(dict(question=qtext, options=list(spec["options"]), _type="choice"))
             elif t == "scale":
                 leg = spec["legend"]
                 keys = sorted(leg, key=lambda k: float(k)) if isinstance(leg, dict) else list(range(len(leg)))
                 labels = [f"{k}: {leg[k]}" if isinstance(leg, dict) else f"{i}: {leg[i]}" for i, k in enumerate(keys)]
-                qs.append(dict(question=qtext, options=labels, _keys=keys, _legend=leg))
+                qs.append(dict(question=qtext, options=labels, _keys=keys, _legend=leg, _type="score"))
             else:
                 raise ValueError(f"unknown field type {t}")
         return qs

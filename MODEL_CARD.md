@@ -16,12 +16,129 @@ reproduction of the "System One" model class (TypeSafe AI's Jev).
 Base model: [Qwen/Qwen3.5-2B-Base](https://huggingface.co/Qwen/Qwen3.5-2B-Base) (1.9B parameters). The supervised stages
 (v1 to v8) fine-tune it with cross-entropy, a proper scoring rule, on a mixture of about 95 public decision datasets, agent
 trajectories, web element choice, game states and teacher-written custom questions, in two prompt layouts and with isolated
-Score levels. **This repository holds v10**: the v8 weights continued for 384 steps of calibration-aware reinforcement learning
-whose only rewards are outcomes (live browser task checkers and the exact probability laws of games), with a hard KL limit to
-the v8 weights on replayed training rows. Code, data registry, training scripts and the recipe are at
-https://github.com/Mapika/decider; `decider/` in this repository is the inference subset of that package. The other sizes and the vision variant are listed under The decider family.
+Score levels. v10 continued the v8 weights for 384 steps of calibration-aware reinforcement learning whose only rewards are
+outcomes (live browser task checkers and the exact probability laws of games), with a hard KL limit to the v8 weights on
+replayed training rows. **This repository holds v11**: v10 plus a LoRA of rank 64, trained for 2 epochs on 42,749 rows of harder
+decisions and replay, with the replay rows trained toward v10's own answer distribution, merged into the weights, and one
+temperature per answer type. v10 stays available under the Hub tag `v10` and v8 under `v8`. Code, data registry, training
+scripts and the recipe are at https://github.com/Mapika/decider; `decider/` in this repository is the inference subset of that
+package. The other sizes and the vision variant are listed under The decider family.
 
-**Contents:** [The decider family](#the-decider-family) · [Usage](#usage) · [How it works](#how-it-works) · [Field types](#field-types) · [Training](#training) · [Evaluation](#evaluation) · [Speed](#speed) · [Limitations](#limitations) · [Changelog](#changelog) · [Reproduction](#reproduction)
+v11 is better than v10 on hard decisions and worse on some everyday and game rows. On the same rows: held-out generated decision
+families 0.429 against 0.324, held-out document questions 0.753 against 0.646, JevBench public hard tier 0.577 against 0.459, and
+better calibrated on both hard sets than v10 (0.156 against 0.226 and 0.175 against 0.307), though still overconfident there.
+Losses: human-labelled public sets −2.2 points, a knowledge guard set −1.6, greedy bag-draw play −10.9, sampled slippery-grid
+play −4.3, sampled browser play −2.8 (interval includes zero), TypeSafe −4.9 (interval includes zero). Details under
+[Changes from v10](#changes-from-v10).
+
+**Contents:** [Changes from v10](#changes-from-v10) · [The decider family](#the-decider-family) · [Usage](#usage) · [How it works](#how-it-works) · [Field types](#field-types) · [Training](#training) · [Evaluation](#evaluation) · [Speed](#speed) · [Limitations](#limitations) · [Changelog](#changelog) · [Reproduction](#reproduction)
+
+## Changes from v10
+
+v11 is v10 plus one supervised LoRA stage (described under Training) and a per-type temperature map:
+
+* **Harder decisions.** The same 22,649 labelled rows as the stage 2 of decider-4b v2.1: 8,000 rows from ten generated decision
+  families whose answers the generating code computes, 11,356 questions over business documents written by Qwen3.6-27B and kept
+  when two further independent answers agreed, and 3,293 human-labelled rows.
+* **Replay trained toward v10's own distribution.** 20,100 replay rows from the public decision mixture, trained toward v10's
+  answer distribution (loss KL(p_v10 ‖ p_model) over the options) instead of their labels, so that everyday answers stay close
+  to v10's. On 1,000 held-out replay rows the mean KL at temperature 1 is 0.047 nats and 94.9% of the argmax answers equal
+  v10's. The fitted temperature is 1.145 (v10 1.30).
+* **One temperature per answer type.** `decider_config.json` has `temperature` 1.145 and `temperature_by_type`
+  `{"choice": 1.164, "noul": 1.624, "score": 1.124}`, fitted by NLL with `decider.calibrate` (decider-ai 1.4.0). decider-ai 1.4.0
+  and later use the map. **decider-ai 1.3.0 and earlier ignore the map and serve every answer at 1.145**; a temperature does not
+  change which option is most probable, so the answers are the same either way (except exact ties between the level rows of an
+  isolated Score answer: 1 row of 5,000 on the held-out generated families and 1 of 944 on the teacher validation rows changed);
+  the probabilities differ, mostly on yes/no answers.
+* The model name in answers is `decider-2b-v11` (v10 reported `decider-v10`).
+* `decider_config.json` no longer marks the model as trained for the schema-first layout (`schema_first_trained: false`; v10:
+  true), because the LoRA stage used only the state-first layout and no schema-first temperature was fitted. With
+  `DECIDER_SCHEMA_CACHE=1` the server therefore does not turn the schema cache on for v11. `Decider.schema()` still runs; its
+  accuracy was not measured on v11.
+
+All rows below are on identical inputs and seeds: v11 through decider-ai 1.4.0 with its map, v10 through decider-ai 1.3.0 at its
+stored temperature 1.30, in the same session on 2026-09-24 (so the v10 numbers can differ slightly from the ones first published
+for v10 further down). Intervals are 95% paired bootstrap intervals (rows for the fixtures, boards for the games, task-seed pairs
+for the browser). The regression set and our own sets were read from stored temperature-1 logits at each model's served
+temperatures. v10's JevBench file was read earlier through decider-ai 1.2.1; accuracy does not depend on the temperature.
+
+| set | v10 (T 1.30) | v11 (map) | v11 minus v10 |
+|---|---|---|---|
+| regression set, 67 in-task tasks, accuracy / NLL / ECE | 0.806 / 0.474 / 0.038 | 0.802 / 0.481 / 0.038 | −0.4 |
+| regression set, 28 held-out tasks | 0.755 / 0.622 / 0.084 | 0.752 / 0.626 / 0.083 | −0.3 |
+| held-out generated families (heldout_jb), 5,000 rows, accuracy / ECE | 0.324 / 0.226 | 0.429 / 0.156 | +10.5 |
+| held-out document questions (test_teacher2), 449 rows, accuracy / ECE | 0.646 / 0.081 | 0.753 / 0.075 | +10.7 |
+| human-labelled public sets (cal_human), 1,595 rows, accuracy | 0.803 | 0.781 | −2.2 |
+| knowledge guard (MMLU, ARC and others), 2,994 rows, accuracy | 0.732 | 0.715 | −1.6 |
+| 847 in-task validation rows, accuracy / NLL | 83.4% / 0.444 | 81.9% / 0.468 | −1.4 (−3.0 to +0.1); NLL +0.024 (+0.008 to +0.039) |
+| OpenJev, 5,252 rows, accuracy / NLL | 63.2% / 0.917 | 64.6% / 0.860 | +1.4 (+0.6 to +2.2); NLL −0.057 (−0.068 to −0.046) |
+| Mind2Web, 1,770 rows, accuracy / NLL | 82.6% / 0.543 | 83.9% / 0.495 | +1.3 (+0.1 to +2.5); NLL −0.048 (−0.074 to −0.023) |
+| TypeSafe workflow decisions, 102 rows, accuracy / NLL | 80.4% / 0.585 | 75.5% / 0.604 | −4.9 (−10.8 to +1.0); NLL +0.018 (−0.088 to +0.135) |
+| JevBench public items, easy / standard / hard accuracy | 1.000 / 0.889 / 0.459 | 1.000 / 0.889 / 0.577 | hard +13 items |
+| JevBench hard tier, top-label ECE | 0.307 | 0.175 | |
+| Bespoke's public suite, macro / micro | 0.703 / 0.711 | 0.706 / 0.711 | +0.3 macro |
+| live MiniWoB++, sampled, all 22 tasks | 93.2% | 90.3% | −2.8 (−7.4 to +1.1) |
+| live MiniWoB++, sampled, 16 rewarded tasks | 93.8% | 89.8% | −3.9 (−9.4 to +0.8) |
+| live MiniWoB++, sampled, 6 held-out tasks | 91.7% | 91.7% | 0.0 (−8.3 to +8.3) |
+| live MiniWoB++, greedy, all 22 tasks | 91.5% | 92.0% | +0.6 (−3.4 to +4.5) |
+| live MiniWoB++, greedy, 16 rewarded tasks | 91.4% | 92.2% | +0.8 (−4.7 to +6.2) |
+| live MiniWoB++, greedy, 6 held-out tasks | 91.7% | 91.7% | 0.0 (−6.2 to +6.2) |
+| zero-shot games, 234 boards, sampled, win rate | 23.9% | 22.6% | −1.3 (−3.4 to +0.9) |
+| bag-draw games, 64 boards, sampled, win rate | 41.8% | 41.8% | 0.0 (−5.5 to +5.5) |
+| slippery-grid games, 64 boards, sampled, win rate | 19.1% | 14.8% | −4.3 (−7.8 to −1.2) |
+| zero-shot games, 234 boards, greedy, win rate | 26.9% | 24.8% | −2.1 (−5.6 to +1.3) |
+| bag-draw games, 64 boards, greedy, win rate | 57.8% | 46.9% | −10.9 (−20.3 to −3.1) |
+| slippery-grid games, 64 boards, greedy, win rate | 15.6% | 15.6% | 0.0 (0.0 to +0.0) |
+| ten text games, greedy: Pong / Breakout / CliffWalking / BabyAI-GoTo / Freeway / Blackjack | 8 / 22 / −13 / 0.18 / 0 / −1 | 8 / 22 / −13 / 0.19 / 1 / −1 | |
+| behaviour probes: model-router tier / needs-live-data (31 items) | 0.903 / 0.806 | 0.935 / 0.774 | +1 / −1 item |
+| behaviour probes: command risk / touches-outside-project (45 items) | 0.733 / 0.556 | 0.822 / 0.556 | +4 / 0 items |
+| behaviour probes: generic bucket / catch-all / abstention battery / browser element and action | 0.85 / 0.95 / 8 of 8 / 0.938 and 0.875 | 0.85 / 0.95 / 8 of 8 / 0.938 and 0.875 | |
+| issue #9 form cases, right of 4 | 0 | 0 | |
+
+**Gains.** On the two held-out hard sets, whose families and business domains are not in the training data, v11 is 10.5 and 10.7
+points above v10, and on JevBench's public hard tier 13 items (11.7 points) above it. OpenJev +1.4 and Mind2Web +1.3 points
+(intervals exclude zero), command-risk probe +4 items. Calibration on hard items is better than v10's: 0.156 against 0.226 on the
+held-out generated families and 0.175 against 0.307 on the JevBench hard tier.
+
+**Losses, stated plainly.**
+* Human-labelled public sets (the validation halves of MMLU, ARC, CommonsenseQA, BoolQ, MNLI, SNLI, Banking77 and others): 0.781
+  against 0.803, −2.2 points. A knowledge guard set (MMLU, ARC and similar): 0.715 against 0.732, −1.6 points.
+* Greedy bag-draw play: 46.9% against 57.8% wins, −10.9 points (interval −20.3 to −3.1). Sampled slippery-grid play: 14.8% against
+  19.1%, −4.3 points (interval −7.8 to −1.2).
+* Sampled browser play: 90.3% against 93.2%, −2.8 points (interval −7.4 to +1.1, includes zero); on the 16 rewarded tasks −3.9
+  (interval −9.4 to +0.8). Greedy browser play and the six held-out tasks are level.
+* TypeSafe workflow decisions −4.9 points (interval −10.8 to +1.0), 847 validation rows −1.4 (−3.0 to +0.1), regression set −0.4
+  in-task and −0.3 held-out; needs-live-data probe one item lower.
+* Still overconfident on hard items: calibration error 0.156 on the held-out generated families, where our release limit is 0.08.
+* The issue #9 form cases are 0 of 4, as for v10.
+
+**How v11 was chosen, and why it is released although it did not pass.** The run had a pre-registered release rule for the 2B.
+A checkpoint was eligible only if it lost at most 1 point on the human-labelled sets against v10; every checkpoint lost more
+(v11: −2.2), so no checkpoint was eligible. The rule's fallback candidate is v11 (two arms tied within 0.002 on the selection
+score; the tie went to the higher regression in-task accuracy). It passes the numeric items (regression accuracy at most 1.0 point
+in-task and 0.5 held-out under v10, held-out generated families at least 5 points and held-out document questions at least 3
+points above v10, regression ECE at most 0.01 above v10's, sampled browser, zero-shot and bag-draw play not shown to be below
+v10's: upper end of the 95% interval at least 0) and fails the calibration item:
+calibration error on the held-out generated families at most 0.08. v11 is at 0.171 at its global temperature and 0.156 with the
+map; v10 is at 0.226 and would fail the same item. A second pre-registered rule for the temperature map had the same 0.08 limit,
+so the map did not pass either. v11 is released with the map on a decision made after reading the full comparison above. The
+JevBench public items were read once for v11 at its global temperature and once with the map, after the rule decisions; they
+were not used for training, selection or the temperatures.
+
+**Which version to use.**
+* v11 (this revision): the default. Hard judgments, long policies, document questions.
+* v10 (`revision="v10"`): if you rely on sampled browser play, greedy bag-draw or slippery-grid play, knowledge multiple choice or
+  TypeSafe-style workflow decisions, where v10 is ahead (see the losses above).
+
+The package loads a local folder, so download the revision first:
+
+```python
+from huggingface_hub import snapshot_download
+from decider.infer import Decider
+d = Decider(snapshot_download("Mapika/decider-2b", revision="v10"))
+```
+
+For the HTTP server, set `DECIDER_MODEL` to the same downloaded folder.
 
 ## The decider family
 
@@ -30,8 +147,8 @@ readout: the letter logits at an answer slot, softmaxed over the options. Pick b
 
 | model | base | weights | use it for | numbers |
 |---|---|---|---|---|
-| [decider-2b](https://huggingface.co/Mapika/decider-2b) v10 | Qwen3.5-2B-Base | 3.5 GB bf16 | the default: routing, classification, judgments, browser agents; 4 ms per request with CUDA graphs on one GPU | regression set 0.805 in-task / 0.755 held-out; live browser 93%; Bespoke suite 0.704 |
-| [decider-4b](https://huggingface.co/Mapika/decider-4b) v1 | Qwen3.5-4B-Base | 8.4 GB bf16 | the middle point: knowledge and reasoning questions above the 2B in a dense 8.4 GB model; no RL stage | 0.834 / 0.788, above the 2B on 87 of 95 tasks; JevBench hard 0.541; Bespoke 0.757 |
+| [decider-2b](https://huggingface.co/Mapika/decider-2b) v11 | Qwen3.5-2B-Base | 3.8 GB bf16 | the default: routing, classification, judgments, browser agents; 4 ms per request with CUDA graphs on one GPU; v10 under the tag `v10` | regression set 0.802 in-task / 0.752 held-out; JevBench hard 0.577; live browser 90% sampled; Bespoke suite 0.706 |
+| [decider-4b](https://huggingface.co/Mapika/decider-4b) v2.1 | Qwen3.5-4B-Base | 8.4 GB bf16 | the middle point: knowledge questions and hard judgments above the 2B in a dense 8.4 GB model; no RL stage; v2 and v1 under the tags `v2` and `v1` | 0.831 / 0.784; JevBench hard 0.649; live browser 93% sampled; Bespoke 0.756 |
 | [decider-35b-a3b](https://huggingface.co/Mapika/decider-35b-a3b) v1 | Qwen3.5-35B-A3B-Base (3B active) | 65 GB bf16 | when accuracy is worth 3 to 4 times the cost per decision: knowledge and multi-step questions, long policies | 0.855 / 0.810, above the 2B on 93 of 95 tasks; JevBench hard 0.676; Bespoke 0.774; no RL stage |
 | [decider-35b-a3b-nvfp4](https://huggingface.co/Mapika/decider-35b-a3b-nvfp4) | the 35B in NVFP4 | 19.6 GB | the 35B on Blackwell through vLLM or TensorRT-LLM | 1.0 to 1.5 points under bf16 on the measured fixtures |
 | [decider-0.8b](https://huggingface.co/Mapika/decider-0.8b) | Qwen3.5-0.8B-Base | 1.4 GB bf16 | the smallest: routing, yes/no and short-state lookups within 1 to 4 points of the 2B, 1.5x faster | 0.776 / 0.707 on the single-run protocol (2B: 0.809 / 0.739) |
@@ -47,7 +164,7 @@ d = Decider("Mapika/decider-2b")
 d.decide("My card was charged twice for the same purchase.",
          [{"question": "Which department should handle this?", "options": ["billing", "technical support", "sales"]},
           {"question": "Does this need a refund action?", "options": ["no", "yes"]}])
-# [{'choice': 'billing', 'confidence': 0.99, 'probs': {...}}, {'choice': 'yes', 'confidence': 0.99, 'probs': {...}}]
+# [{'choice': 'billing', 'confidence': 0.93, 'probs': {...}}, {'choice': 'yes', 'confidence': 0.70, 'probs': {...}}]   (v11, decider-ai 1.4.0, eager)
 ```
 
 `decide_batch` scores many states, each with many questions, in one call. `abstain_below=t` returns `None` for decisions with
@@ -64,7 +181,7 @@ d.system_one({"ticket": {"messages": [{"from": "customer", "text": "I was charge
                                           "billing": {"what": "Charges, invoices", "not_for": "delivery"}, "other": None}},
               "refund_requested": {"type": "noul", "instructions": "Does `ticket.messages[0].text` request a refund?"},
               "frustration": {"type": "score", "instructions": "How frustrated is the customer?", "criteria": ["calm", "frustrated", "very frustrated"]}})
-# {"model": "decider-v10", "answers": {"department": {"type": "choice", "choice": "billing", "confidence": ..., "certainty": ..., "probabilities": {...}},
+# {"model": "decider-2b-v11", "answers": {"department": {"type": "choice", "choice": "billing", "confidence": ..., "certainty": ..., "probabilities": {...}},
 #  "refund_requested": {"type": "noul", "noul": ...}, "frustration": {"type": "score", "score": ..., "legend": {...}, ...}}, "usage": {...}}
 ```
 
@@ -96,7 +213,7 @@ ids = tok(prompt, return_tensors="pt").to("cuda")
 with torch.no_grad():
     logits = m(**ids).logits[0, -1]
 letters = [tok.encode(L, add_special_tokens=False)[0] for L in "ABC"]
-probs = torch.softmax(logits[letters].float() / 1.30, -1)      # -> P(billing), P(technical support), P(sales); 1.30 is the stored temperature
+probs = torch.softmax(logits[letters].float() / 1.164, -1)     # -> P(billing), P(technical support), P(sales); 1.164 is the stored choice temperature
 ```
 
 For several questions in one pass, append further `Question k: ... Answer k: (` blocks and read the logits at each `(`
@@ -107,7 +224,11 @@ position (see `decider/prompt.py`).
 The prompt is `Context: ...` followed by, for each question, the question text, the lettered options `(A) ... (B) ...` and an
 answer slot `Answer k: (`. The hidden state at each slot is projected with the option-letter rows of the LM head and softmaxed
 over the valid letters, divided by the temperature in `decider_config.json`. Letters are never generated, so all slots are read
-from one pass. Large label sets were sub-sampled to at most 10 options per training example (gold always kept, order shuffled),
+from one pass. From decider-ai 1.4.0 the config may also hold `temperature_by_type`, one temperature per answer type
+(`choice`, `noul`, `score`; a missing type uses `temperature`). This release's config has such a map: Choice answers use 1.164,
+yes/no (noul) answers 1.624, Score answers 1.124 on each of their level rows. Package versions before 1.4.0 use `temperature`
+(1.145) for every answer. `DECIDER_TEMPERATURE=T` or `Decider(path, temperature=T)` replaces `temperature` with T and switches the
+map off, so every answer then uses T. Large label sets were sub-sampled to at most 10 options per training example (gold always kept, order shuffled),
 so the model conditions on the supplied candidates rather than on a fixed head.
 
 ## Field types
@@ -147,6 +268,36 @@ stay under 0.01 nats on average and 0.05 on any row, otherwise the step drops th
 gradient. Six browser tasks were held out from reward and used for validation only. No gold labels were used. The recipe and
 every measurement are in `docs/RL.md` of the GitHub repository.
 
+**LoRA stage (v10 to v11).** A LoRA of rank 64 (alpha 128) on the attention and MLP weights of v10, trained for 2 epochs over
+42,749 rows in the plain state-first layout with isolated Score levels, then merged into the bf16 weights:
+
+| source | rows | content | target |
+|---|---|---|---|
+| generated decision families | 8,000 | ten families (temporal and numeric decisions, subtle answer judgment, long policies, multi-hop lookup, abstention, probability, constrained trade-offs, safety judgment, paraphrase sensitivity, adversarial traps); the answers are computed by the generating code | the label |
+| questions over business documents, written by Qwen3.6-27B with thinking on | 11,356 | one realistic business document plus three or four typed questions per writer call; each question kept only when two further independent answers by the same model agreed with the writer's | the label |
+| human-labelled public sets (training halves) | 3,293 | MMLU, ARC, CommonsenseQA, BoolQ, MNLI, SNLI, Banking77, RACE, OpenBookQA, LogiQA 2, MedQA, Winogrande | the label |
+| replay of the public decision mixture | 20,100 | 100 rows from the training half of each of the 67 in-task regression tasks (6,700); 7,000 from the families closest to form filling, browser and agent actions, routing, tools, shell commands and situations (form rules 1,000, Mind2Web 800, agent trajectories 1,300, routing 1,000, custom questions 1,000, commands 600, tool selection 600, situations 700); 6,400 spread over every other family | v10's answer distribution: loss KL(p_v10 ‖ p_model) at temperature 1 |
+
+| LoRA stage | |
+|---|---|
+| trainable parameters | LoRA rank 64, alpha 128, on the attention and MLP projections; merged after training |
+| loss | cross-entropy on the slot readout for labelled rows; KL(p_v10 ‖ p_model) over the options for replay rows, with p_v10 from the frozen v10 weights |
+| schedule | learning rate 1e-4, 5% warm-up then cosine, 1,676 steps of 65,536 tokens (2 epochs), seed 0 |
+| hardware | one NVIDIA B300 shared with another job, 150 minutes |
+
+The replay comes from the public mixture (`scripts/train.sh full`), which also holds the v9 additions (shell commands, terse
+routing) that v8 and v10 were not trained on; those rows were trained toward v10's answers, not their labels. No JevBench item
+and no Decision Index item was used for training, for writing the generators or the document questions, for selecting the
+checkpoint, or for the temperatures. Every training row was checked against every evaluation file used for selection, the
+evaluation halves of the regression tasks, the four request fixtures and the issue #9 cases. Two arms were trained: one with labels on a replay of 6,700 rows,
+and this one, with v10's distribution on the three times larger replay described above; the rule's fallback selected this arm
+after epoch 2.
+
+**Temperatures.** `temperature` 1.145, fitted by NLL on the in-task half of the public regression set without Banking77,
+CLINC-OOS, MMLU, ARC, Winogrande and HellaSwag (61 tasks, 102,804 rows). `temperature_by_type` fitted by NLL per answer type with
+`decider.calibrate.fit_by_type` on a pool of those regression rows and our own validation rows: 108,910 Choice answers, 1,677 yes/no
+answers and 535 Score answers. v10's temperature (1.30) was one value fitted on the 67 in-task tasks.
+
 ## Evaluation
 
 **94 public tasks, original protocol.** Large label sets sub-sampled to 10 options; one temperature fitted on in-task data
@@ -162,15 +313,18 @@ calibration error with 15 bins.
 | decider-2b v8, T=1.30 | 0.811 / 0.460 / 0.037 | 0.741 / 0.655 / 0.088 |
 | decider-2b v9, T=1.36 | 0.812 / 0.464 / 0.041 | 0.741 / 0.655 / 0.087 |
 | decider-2b v8, rebuilt set (67 / 28 tasks, see note), T=1.30 | 0.806 / 0.473 / 0.038 | 0.757 / 0.622 / 0.083 |
-| **decider-2b v10 (this repository), rebuilt set, T=1.30** | 0.805 / 0.474 / 0.037 | 0.755 / 0.622 / 0.084 |
+| decider-2b v10, rebuilt set, T=1.30 | 0.805 / 0.474 / 0.037 | 0.755 / 0.622 / 0.084 |
+| **decider-2b v11 (this repository), rebuilt set, per-type map** | 0.802 / 0.481 / 0.038 | 0.752 / 0.626 / 0.083 |
 | v8, questions-first layout (schema cache), T=1.18 | 0.790 / 0.500 / 0.038 | 0.707 / 0.757 / 0.104 |
 
 The two "rebuilt set" rows were measured after the data pipeline was rebuilt on another machine: two datasets no longer download
 (TREC-fine, the game states) and the current mixture adds held-out probes, so that set has 67 in-task and 28 held-out tasks. Its
-numbers are comparable to each other, not to the rows above. v10 matches v8 on it.
+numbers are comparable to each other, not to the rows above. v10 matches v8 on it. The v10 row was measured again on 2026-09-24
+in the v11 session as 0.806 / 0.474 / 0.038 and 0.755 / 0.622 / 0.084. The regression rows are all Choice answers, so v11 reads
+them at the Choice temperature 1.164.
 
 <details>
-<summary><b>Per-task accuracy / ECE on the 28 held-out datasets, v8 against v10</b></summary>
+<summary><b>Per-task accuracy / ECE on the 28 held-out datasets, v8 against v10 (not measured per task for v11)</b></summary>
 
 Per-task accuracy / ECE on the held-out datasets of the rebuilt set, v8 against v10:
 
@@ -207,6 +361,47 @@ Per-task accuracy / ECE on the held-out datasets of the rebuilt set, v8 against 
 
 </details>
 
+**v11 against v10 on the same rows** is the table under [Changes from v10](#changes-from-v10).
+
+**Bespoke's public suite, v10 against v11** (13 human-labelled subsets, 3,880 records in Jev's wire format, answered through
+`system_one` as shipped; same session, v10 through decider-ai 1.3.0, v11 through 1.4.0 with the map):
+
+| subset (type) | decider-2b v10 | decider-2b v11 |
+|---|---|---|
+| vitaminc-dev (choice) | 0.639 | 0.639 |
+| massive-en-US (choice; trained) | 0.823 | 0.814 |
+| massive-de-DE (choice) | 0.797 | 0.783 |
+| boolq (noul; trained) | 0.803 | 0.850 |
+| squad2 (noul) | 0.776 | 0.743 |
+| paws (noul; trained) | 0.720 | 0.760 |
+| multinli (choice; trained) | 0.856 | 0.853 |
+| civil_comments (noul; trained) | 0.840 | 0.870 |
+| aegis2 (noul) | 0.728 | 0.716 |
+| helpsteer2 (score; trained) | 0.426 | 0.446 |
+| summeval-relevance (score) | 0.354 | 0.229 |
+| summeval-consistency (score) | 0.653 | 0.757 |
+| pubmedqa (choice; trained) | 0.724 | 0.712 |
+| **macro / micro** | 0.703 / 0.711 | 0.706 / 0.711 |
+| macro over the subsets not trained on | 0.658 | 0.645 |
+
+**Calibration of v11 on our own sets** (10-bin top-label ECE on stored temperature-1 logits, read at the served temperatures;
+heldout_jb: held-out generated families, test_teacher2: held-out document questions, guard: knowledge guard, cal_human:
+human-labelled validation rows):
+
+| set | rows | accuracy | ECE at the global T / with the map | choice / noul / score ECE with the map |
+|---|---|---|---|---|
+| heldout_jb | 5,000 | 0.429 | 0.171 / 0.156 | 0.172 / 0.121 / 0.141 |
+| test_teacher2 | 449 | 0.753 | 0.083 / 0.075 | 0.074 / 0.093 / 0.131 |
+| guard | 2,994 | 0.715 | 0.050 / 0.046 | 0.046 / − / − |
+| cal_human | 1,595 | 0.781 | 0.030 / 0.030 | 0.030 / − / − |
+
+The map lowers the error of yes/no answers on the held-out generated families (0.171 to 0.121) and leaves Choice answers where
+they were (0.175 to 0.172), because the Choice temperature is fitted on a pool that is 94% everyday regression rows. A map fitted
+without the regression rows (Choice 1.385) would reach 0.126 there and would make the regression set less calibrated (in-task ECE
+0.0510 against 0.0385); it was not used. On the JevBench hard tier, v11's top-label ECE with the map is 0.175 (0.195 at the global
+temperature; by type Choice 0.205, yes/no 0.243, Score 0.366). The yes/no Brier score on the probe batteries is 0.048 with the
+map and 0.043 at the global temperature (v10 0.046).
+
 **v10 against v8 on the same rows.** Every row below is scored by both models on identical inputs and seeds. Intervals are
 95% bootstrap or paired intervals.
 
@@ -240,7 +435,8 @@ game boards are in the GitHub README.
 
 ## Speed
 
-One NVIDIA B300, decider-ai 1.2.1, measured 2026-09-23. Support-ticket states of about 230 tokens with 3 typed questions each
+v11 has v10's architecture and size, and the temperature map is a division per answer, so the speed was not measured again.
+The numbers below were measured on v10: one NVIDIA B300, decider-ai 1.2.1, 2026-09-23. Support-ticket states of about 230 tokens with 3 typed questions each
 (the first 64 `support_tickets` examples). `decider.infer.Decider` uses shape-bucketed CUDA graphs; the batching server is
 `decider/serve.py`, whose default since 1.1 is bf16.
 
@@ -261,11 +457,20 @@ activation scales) changes accuracy and calibration by less than the evaluation 
 
 ## Limitations
 
+* v11's losses against v10 (see Changes from v10): human-labelled public sets −2.2 points, knowledge guard −1.6, greedy bag-draw
+  play −10.9, sampled slippery-grid play −4.3, sampled browser play −2.8 (interval includes zero), TypeSafe −4.9 (interval includes
+  zero).
+* Overconfident on hard multi-step items: calibration error 0.156 on our held-out generated families and 0.175 on the JevBench
+  public hard tier. Better than v10 (0.226, 0.307), not calibrated.
+* The per-type map needs decider-ai 1.4.0 or later. With 1.3.0 or earlier, or with `DECIDER_TEMPERATURE` set, every answer uses
+  1.145: the answers are the same and yes/no answers are sharper.
+* The stated-belief and click-outcome calibration of v10's RL stage (below) was not measured again on v11.
 * A 2B model without reasoning. Knowledge-heavy multiple choice (MMLU, MedQA, ARC) improves little over the base model, and a
   judgment that needs several steps should be split into several questions.
 * English only. Calibration is measured on public datasets and teacher-labelled probes, not on your traffic. Check it on your
   own labels before using confidence for routing.
-* v10 continues the v8 weights. The v9 data for terse bucket names (`support`, `help`, `account` next to `other`) is not in it:
+* v10 and v11 continue the v8 weights. The v9 data for terse bucket names (`support`, `help`, `account` next to `other`) is not
+  in them as labels (v11's replay contains those rows but trains them toward v10's answers):
   on held-out terse-bucket messages v8 chose the generic bucket correctly 59% of the time where v9 reached 86%. Name or
   describe the generic option as a bucket (`general_support`, or a description).
 * Rules written into the question ("fill if empty, otherwise skip") are not followed at this size. State the decision as a
@@ -276,8 +481,8 @@ activation scales) changes accuracy and calibration by less than the evaluation 
   is the least calibrated case (ECE 0.14).
 * Questions packed into one row (`independent=False`) see the earlier question texts, and reversing their order changes up to
   12% of answers. The default path scores each question alone.
-* The v10 browser results are on 22 click-only MiniWoB++ tasks: small synthetic pages with the elements listed as text. Typing,
-  scrolling and real websites were not tested. OpenJev accuracy is 0.8 points lower than v8.
+* The browser results are on 22 click-only MiniWoB++ tasks: small synthetic pages with the elements listed as text. Typing,
+  scrolling and real websites were not tested.
 * Abstention: a catch-all option ("none of the above", "other", "unsure") is chosen when nothing on offer fits, not when the
   exact fine-grained label is merely absent. Wordings far from the training data remain the main risk.
 * One in-task dataset, `tweet_hate` (SemEval-2019 HatEval), stays near chance on its test split, whose collection and label
@@ -287,7 +492,8 @@ activation scales) changes accuracy and calibration by less than the evaluation 
 
 | version | what changed |
 |---|---|
-| **v10** (2026-09-19, these weights) | v8 plus 384 steps of calibration-aware RL on live browser tasks and exact games. Measured on the same rows: live browser click tasks 83% to 93% sampled success (held-out tasks 73% to 92%), stated beliefs about action outcomes 0.47 to 0.22 nats above the exact law, Mind2Web +1.5 points, general accuracy and Bespoke's public suite unchanged, OpenJev −0.8 points. |
+| **v11** (2026-09-24, these weights) | v10 plus a merged LoRA (rank 64, attention and MLP, 2 epochs, 42,749 rows: generated decision families, document questions written by Qwen3.6-27B and kept when two independent answers agreed, human-labelled public sets, and a replay of the public mixture trained toward v10's own answers); temperature 1.145 and `temperature_by_type` {choice 1.164, noul 1.624, score 1.124} (decider-ai 1.4.0; older versions use 1.145). Held-out generated families 0.429 against 0.324, held-out document questions 0.753 against 0.646, JevBench hard 0.577 against 0.459; human-labelled sets −2.2, knowledge guard −1.6, greedy bag-draw −10.9, sampled slippery grid −4.3, sampled browser −2.8 points. Did not pass its pre-registered rule; released on the full comparison |
+| v10 (2026-09-19, Hub tag `v10`) | v8 plus 384 steps of calibration-aware RL on live browser tasks and exact games. Measured on the same rows: live browser click tasks 83% to 93% sampled success (held-out tasks 73% to 92%), stated beliefs about action outcomes 0.47 to 0.22 nats above the exact law, Mind2Web +1.5 points, general accuracy and Bespoke's public suite unchanged, OpenJev −0.8 points. |
 | v9 | terse-bucket routing messages and labelled shell commands in the data; described in the GitHub README, but the Hub weights stayed v8, so v10 does not contain it |
 | v8 (Hub tag `v8`) | isolated Score levels, teacher-written custom questions with a generic option next to a catch-all, the cacheable schema-first layout |
 | v6 to v7 | the input shapes Jev accepts: described options, up to 255 options, JSON states with path references, long inputs |
@@ -302,4 +508,7 @@ The full entries, with the browser and game recordings and the same-rows compari
 
 Code, data registry, training and evaluation scripts, the RL recipe and the per-version history:
 https://github.com/Mapika/decider. Each release is staged with `scripts/stage_release.py` and uploaded with
-`scripts/upload_hf.py`; the previous weights are kept under the tag `v8` in this repository.
+`scripts/upload_hf.py`; the previous weights are kept under the tags `v10` and `v8` in this repository. The LoRA stage of v11 was
+trained with a LoRA trainer in the research repository. `eval_results.json` has v11's regression metrics with the map and at the
+global temperature, our held-out sets by answer type, the fixtures, games, browser and Bespoke results with the paired
+comparisons against v10, the text games, the behaviour probes, the issue #9 cases and the JevBench public items.

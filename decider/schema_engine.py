@@ -124,12 +124,15 @@ class SchemaEngine:
         return next((t for t in TS_BUCKETS if t >= n_tokens), -(-n_tokens // 256) * 256)
 
     def score(self, h, contexts, temperature=1.0, max_ctx_tokens=1536):
-        """-> one [n_questions, MAX_OPTIONS] probability tensor per context."""
+        """-> one [n_questions, MAX_OPTIONS] probability tensor per context.  temperature: as in score_rows."""
         return self.score_rows(h, [self.tokenize(h, c, max_ctx_tokens) for c in contexts], temperature)
 
     @torch.no_grad()
     def score_rows(self, h, rows, temperature=1.0):
-        """rows: [(suffix ids, slots)] from tokenize()."""
+        """rows: [(suffix ids, slots)] from tokenize().  temperature: a number, or a list with one temperature per schema row
+        (h.nq values, in the order of prepare's questions), applied to every request."""
+        if isinstance(temperature, (list, tuple)) and len(temperature) != h.nq:
+            raise ValueError(f"temperature: {len(temperature)} values for a schema with {h.nq} rows")
         Tmax = max(len(r[0]) for r in rows); Ts = next((t for t in TS_BUCKETS if t >= Tmax), None); n = len(rows)
         R = next((b for b in B_BUCKETS if b >= n), n) if Ts else n; Ts = Ts or -(-Tmax // 256) * 256
         ids = fill_ids([x for x, _ in rows for _ in range(h.P)], R * h.P, Ts, self.tok.pad_token_id).to(self.dev, non_blocking=True)
@@ -143,4 +146,5 @@ class SchemaEngine:
             rws = [r for r in range(n) for _ in range(h.nq)]; sls = [x for _, sl in rows for x in sl]
         else:                                                  # independent: one slot in each of the request's P rows
             rws = [r * h.P + p for r in range(n) for p in range(h.P)]; sls = [sl[0] for _, sl in rows for _ in range(h.P)]
-        return read_slots(out, rws, sls, h.nopts * n, temperature, [h.nq] * n)
+        temps = list(temperature) * n if isinstance(temperature, (list, tuple)) else temperature
+        return read_slots(out, rws, sls, h.nopts * n, temps, [h.nq] * n)

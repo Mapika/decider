@@ -73,7 +73,7 @@ turned it off (`decider.engine.set_attention_backend_policy`).
 | `DECIDER_MAX_ROW_TOKENS` | `MAX_STATE_TOKENS + 4096` | tokens in one row: truncated state plus question block |
 | `DECIDER_MAX_REQUEST_TOKENS` | `1048576` | sum of row lengths of one request |
 | `DECIDER_MAX_QUEUE_ROWS` | `4096` | rows admitted and not yet scored, over all requests |
-| `DECIDER_TEMPERATURE` | config `temperature`, else 1.0 | softmax temperature |
+| `DECIDER_TEMPERATURE` | config `temperature`, else 1.0 | softmax temperature; when set it replaces `temperature` and switches the config's `temperature_by_type` off (1.4.0) |
 | `DECIDER_SCHEMA_CACHE`, `DECIDER_SCHEMA_MIN_SEEN`, `DECIDER_SCHEMAS` | `0`, `2`, unset | schema cache, as in 1.0.x |
 
 Responses at the limits, all decided after tokenisation and before anything is queued:
@@ -87,7 +87,8 @@ Responses at the limits, all decided after tokenisation and before anything is q
 * HTTP 422 `{"detail": <message>}` for a question that fails `systemone.render_question`, as before.
 
 `/health` is `{"ok": true}` only once the grid is captured and the batcher task is alive; the HTTP port does not accept
-requests before the lifespan start-up finishes. `/stats` reports `requests`, `decisions`, `rows`, `batches`,
+requests before the lifespan start-up finishes. `/health` and the ready line also report `temperature` and `temperature_by_type`, the temperature every
+answer type gets after the fallback to `temperature` (1.4.0; README, "Temperatures in `decider_config.json`"). `/stats` reports `requests`, `decisions`, `rows`, `batches`,
 `shared_prefix_requests`, `errors`, `rejected_too_large`, `rejected_overloaded`, `outstanding_rows`, the batch and bucket
 histograms, `limits`, the engine counters `graph_captures`, `forwards`, `replays`, `eager_forwards`, `eager_rows`,
 `shared_calls`, `unbucketed_requests`, and, when the schema cache is on, `schema_cache` with `prepared` (schemas whose prefix
@@ -112,6 +113,31 @@ still caps only `Context:\n<state>`, and `DECIDER_MAX_ROW_TOKENS` counts the who
 `/decide` keeps its 1,536-token context cap in both layouts. The research server that v11 was evaluated with used the
 state cap there instead, so `/decide` answers on longer contexts can differ from it.
 `decider.serve_v1` renders only the plain layout and refuses a chat-layout model at start-up.
+
+### 3.1 Temperatures per answer type (1.4.0)
+
+The server reads the temperatures from `decider_config.json` as `Decider` does (README, "Temperatures in
+`decider_config.json`"): `temperature`, and optionally `temperature_by_type` `{"choice": T, "noul": T, "score": T}`, where a
+missing type uses `temperature`. A `/decide` field of type `choice` is a `choice` answer, `bool` is `noul` and `scale` is
+`score`; every row of a batch carries the answer type of each of its slots, so a batch that mixes requests and types still gives
+every answer its own temperature. An invalid value or key stops start-up with a `ValueError` before the weights are loaded.
+`DECIDER_TEMPERATURE` replaces `temperature` and switches the map off. decider-ai 1.3.0 and earlier ignore the map.
+
+Checked on decider-4b v2.1 (map choice 1.110, noul 1.560, score 1.287) with 380 requests built from validation rows (single
+Choice, noul and isolated-level Score questions, mixed requests and `/decide` requests with a choice, a bool and a scale field):
+the server with CUDA graphs (257 graph replays during the check, 0 eager forwards, 123 requests through the shared-prefix fork)
+was compared with a second server of the same folder at `DECIDER_TEMPERATURE=1`. For Choice and yes/no answers the reference is
+softmax(log p₁ / T_type) of that server's probabilities p₁; for an isolated-level Score answer each level's yes/no pair
+[1 − f, f], with f the level's `level_fit` at temperature 1, is rescaled with T_score and the yes probabilities are normalised
+over the levels. The difference is at most 1.3e-4 on the 196 answers whose temperature-1 values are all at least 0.01 (and, for
+level fits, at most 0.99), and 0.0016 over all 540 answers: the responses are rounded to four decimals, and the log of a rounded
+probability near 0 or 1 is imprecise. In process, eager and on the graph path, the map was applied to the path's own
+logits to 1.9e-7.
+
+Start the server from a directory that does not contain another `decider/` package, or pass `--app-dir` pointing at the
+installed package: uvicorn's default `--app-dir .` and `python -m` put the current directory first on `sys.path`, so a checkout
+of another version in the working directory is imported instead of the installed one. `PYTHONSAFEPATH=1` keeps `python -m`
+from adding the current directory.
 
 ## 4. Batching policy and the shared-prefix memory bound (1.1.1)
 

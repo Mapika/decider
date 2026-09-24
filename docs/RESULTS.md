@@ -7,12 +7,13 @@ GH200; v9 is v8 plus the terse-bucket and command data, with the same numbers on
 everything about decider-35b-a3b and decider-4b were measured on a B300. "Held-out" means no example of that dataset was trained on. The
 external-leaderboard numbers were read from the leaderboards on the dates given and were not measured here. The JevBench
 public-item and Bespoke-suite rows were run in this repository (`decider/bench/`). Dates: decider-2b v10 measurements
-2026-09-19, decider-35b-a3b measurements 2026-09-20, decider-4b v1 measurements 2026-09-22, decider-4b v2 measurements 2026-09-24, JevBench and Decision Index standings read 2026-09-21 and 2026-09-22,
+2026-09-19, decider-35b-a3b measurements 2026-09-20, decider-4b v1 measurements 2026-09-22, decider-4b v2 measurements 2026-09-24, decider-4b v2.1 and decider-2b v11 measurements 2026-09-24 (later that day), JevBench and Decision Index standings read 2026-09-21 and 2026-09-22,
 Apple Silicon MPS measurements 2026-09-21 (`docs/benchmarks/`). [docs/HISTORY.md](HISTORY.md) has the per-stage measurements
 and [docs/RL.md](RL.md) the RL stage.
 
 **Contents:** [External leaderboards](#external-leaderboards) · [decider-35b-a3b against decider-2b v10](#decider-35b-a3b-against-decider-2b-v10)
 · [decider-4b against decider-2b v10 and decider-35b-a3b](#decider-4b-against-decider-2b-v10-and-decider-35b-a3b)
+· [decider-4b v2.1 and decider-2b v11](#decider-4b-v21-and-decider-2b-v11)
 · [The 94 public tasks](#the-94-public-tasks) · [JevBench public items](#jevbench-public-items) ·
 [Bespoke's public suite](#bespokes-public-suite) · [Speed](#speed) · [Input shapes](#input-shapes) ·
 [Custom questions and catch-all options](#custom-questions-and-catch-all-options) ·
@@ -91,6 +92,9 @@ The NVFP4 build (19.6 GB, ModelOpt) served by vLLM loses 1.0 to 1.5 accuracy poi
 and validation rows and changes the argmax on 3 to 4% of rows; `moe/vllm_check.py` is the readout through vLLM.
 
 ## decider-4b against decider-2b v10 and decider-35b-a3b
+
+This section describes decider-4b v2 and v1 against decider-2b v10 and the 35B. decider-4b v2.1 replaced v2 on the Hub later on
+2026-09-24; its numbers against v1 and v2 are in the next section.
 
 decider-4b v2 (released 2026-09-24) is decider-4b v1 plus a LoRA of rank 64 on the attention and MLP weights, 2 epochs over
 29,356 rows (generated decision families with code-computed answers, questions over business documents written by Qwen3.6-27B
@@ -171,6 +175,94 @@ State-first is therefore the default and the schema cache is opt-in (`Decider.sc
 decider-0.8b, the same recipe from Qwen3.5-0.8B-Base: 0.78 in-task / 0.71 held-out on the 94 tasks with the same calibration.
 It loses on knowledge tasks, not on the decision format.
 
+## decider-4b v2.1 and decider-2b v11
+
+Released 2026-09-24. Both are their parent plus a LoRA of rank 64 on the attention and MLP weights (alpha 128, learning rate
+1e-4, 2 epochs, merged): decider-4b v2.1 is v1 plus 29,325 rows (decider-4b v2's stage-2 rows without 31 that shared a context
+with an evaluation file), decider-2b v11 is v10 plus 42,749 rows (the same 22,649 labelled rows and a replay of 20,100 rows of
+the public mixture). In both, the replay rows are trained toward the parent's own answer distribution (KL(p_parent ‖ p_model))
+instead of their labels. Temperatures: v2.1 `temperature` 1.099 with `temperature_by_type` choice 1.110, noul 1.560, score 1.287;
+v11 1.145 with choice 1.164, noul 1.624, score 1.124 (decider-ai 1.4.0 reads the map; older versions use `temperature`).
+The new models were read through decider-ai 1.4.0 with the map, the parents through 1.3.0 at their stored temperatures, on
+identical inputs and seeds in one session; intervals are 95% paired bootstrap intervals. The regression set and our own sets
+were read from stored temperature-1 logits. The parents' JevBench files were read earlier through 1.2.1 (decider-4b v2 at the
+candidate temperature 1.719; its hard-tier ECE is 0.071 when recomputed at its release temperature 1.935). Neither model passed
+its pre-registered release rules; the model cards give the rules, the failures and the reasons for the release.
+
+**decider-4b v2.1 against v1 and v2.**
+
+| set | v1 (T 1.05) | v2 (T 1.935) | v2.1 (map) | v2.1 minus v1 | v2.1 minus v2 |
+|---|---|---|---|---|---|
+| regression set, 67 in-task tasks, accuracy / NLL / ECE | 0.834 / 0.404 / 0.027 | 0.824 / 0.441 / 0.041 | 0.831 / 0.414 / 0.031 | −0.3 | +0.7 |
+| regression set, 28 held-out tasks | 0.788 / 0.558 / 0.071 | 0.779 / 0.566 / 0.080 | 0.784 / 0.569 / 0.077 | −0.4 | +0.5 |
+| 847 in-task validation rows, accuracy / NLL | 86.1% / 0.417 | 85.0% / 0.419 | 85.0% / 0.432 | −1.1 (−2.1 to +0.0); NLL +0.015 (+0.003 to +0.028) | 0.0 (−1.5 to +1.5); NLL +0.014 (−0.006 to +0.035) |
+| OpenJev, 5,252 rows, accuracy / NLL | 63.9% / 0.893 | 66.7% / 0.789 | 66.0% / 0.846 | +2.1 (+1.2 to +2.9); NLL −0.047 (−0.060 to −0.035) | −0.7 (−1.6 to +0.2); NLL +0.057 (+0.044 to +0.070) |
+| Mind2Web, 1,770 rows, accuracy / NLL | 88.4% / 0.366 | 87.4% / 0.393 | 87.5% / 0.375 | −0.8 (−1.7 to +0.0); NLL +0.009 (−0.004 to +0.023) | +0.1 (−0.8 to +1.1); NLL −0.018 (−0.032 to −0.005) |
+| TypeSafe workflow decisions, 102 rows, accuracy / NLL | 81.4% / 0.611 | 86.3% / 0.410 | 84.3% / 0.441 | +2.9 (−2.9 to +8.8); NLL −0.170 (−0.324 to −0.036) | −2.0 (−7.8 to +3.9); NLL +0.031 (−0.069 to +0.134) |
+| held-out generated families (heldout_jb), 5,000 rows, accuracy / ECE | 0.469 / 0.260 | 0.560 / 0.046 | 0.556 / 0.147 | +8.7 | −0.4 |
+| held-out document questions (test_teacher2), 449 rows, accuracy / ECE | 0.726 / 0.110 | 0.826 / 0.053 | 0.820 / 0.043 | +9.4 | −0.7 |
+| JevBench public items, easy / standard / hard accuracy | 1.000 / 0.958 / 0.550 | 1.000 / 0.986 / 0.676 | 1.000 / 0.986 / 0.649 | hard +11 items | hard −3 items |
+| JevBench hard tier, top-label ECE (v1, v2: files read through 1.2.1, v2 at T 1.719) | 0.288 | 0.104 | 0.184 | | |
+| Bespoke's public suite, macro / micro | 0.757 / 0.765 | 0.773 / 0.781 | 0.756 / 0.765 | −0.1 macro | −1.6 macro |
+| live MiniWoB++, sampled, all 22 tasks | 90.9% | 88.1% | 93.2% | +2.3 (−1.7 to +6.2) | +5.1 (+0.6 to +9.7) |
+| live MiniWoB++, sampled, 16 rewarded tasks | 96.1% | 93.0% | 95.3% | −0.8 (−3.9 to +2.3) | +2.3 (−2.3 to +7.0) |
+| live MiniWoB++, sampled, 6 held-out tasks | 77.1% | 75.0% | 87.5% | +10.4 (0.0 to +20.8) | +12.5 (0.0 to +25.0) |
+| live MiniWoB++, greedy, all 22 tasks | 91.5% | 92.6% | 93.8% | +2.3 (−0.6 to +5.7) | +1.1 (−1.7 to +4.5) |
+| live MiniWoB++, greedy, 16 rewarded tasks | 97.7% | 96.9% | 96.1% | −1.6 (−3.9 to +0.0) | −0.8 (−2.3 to +0.0) |
+| live MiniWoB++, greedy, 6 held-out tasks | 75.0% | 81.2% | 87.5% | +12.5 (+4.2 to +22.9) | +6.2 (−4.2 to +16.7) |
+| zero-shot games, 234 boards, sampled, win rate | 27.8% | 22.4% | 26.9% | −0.9 (−2.6 to +1.0) | +4.5 (+2.5 to +6.6) |
+| bag-draw games, 64 boards, sampled, win rate | 56.6% | 37.9% | 52.0% | −4.7 (−9.0 to −0.4) | +14.1 (+8.2 to +19.9) |
+| slippery-grid games, 64 boards, sampled, win rate | 16.4% | 16.0% | 16.8% | +0.4 (−2.7 to +3.5) | +0.8 (−2.3 to +3.9) |
+| zero-shot games, 234 boards, greedy, win rate | 29.1% | 27.8% | 25.2% | −3.8 (−7.3 to −0.4) | −2.6 (−6.4 to +1.3) |
+| bag-draw games, 64 boards, greedy, win rate | 62.5% | 48.4% | 53.1% | −9.4 (−17.2 to −3.1) | +4.7 (−3.1 to +12.5) |
+| slippery-grid games, 64 boards, greedy, win rate | 12.5% | 18.8% | 10.9% | −1.6 (−7.9 to +4.7) | −7.8 (−15.6 to +0.0) |
+| ten text games, greedy: Pong / Breakout / CliffWalking / BabyAI-GoTo / Freeway / Blackjack | −21 / 14 / −13 / 0.54 / 0 / −0.6 | −21 / 12 / −60 / 0.35 / 1 / −0.6 | −5 / 35 / −13 / 0.19 / 0 / −0.6 | | |
+| behaviour probes: model-router tier / needs-live-data (31 items) | 0.968 / 0.871 | 0.935 / 0.839 | 0.968 / 0.839 | 0 / −1 item | +1 / 0 items |
+| behaviour probes: command risk / touches-outside-project (45 items) | 0.889 / 0.956 | 0.911 / 0.933 | 0.889 / 0.933 | 0 / −1 item | −1 / 0 items |
+| behaviour probes: generic bucket / catch-all / abstention battery / browser element and action | 1.00 / 0.90 / 7 of 8 / 0.875 and 0.875 | 0.95 / 0.95 / 8 of 8 / 0.938 and 0.938 | 1.00 / 0.95 / 8 of 8 / 0.938 and 0.750 | | |
+| issue #9 form cases c_1 / c_2 (probability of the gold option) | right (0.79) / right (0.98) | wrong (0.16) / right (0.28) | wrong (0.20) / right (0.41) | | |
+
+**decider-2b v11 against v10.**
+
+| set | v10 (T 1.30) | v11 (map) | v11 minus v10 |
+|---|---|---|---|
+| regression set, 67 in-task tasks, accuracy / NLL / ECE | 0.806 / 0.474 / 0.038 | 0.802 / 0.481 / 0.038 | −0.4 |
+| regression set, 28 held-out tasks | 0.755 / 0.622 / 0.084 | 0.752 / 0.626 / 0.083 | −0.3 |
+| held-out generated families (heldout_jb), 5,000 rows, accuracy / ECE | 0.324 / 0.226 | 0.429 / 0.156 | +10.5 |
+| held-out document questions (test_teacher2), 449 rows, accuracy / ECE | 0.646 / 0.081 | 0.753 / 0.075 | +10.7 |
+| human-labelled public sets (cal_human), 1,595 rows, accuracy | 0.803 | 0.781 | −2.2 |
+| knowledge guard (MMLU, ARC and others), 2,994 rows, accuracy | 0.732 | 0.715 | −1.6 |
+| 847 in-task validation rows, accuracy / NLL | 83.4% / 0.444 | 81.9% / 0.468 | −1.4 (−3.0 to +0.1); NLL +0.024 (+0.008 to +0.039) |
+| OpenJev, 5,252 rows, accuracy / NLL | 63.2% / 0.917 | 64.6% / 0.860 | +1.4 (+0.6 to +2.2); NLL −0.057 (−0.068 to −0.046) |
+| Mind2Web, 1,770 rows, accuracy / NLL | 82.6% / 0.543 | 83.9% / 0.495 | +1.3 (+0.1 to +2.5); NLL −0.048 (−0.074 to −0.023) |
+| TypeSafe workflow decisions, 102 rows, accuracy / NLL | 80.4% / 0.585 | 75.5% / 0.604 | −4.9 (−10.8 to +1.0); NLL +0.018 (−0.088 to +0.135) |
+| JevBench public items, easy / standard / hard accuracy | 1.000 / 0.889 / 0.459 | 1.000 / 0.889 / 0.577 | hard +13 items |
+| JevBench hard tier, top-label ECE | 0.307 | 0.175 | |
+| Bespoke's public suite, macro / micro | 0.703 / 0.711 | 0.706 / 0.711 | +0.3 macro |
+| live MiniWoB++, sampled, all 22 tasks | 93.2% | 90.3% | −2.8 (−7.4 to +1.1) |
+| live MiniWoB++, sampled, 16 rewarded tasks | 93.8% | 89.8% | −3.9 (−9.4 to +0.8) |
+| live MiniWoB++, sampled, 6 held-out tasks | 91.7% | 91.7% | 0.0 (−8.3 to +8.3) |
+| live MiniWoB++, greedy, all 22 tasks | 91.5% | 92.0% | +0.6 (−3.4 to +4.5) |
+| live MiniWoB++, greedy, 16 rewarded tasks | 91.4% | 92.2% | +0.8 (−4.7 to +6.2) |
+| live MiniWoB++, greedy, 6 held-out tasks | 91.7% | 91.7% | 0.0 (−6.2 to +6.2) |
+| zero-shot games, 234 boards, sampled, win rate | 23.9% | 22.6% | −1.3 (−3.4 to +0.9) |
+| bag-draw games, 64 boards, sampled, win rate | 41.8% | 41.8% | 0.0 (−5.5 to +5.5) |
+| slippery-grid games, 64 boards, sampled, win rate | 19.1% | 14.8% | −4.3 (−7.8 to −1.2) |
+| zero-shot games, 234 boards, greedy, win rate | 26.9% | 24.8% | −2.1 (−5.6 to +1.3) |
+| bag-draw games, 64 boards, greedy, win rate | 57.8% | 46.9% | −10.9 (−20.3 to −3.1) |
+| slippery-grid games, 64 boards, greedy, win rate | 15.6% | 15.6% | 0.0 (0.0 to +0.0) |
+| ten text games, greedy: Pong / Breakout / CliffWalking / BabyAI-GoTo / Freeway / Blackjack | 8 / 22 / −13 / 0.18 / 0 / −1 | 8 / 22 / −13 / 0.19 / 1 / −1 | |
+| behaviour probes: model-router tier / needs-live-data (31 items) | 0.903 / 0.806 | 0.935 / 0.774 | +1 / −1 item |
+| behaviour probes: command risk / touches-outside-project (45 items) | 0.733 / 0.556 | 0.822 / 0.556 | +4 / 0 items |
+| behaviour probes: generic bucket / catch-all / abstention battery / browser element and action | 0.85 / 0.95 / 8 of 8 / 0.938 and 0.875 | 0.85 / 0.95 / 8 of 8 / 0.938 and 0.875 | |
+| issue #9 form cases, right of 4 | 0 | 0 | |
+
+Calibration on hard items: decider-4b v2.1's calibration error on our held-out generated families is 0.147 with the map (0.163
+at its global temperature; v1 0.260, v2 0.046), decider-2b v11's 0.156 (0.171; v10 0.226); our release limit was 0.08. The map
+lowers the error of yes/no answers there (4B 0.146 to 0.101, 2B 0.171 to 0.121) and leaves Choice answers unchanged, because the
+Choice temperature is fitted on a pool that is 94% everyday regression rows. Speed was not measured again: both models have
+their parent's architecture and size.
+
 ## JevBench public items
 
 **JevBench** ([Benchmark Heaven](https://benchmarkheaven.com/jev-models), harness at
@@ -186,15 +278,17 @@ adds speed and cost measured from the operator's server, so this table is a part
 | GPT-5.6 Luna, low reasoning (verbalized probabilities) | 1.000 | 0.972 | 0.964 |
 | Jev 1.13.0 (TypeSafe AI) | 1.000 | 0.986 | 0.730 |
 | **decider-35b-a3b v1** (34.7B, 3B active) | 1.000 | 0.972 | 0.676 |
-| **decider-4b v2** (4.2B) | 1.000 | 0.986 | 0.676 |
+| decider-4b v2 (4.2B) | 1.000 | 0.986 | 0.676 |
 | djev (Maisa, diffusion-gemma) | 1.000 | 0.986 | 0.676 |
+| **decider-4b v2.1** (4.2B) | 1.000 | 0.986 | 0.649 |
 | OpenJev (DiffusionGemma 26B-A4B) | 1.000 | 0.972 | 0.640 |
 | SemIf (Qwen3.5-4B) | 1.000 | 0.986 | 0.613 |
+| **decider-2b v11** (1.9B) | 1.000 | 0.889 | 0.577 |
 | decider-4b v1 (4.2B) | 1.000 | 0.958 | 0.541 |
 | open-alternative-jev (Qwen3.5-4B) | 1.000 | 0.833 | 0.568 |
 | system-one-open (Gemma 4 E2B) | 1.000 | 0.931 | 0.486 |
 | system-one (Qwen3-8B) | 1.000 | 0.889 | 0.486 |
-| **decider-2b v10** (1.9B) | 1.000 | 0.889 | 0.459 |
+| decider-2b v10 (1.9B) | 1.000 | 0.889 | 0.459 |
 | decider-2b v8 | 1.000 | 0.875 | 0.441 |
 | Bespoke Nimble 9B | 1.000 | 0.931 | 0.369 |
 | open-jev-deberta-v3-large | 1.000 | 0.431 | 0.378 |

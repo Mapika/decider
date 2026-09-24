@@ -19,6 +19,7 @@ import time, torch, torch.nn.functional as F
 from decider import shared_prefix
 from decider.engine import read_slots, fill_ids, patch_conv, set_attention_backend_policy
 from decider.model import DecisionModel
+from decider.temperature import item_slice, slot_temperatures
 
 T_BUCKETS = [64, 128, 192, 256, 320, 384, 512, 640, 768, 1024, 1280, 1536, 2048, 3072, 4096, 6144, 8192]
 B_BUCKETS = [1, 2, 4, 8, 16, 32]
@@ -150,9 +151,11 @@ class EngineV2:
     # ---- scoring -----------------------------------------------------------
     @torch.no_grad()
     def score_items(self, items, temperature=1.0):
-        """items: dicts from prompt.build / build_rows.  -> one [n_q, MAX_OPTIONS] cpu probability tensor per item."""
+        """items: dicts from prompt.build / build_rows.  -> one [n_q, MAX_OPTIONS] cpu probability tensor per item.
+        temperature: a number, or one entry per item (a number or one number per slot; decider.temperature.for_items)."""
         if not items:
             return []
+        slot_temperatures(temperature, items)                      # a length mismatch fails before any forward
         Tmax = max(len(it["ids"]) for it in items)
         T = self.t_bucket(Tmax)
         if T is None:
@@ -168,7 +171,7 @@ class EngineV2:
             lg = self.logits_all(ids.to(self.dev, non_blocking=True))
             out += read_slots(lg, [b for b, it in enumerate(chunk) for _ in it["slots"]],
                               [s for it in chunk for s in it["slots"]], [n for it in chunk for n in it["nopts"]],
-                              temperature, [len(it["slots"]) for it in chunk])
+                              slot_temperatures(item_slice(temperature, i - len(chunk), i), chunk), [len(it["slots"]) for it in chunk])
         return out
 
     @torch.no_grad()

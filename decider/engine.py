@@ -7,6 +7,7 @@ option-letter logits for all positions [B, T, K]; slots are gathered outside.
 import time, torch, torch._dynamo, torch.nn.functional as F
 from decider.model import DecisionModel, collate
 from decider.prompt import build, MAX_OPTIONS
+from decider.temperature import scaled_softmax, slot_temperatures
 
 T_BUCKETS = [64, 128, 192, 256, 320, 384, 512, 640, 768, 1024, 1280, 1536, 2048]
 B_BUCKETS = [1, 2, 4, 8, 16, 32, 64]
@@ -46,11 +47,12 @@ def patch_conv():
 
 def read_slots(out, rows, slots, nopts, temperature, n_per_item):
     """One gather + one softmax + one device-to-host copy for the whole batch (was: three small kernels and a sync per item).
-    out [B, T, K] logits; rows/slots/nopts: flat python lists, one entry per question; n_per_item: questions per item."""
+    out [B, T, K] logits; rows/slots/nopts: flat python lists, one entry per question; n_per_item: questions per item.
+    temperature: a number for every question, or a flat list with one temperature per question (decider.temperature)."""
     dev = out.device; idx = torch.tensor([rows, slots, nopts], dtype=torch.long).to(dev, non_blocking=True)
     lg = out[idx[0], idx[1]]                                                                  # [N, K]
     lg = lg.masked_fill(torch.arange(lg.shape[1], device=dev)[None, :] >= idx[2][:, None], float("-inf"))
-    p = torch.softmax(lg / temperature, -1).cpu()
+    p = scaled_softmax(lg, temperature).cpu()
     return list(torch.split(p, n_per_item))
 
 
@@ -140,14 +142,15 @@ class Engine:
 
     @torch.no_grad()
     def score_items(self, items, temperature=1.0):
-        """items: list of dicts from prompt.build. Returns list of [n_q, MAX_OPTIONS] prob tensors (cpu)."""
+        """items: list of dicts from prompt.build. Returns list of [n_q, MAX_OPTIONS] prob tensors (cpu).
+        temperature: a number, or one entry per item (a number or one number per slot; decider.temperature.for_items)."""
         Tmax = max(len(it["ids"]) for it in items)
         T = _bucket(Tmax, T_BUCKETS) or -(-Tmax // LONG_STEP) * LONG_STEP
         B = (_bucket(len(items), B_BUCKETS) or len(items)) if T <= GRAPH_MAX_T else len(items)
         ids = fill_ids([it["ids"] for it in items], B, T, self.tok.pad_token_id)
         out = self.logits_all(ids.to(self.dev, non_blocking=True))
         return read_slots(out, [b for b, it in enumerate(items) for _ in it["slots"]], [s for it in items for s in it["slots"]],
-                          [n for it in items for n in it["nopts"]], temperature, [len(it["slots"]) for it in items])
+                          [n for it in items for n in it["nopts"]], slot_temperatures(temperature, items), [len(it["slots"]) for it in items])
 
     @torch.no_grad()
     def score_shared(self, items, temperature=1.0, min_prefix=192):

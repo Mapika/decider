@@ -6,8 +6,9 @@ for f in os.listdir(src):
     if os.path.isfile(f"{src}/{f}"): shutil.copy2(f"{src}/{f}", f"{dst}/{f}")
 for m in (
     "__init__", "prompt", "model", "systemone", "infer", "batching", "prompt_fast",
-    "engine", "engine_v2", "shared_prefix", "schema_engine", "fp8", "serve", "metrics", "mps_ops", "mps_moe",
-):  # all internal modules needed to run and serve; no training code
+    "engine", "engine_v2", "shared_prefix", "schema_engine", "fp8", "serve", "metrics", "mps_ops", "mps_moe", "temperature",
+    "calibrate",
+):  # all internal modules needed to run and serve, and calibrate (fits temperature_by_type); no training code
     shutil.copy2(f"decider/{m}.py", f"{dst}/decider/{m}.py")
 shutil.copy2("MODEL_CARD.md", f"{dst}/README.md")
 if len(sys.argv) > 3: shutil.copy2(sys.argv[3], f"{dst}/eval_results.json")

@@ -40,6 +40,12 @@ Variables (default):  DECIDER_DEVICE (auto: cuda, else mps, else cpu)  DECIDER_C
   DECIDER_T_BUCKETS  DECIDER_B_BUCKETS  DECIDER_GRAPH_TOKEN_BUDGET (32768)  DECIDER_WARMUP (1)  DECIDER_TOKENIZE_THREADS (8)
   DECIDER_MAX_ROWS (1024)  DECIDER_MAX_ROW_TOKENS (DECIDER_MAX_STATE_TOKENS + 4096)  DECIDER_MAX_REQUEST_TOKENS (1048576)
   DECIDER_MAX_QUEUE_ROWS (4096)  DECIDER_TEMPERATURE  DECIDER_SCHEMA_CACHE (0)  DECIDER_SCHEMA_MIN_SEEN (2)  DECIDER_SCHEMAS
+
+Temperatures (1.4.0, decider.temperature): decider_config.json "temperature", and optionally "temperature_by_type"
+{"choice": T, "noul": T, "score": T} (a /decide "bool" field is "noul", a "scale" field is "score"; a missing type uses
+"temperature").  Every row carries the answer type of each of its slots, so a batch that mixes requests and types still
+applies each answer's own temperature.  DECIDER_TEMPERATURE replaces "temperature" and switches the by-type map off.
+/health and the ready line report the temperature every answer type gets.
 """
 import asyncio, json, os, time
 from concurrent.futures import ThreadPoolExecutor
@@ -47,6 +53,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from decider import systemone as S1
+from decider import temperature as TT
 from decider.batching import DEFAULT_MERGE_OVERHEAD_TOKENS, plan_batches
 from decider.prompt import build, MAX_OPTIONS, resolve_layout, chat_template
 from decider.prompt_fast import build_rows, unique_tokens
@@ -78,7 +85,7 @@ MAX_REQUEST_TOKENS = _env_int("DECIDER_MAX_REQUEST_TOKENS", 1 << 20)       # sum
 MAX_QUEUE_ROWS = _env_int("DECIDER_MAX_QUEUE_ROWS", 4096)                   # rows admitted and not yet scored, over all requests
 DECIDE_MAX_CTX_TOKENS = 1536                                                # /decide context cap, unchanged from 1.0.x
 
-MODEL_NAME = "decider"; TEMP = 1.0; TEMP_SCHEMA = 1.0; RELEASE_DATE = "2026-09-17"; ISOLATED = False; NEUTRALIZE_NONE = True
+MODEL_NAME = "decider"; TEMP = 1.0; TEMP_SCHEMA = 1.0; TEMP_BY_TYPE = {}; TEMP_SCHEMA_BY_TYPE = {}; RELEASE_DATE = "2026-09-17"; ISOLATED = False; NEUTRALIZE_NONE = True
 SCHEMA_FIRST = False; LAYOUT = "plain"; CHAT = None; se = None; squeue = None; schemas = {}; seen = {}
 eng = None; queue = None; gpu = None; cpu = None; batcher_task = None; schema_task = None
 outstanding = 0; REQ_SEQ = 0
@@ -118,6 +125,9 @@ def prepare(tok, state, questions, independent, isolated=False, max_state_tokens
     pairs = [(r["question"], list(r["options"])) for r in flat]
     rows = [[p] for p in pairs] if independent else [pairs]
     items, ctx_len = build_rows(tok, ctx, rows, max_ctx_tokens=max_state_tokens, chat=chat)
+    types = S1.row_types(rqs, index)                                 # answer type per slot (decider.temperature)
+    for it, ts in zip(items, [[t] for t in types] if independent else [types]):
+        it["types"] = ts
     return rqs, index, items, ctx_len
 
 
@@ -133,6 +143,7 @@ def _prepare_decide(context, schema):
             q["options"], q["_back"] = neutralize_options(q["options"])
     ex = Example(context, [Q(q["question"], list(q["options"]), 0) for q in qs])
     it = build(ex, eng.tok, _NoShuffle(), max_options=MAX_OPTIONS, max_ctx_tokens=DECIDE_MAX_CTX_TOKENS, chat=CHAT)
+    it["types"] = [q["_type"] for q in qs]                            # bool -> noul, scale -> score (decider.temperature)
     return qs, it
 
 
@@ -188,11 +199,11 @@ def _release(n):
 
 # ---- GPU work ----------------------------------------------------------------
 def _score_items(items):
-    return eng.score_items(items, temperature=TEMP)
+    return eng.score_items(items, temperature=TT.for_items(TEMP, TEMP_BY_TYPE, items))      # the scalar TEMP without a by-type map
 
 
 def _score_shared(items):
-    return eng.score_shared(items, temperature=TEMP)
+    return eng.score_shared(items, temperature=TT.for_items(TEMP, TEMP_BY_TYPE, items))
 
 
 async def _collect(q, wait_ms=None, adaptive_ms=0.0, idle_reset_ms=None):
@@ -294,6 +305,7 @@ def _schema_handle(questions, independent, compile=False):
             old = next(iter(schemas)); hid = schemas.pop(old)[1].id
             for k in [k for k in se.graphs if k[0] == hid]: del se.graphs[k]
         h = se.prepare(rows, independent=independent, compile=compile)
+        h.types = S1.row_types(rqs, index)                             # answer type per schema row (decider.temperature)
         schemas[key] = (rqs, h, index)
     return schemas[key]
 
@@ -308,7 +320,7 @@ def _worth_caching(questions, independent):
 
 
 def _score_schema(h, rows):
-    return se.score_rows(h, rows, temperature=TEMP_SCHEMA)
+    return se.score_rows(h, rows, temperature=TT.for_types(TEMP_SCHEMA, TEMP_SCHEMA_BY_TYPE, h.types))
 
 
 async def schema_batcher():
@@ -333,12 +345,13 @@ async def schema_batcher():
 
 # ---- start-up / shutdown -------------------------------------------------------
 def apply_config(cfg):
-    global MODEL_NAME, TEMP, TEMP_SCHEMA, RELEASE_DATE, ISOLATED, NEUTRALIZE_NONE, SCHEMA_FIRST, LAYOUT
+    global MODEL_NAME, TEMP, TEMP_SCHEMA, TEMP_BY_TYPE, TEMP_SCHEMA_BY_TYPE, RELEASE_DATE, ISOLATED, NEUTRALIZE_NONE, SCHEMA_FIRST, LAYOUT
     LAYOUT = resolve_layout(cfg)                    # ValueError for an unknown layout, before the engine is built
     NEUTRALIZE_NONE = bool(cfg.get("neutralize_none", True))
     MODEL_NAME = "decider-" + str(cfg.get("version", "dev"))
-    TEMP = float(os.environ.get("DECIDER_TEMPERATURE", cfg.get("temperature", 1.0)))
-    TEMP_SCHEMA = float(cfg.get("temperature_schema_first", TEMP))
+    # ValueError for a temperature that is not finite and > 0 or an unknown by-type key, before the engine is built.
+    # DECIDER_TEMPERATURE replaces "temperature" and switches "temperature_by_type" off (decider.temperature).
+    (TEMP, TEMP_BY_TYPE), (TEMP_SCHEMA, TEMP_SCHEMA_BY_TYPE) = TT.from_config(cfg, os.environ.get("DECIDER_TEMPERATURE"))
     RELEASE_DATE = str(cfg.get("release_date", RELEASE_DATE))
     ISOLATED = bool(cfg.get("isolated_levels", False))
     trained = bool(cfg.get("schema_first", False) or cfg.get("schema_first_trained", False))
@@ -403,7 +416,9 @@ async def _start():
         t = await loop.run_in_executor(gpu, lambda: eng.warmup(log=lambda s: print(s, flush=True)))
         print(f"[serve] captured {len(eng.graphs)} graphs in {t:.0f}s", flush=True)
     eng.seal()
-    print("[serve] ready", json.dumps(dict(model=MODEL_NAME, layout=LAYOUT, temperature=TEMP, isolated_levels=ISOLATED, schema_first=SCHEMA_FIRST,
+    print("[serve] ready", json.dumps(dict(model=MODEL_NAME, layout=LAYOUT, temperature=TEMP, temperature_by_type=TT.effective(TEMP, TEMP_BY_TYPE),
+                                          **({"temperature_schema_first_by_type": TT.effective(TEMP_SCHEMA, TEMP_SCHEMA_BY_TYPE)} if SCHEMA_FIRST else {}),
+                                          isolated_levels=ISOLATED, schema_first=SCHEMA_FIRST,
                                           shared=SHARED, graphs=len(eng.graphs), limits=dict(
                                               max_rows=MAX_ROWS, max_row_tokens=MAX_ROW_TOKENS, max_request_tokens=MAX_REQUEST_TOKENS,
                                               max_queue_rows=MAX_QUEUE_ROWS))), flush=True)
@@ -535,7 +550,9 @@ async def models():
 @app.get("/health")
 async def health():
     return {"ok": eng is not None and bool(getattr(eng, "sealed", True)) and _alive(), "model": MODEL,
-            "device": str(getattr(eng, "dev", "")) if eng is not None else None, "layout": LAYOUT}
+            "device": str(getattr(eng, "dev", "")) if eng is not None else None, "layout": LAYOUT,
+            "temperature": TEMP, "temperature_by_type": TT.effective(TEMP, TEMP_BY_TYPE),
+            **({"temperature_schema_first_by_type": TT.effective(TEMP_SCHEMA, TEMP_SCHEMA_BY_TYPE)} if SCHEMA_FIRST else {})}
 
 
 @app.get("/stats")

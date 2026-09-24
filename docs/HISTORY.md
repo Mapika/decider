@@ -420,6 +420,53 @@ regression in-task ECE 0.041 against 0.027, bag-draw games in sampled play 37.9%
 against 27.8%, sampled browser play −2.8 points, CliffWalking −60 against −13, BabyAI-GoTo 0.35 against 0.54, model-router
 probe 0.935 against 0.968. The model card lists every row with its interval and says who should keep v1.
 
+## decider-4b v2.1 and decider-2b v11: replay toward the parent, one temperature per answer type
+
+Released 2026-09-24, with decider-ai 1.4.0. decider-4b v2 moves to the Hub tag `v2` and decider-2b v10 to the tag `v10`.
+
+**Why.** decider-4b v2 had gained on hard decisions and lost in sampled play (bag-draw games 37.9% against v1's 56.6% wins). A
+diagnosis on held-out replay rows showed the mechanism: training v2's replay rows on their hard labels sharpened the logits on
+every decision type (entropy at temperature 1 0.18 against v1's 0.28); the temperature fitted on the regression rows then rose
+to 1.935 and made the served distribution flatter than v1's (0.40 against 0.29), and sampled play draws from the served
+distribution.
+
+**Change.** The same stage-2 recipe (LoRA rank 64 on attention and MLP, alpha 128, learning rate 1e-4, 2 epochs, plain layout,
+isolated Score levels), with one difference: the replay rows are trained toward the parent's own answer distribution, loss
+KL(p_parent ‖ p_model) over the options at temperature 1, with p_parent from the frozen parent weights; every other row keeps
+its label. The fitted temperatures stay near the parents' (4B 1.099 against v1's 1.05; 2B 1.145 against v10's 1.30), where a
+2B arm with labels on the replay rows reached 2.06, as v2 did. On 1,000 held-out replay rows the mean KL to the parent at
+temperature 1 is 0.021 nats for the 4B (v2: 0.112) and 0.047 for the 2B.
+
+* **decider-4b v2.1**: v1 plus 29,325 rows (v2's rows without 31 that shared a context with an evaluation file: 8,000 generated
+  decision families, 11,356 document questions, 3,293 human-labelled rows, 6,676 replay rows). 1,518 steps, 94 minutes on one
+  B300. A second arm with three times the replay (C4) was trained and not selected.
+* **decider-2b v11**: v10 plus 42,749 rows (the same 22,649 labelled rows; 20,100 replay rows of the public mixture: 100 per in-task
+  regression task, 7,000 from the families closest to form filling, browser and agent actions, routing, tools, commands and
+  situations, 6,400 spread over the rest). 1,676 steps, 150 minutes on a shared B300. A second arm with labels on a smaller replay
+  (V2B) was trained and not selected.
+
+**Temperatures per type.** decider-ai 1.4.0 reads `temperature_by_type` from `decider_config.json`. Both maps were fitted by NLL
+with `decider.calibrate.fit_by_type` on the 61 in-task regression tasks plus our own validation rows (4B: choice 1.110, noul
+1.560, score 1.287; 2B: choice 1.164, noul 1.624, score 1.124). The map was a pre-registered attempt to bring the calibration
+error on held-out generated families under 0.08. It did not: 0.163 to 0.147 (4B) and 0.171 to 0.156 (2B). The overconfidence is
+in Choice answers, and the Choice temperature, fitted on a pool that is 94% everyday regression rows, stays next to the global
+one. The map lowers the error of yes/no answers (4B 0.146 to 0.101, 2B 0.171 to 0.121) and leaves sampled play, the fixtures and
+the probes within noise.
+
+**Rules and release.** decider-4b v2.1 passed the numeric items of its pre-registered rule and failed the last one: issue #9 form
+case c_1 is answered wrongly (v1 answers it; v2 does not either). decider-2b v11 is the rule's fallback: no checkpoint lost at
+most 1 point on the human-labelled sets against v10 (v11: −2.2), and v11 fails the 0.08 calibration item (v10: 0.226 on the same
+item). Both were released on the full comparison.
+
+**What was measured.** decider-4b v2.1 against v2: bag-draw sampled 52.0% against 37.9% (v1 56.6%), zero-shot games sampled 26.9%
+against 22.4%, browser sampled 93.2% against 88.1%, CliffWalking −13 against −60, regression set 0.831 / 0.784 against 0.824 /
+0.779, held-out generated families 0.556 against 0.560, held-out document questions 0.820 against 0.826, JevBench public hard tier
+0.649 against 0.676; worse than v1 on BabyAI-GoTo (0.19 against 0.54) and greedy bag-draw play (−9.4 points). decider-2b v11
+against v10: held-out generated families 0.429 against 0.324, held-out document questions 0.753 against 0.646, JevBench public hard
+tier 0.577 against 0.459, OpenJev +1.4 and Mind2Web +1.3 points; human-labelled sets −2.2, knowledge guard −1.6, greedy bag-draw
+play −10.9, sampled slippery-grid play −4.3, sampled browser play −2.8 (interval includes zero). The model cards and
+`docs/RESULTS.md` have every row with its interval.
+
 ## Vision: decisions from pixels
 
 Qwen3.5-2B is a vision-language model; `decider/vision.py` uses the full model with the same

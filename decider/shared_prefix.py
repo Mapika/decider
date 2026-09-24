@@ -33,6 +33,7 @@ import torch
 import torch.nn.functional as F
 
 from decider.engine import fill_ids, read_slots
+from decider.temperature import item_slice, slot_temperatures
 
 DEFAULT_FORK_GB = 8.0
 STATE_NAMES = ("keys", "values", "indexer_keys", "conv_states", "recurrent_states")
@@ -159,6 +160,7 @@ def score_shared(engine, items, temperature=1.0, min_prefix=192, budget_bytes=No
     request does not qualify (fewer than two rows, or a common prefix below `min_prefix`) and the caller should use
     `score_items`.
 
+    `temperature`: a number, or one entry per item (decider.temperature.slot_temperatures).
     `rows_per_fork` forces the chunk size; it exists for the tests that compare chunked against unchunked answers."""
     ids = [it["ids"] for it in items]
     n = len(ids)
@@ -167,6 +169,7 @@ def score_shared(engine, items, temperature=1.0, min_prefix=192, budget_bytes=No
     lcp = common_prefix_len(ids)
     if lcp < min_prefix:
         return None
+    slot_temperatures(temperature, items)                  # a length mismatch fails before any forward
     core, W, dev, pad = engine.core, engine.W, engine.dev, engine.tok.pad_token_id
     pre = torch.tensor(ids[0][:lcp], device=dev)[None]
     cache = core(input_ids=pre, use_cache=True).past_key_values
@@ -191,6 +194,7 @@ def score_shared(engine, items, temperature=1.0, min_prefix=192, budget_bytes=No
         sl = [s - lcp for it in part for s in it["slots"]]
         idx = torch.tensor([rows, sl], device=dev)
         out += read_slots(F.linear(h[idx[0], idx[1]], W).float()[:, None, :], list(range(len(rows))), [0] * len(rows),
-                          [k for it in part for k in it["nopts"]], temperature, [len(it["slots"]) for it in part])
+                          [k for it in part for k in it["nopts"]],
+                          slot_temperatures(item_slice(temperature, i, i + b), part), [len(it["slots"]) for it in part])
         del fork, h, suf                                  # drop this chunk's fork before the next one is built
     return out

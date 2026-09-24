@@ -3,6 +3,86 @@
 Newest first. Every entry names the weights it applies to; the Hub repositories keep earlier weights under tags where noted.
 `HISTORY.md` is the long form: how each stage was trained and what was measured.
 
+## decider-4b v2.1 and decider-2b v11 (2026-09-24): replay toward the parent, one temperature per answer type
+
+[Mapika/decider-4b](https://huggingface.co/Mapika/decider-4b) now holds v2.1 (v2 under the Hub tag `v2`, v1 under `v1`) and
+[Mapika/decider-2b](https://huggingface.co/Mapika/decider-2b) holds v11 (v10 under the tag `v10`, v8 under `v8`). Both are their
+parent plus a LoRA of rank 64 on the attention and MLP weights, 2 epochs, merged: the generated decision families, document
+questions and human-labelled rows of decider-4b v2's stage 2, plus replay rows of the parent's mixture that are trained toward
+the parent's own answer distribution (KL to the parent) instead of their labels. Both `decider_config.json` files carry a
+`temperature_by_type` map (decider-ai 1.4.0, below); decider-ai 1.3.0 and earlier ignore the map and use `temperature`.
+Neither passed its pre-registered release rules; both were released on the full comparison, which the model cards give with
+every failure.
+
+* **decider-4b v2.1** (v1 + LoRA on 29,325 rows; `temperature` 1.099, map choice 1.110, noul 1.560, score 1.287). Against v2 on
+  the same rows: bag-draw games in sampled play 52.0% against 37.9% wins (v1 56.6%), zero-shot games sampled 26.9% against 22.4%,
+  live browser sampled 93.2% against 88.1%, CliffWalking −13 against −60, regression set 0.831 / 0.784 against 0.824 / 0.779;
+  held-out generated families 0.556 against 0.560, JevBench public hard tier 0.649 against 0.676. Worse: calibration on hard
+  items (held-out generated families 0.147 against v2's 0.046, JevBench hard tier 0.184 against 0.104), BabyAI-GoTo 0.19 (v1
+  0.54), greedy bag-draw play 9.4 points under v1, needs-live-data and touches-outside-project probes one item under v1 each, and
+  issue #9 form case c_1 is still answered wrongly. The rule failed on c_1, and the map on the 0.08 calibration limit.
+* **decider-2b v11** (v10 + LoRA on 42,749 rows; `temperature` 1.145, map choice 1.164, noul 1.624, score 1.124). Against v10 on
+  the same rows: held-out generated families 0.429 against 0.324, held-out document questions 0.753 against 0.646, JevBench public
+  hard tier 0.577 against 0.459, calibration error 0.156 against 0.226 on the held-out generated families and 0.175 against 0.307
+  on the JevBench hard tier. Worse: human-labelled public sets −2.2 points, a knowledge guard set −1.6, greedy bag-draw play −10.9,
+  sampled slippery-grid play −4.3, sampled browser play −2.8 (interval includes zero), TypeSafe −4.9 (interval includes zero). No
+  checkpoint met the rule's eligibility condition (at most 1 point lost on the human-labelled sets); the fallback candidate fails
+  the 0.08 calibration limit, which v10 (0.226) also fails. The model name in answers is `decider-2b-v11` (v10: `decider-v10`),
+  and the config no longer marks the model as trained for the schema-first layout.
+
+## 1.4.0 (2026-09-24): one temperature per answer type
+
+No weights change for the models released before this version: their `decider_config.json` files have no map, so they answer
+exactly as with 1.3.0. decider-4b v2.1 and decider-2b v11, released with 1.4.0, carry a map (entry above).
+
+* **`decider_config.json` may set a temperature per answer type.** Next to `temperature` (one value for every answer, the only
+  form before 1.4.0), a config may carry `temperature_by_type`, for example
+  `{"choice": 1.48, "noul": 2.22, "score": 1.38}`. A type that is missing uses `temperature`. The keys are the answer types
+  of `POST /v1/systemone`: `choice`, `noul` and `score`. A `POST /decide` / `decide_json` field maps onto them as `choice` ->
+  `choice`, `bool` -> `noul`, `scale` -> `score`, and a `/v1/systemone` question of type `bool` is a `noul`. Questions given to
+  `Decider.decide()` / `decide_batch()` (a question and its options, no type) are `choice`.
+* **Isolated Score levels use the `score` temperature.** A Score question read with isolated levels (`isolated_levels`: one
+  yes/no row per level, combined into the level distribution) divides every one of its level rows by the `score` temperature,
+  not the `noul` one. The rows are yes/no readings, but together they form one Score answer, and the temperature is fitted on
+  that answer: `decider.calibrate` fits `score` by the NLL of the combined level distribution, so the fitted value and the
+  served readout are the same computation. Fit it on answers read with the same `isolated_levels` setting the model serves
+  with.
+* **Schema cache.** The schema cache (questions-first layout) keeps its own `temperature_schema_first` and may also have
+  `temperature_schema_first_by_type`. Its temperature for type t is `temperature_schema_first_by_type[t]`, else
+  `temperature_schema_first`, else, when the config has no schema-first value at all, the state-first temperature of t.
+* **Every scoring path applies it:** `Decider` on the CUDA-graph engine and on the eager model (MPS, CPU), the shared-prefix
+  path, the schema cache (`Decider.schema()` and the server's), `decide_json`, `system_one`, and both servers
+  (`decider.serve` and `decider.serve_v1`). Each prompt row carries the answer type of each of its answer slots, so a server
+  batch that mixes requests and types still gives every answer its own temperature.
+* **Overrides.** `Decider(path, temperature=T)` and `DECIDER_TEMPERATURE` replace `temperature` and switch
+  `temperature_by_type` off, so the override is the one temperature of every state-first answer, as before 1.4.0.
+  `Decider(path, temperature_by_type={...})` sets the map in code.
+* **Validation at load time.** Every temperature (`temperature`, `temperature_schema_first` and each map value) must be a finite
+  number > 0, and a map may only have the keys `choice`, `noul` and `score`. Anything else stops `Decider()` and the server's
+  start-up with a `ValueError` that names the key and the allowed keys (for example `"bool"` is refused with the hint that
+  it is `"noul"`). Before 1.4.0 a temperature of 0 or a negative one was accepted and gave NaN or inverted probabilities.
+* **Reporting.** `GET /health` and the server's ready line report `temperature` and `temperature_by_type` (the temperature
+  every type gets, after the fallback), and `temperature_schema_first_by_type` when the schema cache is on.
+* **Fitting: `python -m decider.calibrate records.jsonl`** fits the map by NLL from answers read at temperature 1, grouped by
+  type (grid search on 0.05 to 20, then a golden-section refinement), and prints it with one pooled temperature for comparison
+  and the NLL before and after. A malformed record (gold out of range, wrong shape, NaN) is refused with its position; the
+  isolated-levels objective is computed in log space, so confident level rows do not underflow.
+  `decider.calibrate.collect(decider, examples)` produces the records from a `Decider` and
+  labelled `/v1/systemone`-shaped examples.
+* **Unchanged without the map.** A config without `temperature_by_type` gives every path the same Python float as 1.3.0, so
+  the probabilities are bit-identical. `tests/test_temperature.py` checks that the engines receive that float and compares
+  every CPU scoring path against numbers produced by 1.3.0 (`tests/data/temperature_1_3_0_pins.json`); decider-0.8b (CUDA,
+  eager) gave byte-identical `system_one`, `decide_json` and `decide_batch` output under 1.3.0 and 1.4.0.
+* **Older versions ignore the map.** decider-ai 1.3.0 and earlier read only `temperature` and ignore `temperature_by_type`, so a
+  model with a map serves every answer at its `temperature` there. A temperature does not change which option is most probable,
+  so the answers are the same, except exact ties between the level rows of an isolated Score answer, which rounding can break
+  differently (5 of 34,858 rows over the eight measurement sets of both models, all isolated Score rows). Checked on decider-4b v2.1 and decider-2b v11,
+  CUDA, eager: 1.3.0 gives exactly the probabilities of 1.4.0 with the map switched off.
+* `scripts/stage_release.py` copies the new modules `decider/temperature.py` and `decider/calibrate.py` into a release folder.
+* Tests: the CUDA tests (`-m cuda`) default to `Mapika/decider-2b` at the Hub tag `v10`, the checkpoint their tolerances were
+  measured on; the chunked shared-prefix fork is bit-identical to the single fork on v10 but differs by up to 4.4e-4 in probability
+  on v11 (argmax unchanged). `DECIDER_TEST_MODEL` still selects another checkpoint.
+
 ## 1.3.0 (2026-09-24): TypeSafe's confidence, noul questions without instructions
 
 Code only; no weights change. Both changes follow the conformance report in #15.
