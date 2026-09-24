@@ -77,6 +77,10 @@ greedy 62.5% against 60.9%), and on Breakout (14 against 18). The first-publishe
 * Text games (greedy): CliffWalking −60 against −13, BabyAI-GoTo 0.35 against 0.54, Breakout 12 against 14.
 * Behaviour probes: model-router tier 0.935 against 0.968, needs-live-data 0.839 against 0.871, touches-outside-project 0.933
   against 0.956, generic bucket choice 0.95 against 1.00.
+* Form filling: on the two form-filling cases reported in issue #9 (choose the document entity for a form field, or skip /
+  click / check), v1 answers both correctly (0.79 and 0.98 on the gold option). v2 answers one wrongly ("skip" at 0.68, gold
+  0.16) and the other correctly by 0.02 (0.28 against "click" at 0.26). Two cases do not measure a rate, but for form filling
+  we suggest v1.
 * Everyday tasks: regression in-task accuracy −1.0 point and held-out −0.9 (the held-out interval includes zero), lower on 75
   of 95 tasks, mostly by under 3 points; the largest losses are CommitmentBank −8.9, PubMedQA −6.2, hate-speech tweets −4.7,
   emotion −4.3, LIAR −3.9, QuALITY (full) −3.3, MedQA −3.0. Regression-set calibration is worse (in-task ECE 0.041 against
