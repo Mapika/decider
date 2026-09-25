@@ -3,6 +3,23 @@
 Newest first. Every entry names the weights it applies to; the Hub repositories keep earlier weights under tags where noted.
 `HISTORY.md` is the long form: how each stage was trained and what was measured.
 
+## 1.5.0 (2026-09-25): `decider.serve_vllm` and `DECIDER_LAYOUT`
+
+* **`decider.serve_vllm`**: the `/v1/systemone` readout on vLLM 0.29.0 for large stock or chat-layout checkpoints. Same rows
+  (`decider.serve.prepare`), same slot, `softmax(letter logits / T)` read from vLLM's raw log-softmax values of the option
+  letters; up to 255 options in one request (`decider.vllm_worker` raises vLLM's 128-id cap in the worker); rows sharing a
+  prefix of at least one cache block run the first row alone so the others hit vLLM's prefix cache; the request limits and
+  capacity messages of `decider.serve`; rows cancelled and aborted when a row fails, the client disconnects or the handler is
+  cancelled, and the admission is released only after they have stopped. Qwen/Qwen3.6-27B bf16 at T 1.943 on one idle B300,
+  Decision Index 0.2 sample (4,490 requests), one request at a time: median 32.3 ms, p95 430 ms, against 40.1 / 712 ms for
+  `decider.serve` 1.4.0 and 50.8 / 716 ms for the research server of the submitted run; 99.62% argmax agreement with the
+  submitted run (docs/SERVING.md section 8). Install it in its own environment (vLLM 0.29.0 needs numpy 2):
+  `pip install vllm==0.29.0 fastapi "uvicorn[standard]" jinja2 huggingface_hub && pip install --no-deps decider-ai`.
+  No weights change.
+* **`DECIDER_LAYOUT`** (`decider.serve`, `decider.serve_vllm`): `chat` or `plain` replaces the layout of `decider_config.json`,
+  so a stock checkpoint without one can be read in the chat layout (`prompt.with_layout`).
+* **`scripts/stage_release.py`** also copies `serve_vllm.py` and `vllm_worker.py` into a model release folder.
+
 ## decider-4b v2.1 and decider-2b v11 (2026-09-24): replay toward the parent, one temperature per answer type
 
 [Mapika/decider-4b](https://huggingface.co/Mapika/decider-4b) now holds v2.1 (v2 under the Hub tag `v2`, v1 under `v1`) and

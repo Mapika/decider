@@ -397,6 +397,66 @@ python -m pytest -q tests                                   # CPU; add -m cuda w
 `run_serving_matrix` starts each server as its own process, waits for `/health`, replays, and terminates it by pid.
 `summary.json` in the output directory holds the latency summaries, start-up times and `/stats` of every case.
 
+## 8. Large stock models on vLLM: `decider.serve_vllm` (1.5.0)
+
+`decider/serve_vllm.py` serves the same `/v1/systemone` readout on vLLM 0.29.0 for large checkpoints, first of all a stock
+instruct model read in the chat layout (Qwen/Qwen3.6-27B at temperature 1.943, the Decision Index entry "Decider chat ·
+Qwen3.6-27B"). `decider.serve` also reads a stock checkpoint in the chat layout now: `DECIDER_LAYOUT=chat` replaces the layout of
+`decider_config.json` (`prompt.with_layout`), so no model folder with a hand-written config is needed.
+
+* **Same prompt, same readout.** Rows are built by `decider.serve.prepare` (chat template around one user turn, thinking off,
+  options in request order, state cut at `DECIDER_MAX_STATE_TOKENS`); every independent row ends at its answer slot, the " ("
+  of "Answer: (". vLLM is asked for one output token with `logprob_token_ids` = the question's option letters and returns
+  their raw log-softmax values; `softmax(logprob / T)` over the letters equals `softmax(logit / T)`
+  (`tests/test_serve_vllm.py`). Temperatures come from `decider.temperature` exactly as in `decider.serve`.
+* **Up to 255 options in one request.** vLLM caps `logprob_token_ids` at 128 ids. `decider.vllm_worker` (loaded in every
+  worker as vLLM's `worker_extension_cls`) raises the cap to 256 before the model runner allocates its per-request id table,
+  and turns the cuDNN SDPA backend off in the worker. When a worker reports a lower cap, wider questions are sent as slices
+  one after the other and joined before the softmax.
+* **Batching and prefix reuse are vLLM's.** All rows of a request are submitted together (one scheduler step when they fit
+  `DECIDER_VLLM_MAX_BATCHED_TOKENS`, 16,384). For the hybrid Qwen3.5-family models vLLM caches the recurrent state only at
+  cache-block boundaries (784 tokens for Qwen3.6-27B with a bf16 KV cache), so when the rows share a prefix that holds at
+  least one whole block, the first row runs alone and the others find the prefix in the cache; a row then recomputes from
+  the last block boundary inside the shared part. `decider.serve`'s fork of the prefix cache recomputes nothing, so on
+  requests with many questions over a 1-2k-token state (ContractNLI, the home-appliance simulator) the package engine does
+  fewer FLOPs; elsewhere vLLM's unpadded batches and kernels are faster.
+* **Limits and failure handling** as in `decider.serve`: HTTP 413 with the kit's capacity markers for `DECIDER_MAX_ROWS`,
+  `DECIDER_MAX_ROW_TOKENS`, `DECIDER_MAX_REQUEST_TOKENS` and the engine's maximum model length (`DECIDER_VLLM_MAX_MODEL_LEN`,
+  40,960); HTTP 503 over `DECIDER_MAX_QUEUE_ROWS`. The rows of a request run in one `asyncio.TaskGroup`; a failed row, a
+  client disconnect (HTTP 499) or a cancelled handler cancels the others, vLLM aborts them, and the admission is released
+  only after they have stopped, also when the handler is cancelled again while it waits. The start-up warm-up skips rows that
+  do not fit `DECIDER_VLLM_MAX_MODEL_LEN`. Only independent `/v1/systemone` requests are served; `/decide` and the schema cache stay
+  `decider.serve` features.
+* **Install** in its own environment (vLLM 0.29.0 needs numpy 2 and pins torch 2.13; decider-ai pins numpy < 2):
+  `pip install vllm==0.29.0 fastapi "uvicorn[standard]" jinja2 huggingface_hub && pip install --no-deps decider-ai`.
+
+```bash
+DECIDER_MODEL=Qwen/Qwen3.6-27B DECIDER_LAYOUT=chat DECIDER_TEMPERATURE=1.943 DECIDER_VLLM_GPU_MEMORY_UTILIZATION=0.90 \
+    uvicorn decider.serve_vllm:app --host 127.0.0.1 --port 8000
+```
+
+### 8.1 Measurements (Qwen/Qwen3.6-27B bf16, T 1.943, one B300, 2026-09-25)
+
+The Decision Index 0.2 sample of the research notes (4,490 requests: 88 groups of every benchmark in the kit's own hash order),
+sent by the kit's `http` runner one request at a time over loopback, on an otherwise idle B300 (no other process on the GPU
+during the run). Milliseconds per request (the kit's `total_wall_ms`). Weighting each sample row by its benchmark's share of
+the full 0.2 suite gives, for 1.5.0, an estimated full-suite median of 29.3 ms, p95 268 ms and mean 66.9 ms.
+
+| server | median | p95 | mean | sample index (edition 0.2) |
+| --- | ---: | ---: | ---: | ---: |
+| research server of the submitted run (eager, no graphs, no prefix reuse) | 50.8 | 716.1 | 184.2 | 45.00 |
+| `decider.serve` 1.4.0, chat layout | 40.1 | 711.9 | 156.9 | 45.03 |
+| `decider.serve_vllm`, bf16, first version | 33.9 | 434.2 | 112.5 | 45.10 |
+| `decider.serve_vllm`, bf16, before the last review fixes (another idle B300) | 32.7 | 435.9 | 111.3 | 45.10 |
+| `decider.serve_vllm` 1.5.0, bf16 (a third idle B300) | 32.3 | 429.6 | 110.3 | 45.10 |
+| `decider.serve_vllm`, Qwen/Qwen3.6-27B-FP8 (a different variant: FP8 changes answers) | 59.2 | 1,616.2 | 241.9 | 44.46 |
+
+Against the submitted run's answers on the 3,874 sample rows it contains (29,738 questions): the research server run again
+agrees on 99.90% of argmaxes (max |Δp| 0.085), `decider.serve` on 99.72% (0.075), `decider.serve_vllm` bf16 on 99.62% (0.27 on
+one ACOS row; mean max |Δp| 0.004; the same for the 1.5.0 code), FP8 on 99.02% (0.36). On this B300 with vLLM 0.29.0 the FP8 checkpoint is not faster: its
+block-scaled GEMM (`CutlassFp8BlockScaledMMKernel`, 90% of GPU time in a profile of a 64-question request) is several times slower
+than bf16 on batches of a few thousand tokens; the Triton and Marlin FP8 kernels were not faster.
+
 ## Appendix: investigation history (2026-09-22)
 
 1. Diagnosis on the 1.0.x code: the schema cache was off by default on both released checkpoints, so the Decision Index

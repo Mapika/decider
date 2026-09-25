@@ -188,6 +188,20 @@ def resolve_layout(cfg):
     return layout
 
 
+def with_layout(cfg, layout=None):
+    """cfg with its prompt layout replaced by `layout` ("plain" or "chat"; None keeps cfg as it is).  This is how a server reads
+    a stock checkpoint, which has no decider_config.json, in the chat layout (DECIDER_LAYOUT=chat).  Raises ValueError for any
+    other value."""
+    cfg = dict(cfg or {})
+    if layout is None or layout == "":
+        return cfg
+    if layout not in LAYOUTS:
+        raise ValueError(f"layout {layout!r}: expected one of {', '.join(repr(x) for x in LAYOUTS)}")
+    cfg.pop("chat_template", None)
+    cfg["layout"] = layout
+    return cfg
+
+
 class ChatTemplate:
     """Token ids of the tokenizer's chat template around one user turn, and the answer pieces of the assistant turn.
 

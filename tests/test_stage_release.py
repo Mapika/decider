@@ -24,7 +24,7 @@ def test_staged_release_includes_server_module_closure(tmp_path):
     )
     assert staged.returncode == 0, staged.stdout + staged.stderr
 
-    required_modules = {"batching.py", "prompt_fast.py", "engine_v2.py", "shared_prefix.py", "mps_ops.py", "mps_moe.py", "temperature.py", "calibrate.py"}
+    required_modules = {"batching.py", "prompt_fast.py", "engine_v2.py", "shared_prefix.py", "mps_ops.py", "mps_moe.py", "temperature.py", "calibrate.py", "serve_vllm.py", "vllm_worker.py"}
     copied_modules = {path.name for path in (release / "decider").glob("*.py")}
     assert required_modules <= copied_modules
 
@@ -34,7 +34,7 @@ def test_staged_release_includes_server_module_closure(tmp_path):
     env = os.environ.copy()
     env["PYTHONPATH"] = os.pathsep.join((str(release), env.get("PYTHONPATH", "")))
     imported = subprocess.run(
-        [sys.executable, "-c", "import decider.serve; import decider.engine_v2; import decider.shared_prefix; import decider.mps_ops; import decider.mps_moe; import decider.temperature; import decider.calibrate"],
+        [sys.executable, "-c", "import decider.serve; import decider.engine_v2; import decider.shared_prefix; import decider.mps_ops; import decider.mps_moe; import decider.temperature; import decider.calibrate; import decider.serve_vllm"],
         cwd=release,
         env=env,
         capture_output=True,

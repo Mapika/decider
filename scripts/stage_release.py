@@ -7,8 +7,9 @@ for f in os.listdir(src):
 for m in (
     "__init__", "prompt", "model", "systemone", "infer", "batching", "prompt_fast",
     "engine", "engine_v2", "shared_prefix", "schema_engine", "fp8", "serve", "metrics", "mps_ops", "mps_moe", "temperature",
-    "calibrate",
-):  # all internal modules needed to run and serve, and calibrate (fits temperature_by_type); no training code
+    "calibrate", "serve_vllm", "vllm_worker",
+):  # all internal modules needed to run and serve (decider.serve; decider.serve_vllm in a vLLM environment), and calibrate
+    # (fits temperature_by_type); no training code
     shutil.copy2(f"decider/{m}.py", f"{dst}/decider/{m}.py")
 shutil.copy2("MODEL_CARD.md", f"{dst}/README.md")
 if len(sys.argv) > 3: shutil.copy2(sys.argv[3], f"{dst}/eval_results.json")

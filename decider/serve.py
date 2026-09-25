@@ -40,6 +40,8 @@ Variables (default):  DECIDER_DEVICE (auto: cuda, else mps, else cpu)  DECIDER_C
   DECIDER_T_BUCKETS  DECIDER_B_BUCKETS  DECIDER_GRAPH_TOKEN_BUDGET (32768)  DECIDER_WARMUP (1)  DECIDER_TOKENIZE_THREADS (8)
   DECIDER_MAX_ROWS (1024)  DECIDER_MAX_ROW_TOKENS (DECIDER_MAX_STATE_TOKENS + 4096)  DECIDER_MAX_REQUEST_TOKENS (1048576)
   DECIDER_MAX_QUEUE_ROWS (4096)  DECIDER_TEMPERATURE  DECIDER_SCHEMA_CACHE (0)  DECIDER_SCHEMA_MIN_SEEN (2)  DECIDER_SCHEMAS
+  DECIDER_LAYOUT (unset: the layout of decider_config.json; "chat" or "plain" replaces it, e.g. to read a stock instruct
+  checkpoint, which has no decider_config.json, in the chat layout)
 
 Temperatures (1.4.0, decider.temperature): decider_config.json "temperature", and optionally "temperature_by_type"
 {"choice": T, "noul": T, "score": T} (a /decide "bool" field is "noul", a "scale" field is "score"; a missing type uses
@@ -55,7 +57,7 @@ from pydantic import BaseModel
 from decider import systemone as S1
 from decider import temperature as TT
 from decider.batching import DEFAULT_MERGE_OVERHEAD_TOKENS, plan_batches
-from decider.prompt import build, MAX_OPTIONS, resolve_layout, chat_template
+from decider.prompt import build, MAX_OPTIONS, resolve_layout, chat_template, with_layout
 from decider.prompt_fast import build_rows, unique_tokens
 
 
@@ -346,6 +348,7 @@ async def schema_batcher():
 # ---- start-up / shutdown -------------------------------------------------------
 def apply_config(cfg):
     global MODEL_NAME, TEMP, TEMP_SCHEMA, TEMP_BY_TYPE, TEMP_SCHEMA_BY_TYPE, RELEASE_DATE, ISOLATED, NEUTRALIZE_NONE, SCHEMA_FIRST, LAYOUT
+    cfg = with_layout(cfg, os.environ.get("DECIDER_LAYOUT"))   # DECIDER_LAYOUT=chat reads a stock checkpoint in the chat layout
     LAYOUT = resolve_layout(cfg)                    # ValueError for an unknown layout, before the engine is built
     NEUTRALIZE_NONE = bool(cfg.get("neutralize_none", True))
     MODEL_NAME = "decider-" + str(cfg.get("version", "dev"))

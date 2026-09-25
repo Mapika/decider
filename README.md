@@ -28,6 +28,13 @@ local Qwen3.5-27B teacher (`teacher_data/`, `decider/data/mixture.py`). Nothing 
 
 ## What's new
 
+* **2026-09-25 — decider-ai 1.5.0: `decider.serve_vllm`.** The `/v1/systemone` readout served by vLLM 0.29.0, for large stock
+  checkpoints read in the chat layout, such as Qwen/Qwen3.6-27B at temperature 1.943 (the Decision Index entry "Decider chat ·
+  Qwen3.6-27B"). Same prompt rows, same answer slot, softmax of the option-letter logits over T. On one idle B300, one request
+  at a time over the Decision Index 0.2 sample: median 32.3 ms and p95 430 ms, against 40.1 / 712 ms for `decider.serve` 1.4.0;
+  99.6% argmax agreement with the submitted run. vLLM needs numpy 2, so it is installed in its own environment
+  ([Serving on vLLM](#serving-a-large-stock-model-on-vllm)). `DECIDER_LAYOUT=chat` also lets `decider.serve` read a stock
+  checkpoint in the chat layout.
 * **2026-09-24 — decider-4b v2.1, decider-2b v11 and decider-ai 1.4.0.** Both models are their parent plus a LoRA stage on
   harder decisions whose replay rows are trained toward the parent's own answers, and both configs set one temperature per
   answer type (`temperature_by_type`, read by decider-ai 1.4.0; older versions use the single `temperature`). decider-4b v2.1
@@ -194,6 +201,23 @@ answers 503 (limits, defaults and measurements in `docs/SERVING.md`). The schema
 and its own graphs, captured the first time that schema is used) is on only for a model whose `decider_config.json` sets
 `schema_first`, or with `DECIDER_SCHEMA_CACHE=1`.
 
+### Serving a large stock model on vLLM
+
+`decider.serve_vllm` (1.5.0) serves the same `/v1/systemone` readout on vLLM 0.29.0, for large checkpoints such as a stock
+instruct model read in the chat layout. vLLM 0.29.0 needs numpy 2 and its own torch, and decider-ai pins numpy < 2, so it goes
+in its own environment:
+
+```bash
+python -m venv decider-vllm && . decider-vllm/bin/activate
+pip install vllm==0.29.0 fastapi "uvicorn[standard]" jinja2 huggingface_hub
+pip install --no-deps decider-ai
+DECIDER_MODEL=Qwen/Qwen3.6-27B DECIDER_LAYOUT=chat DECIDER_TEMPERATURE=1.943 DECIDER_VLLM_GPU_MEMORY_UTILIZATION=0.90 \
+    uvicorn decider.serve_vllm:app --host 127.0.0.1 --port 8000
+```
+
+It answers independent `/v1/systemone` questions only (`/decide` and the schema cache stay `decider.serve` features). Design,
+limits and measurements: `docs/SERVING.md` section 8.
+
 ### Temperatures in `decider_config.json`
 
 Every answer is a softmax over its option letters divided by a temperature from the model's `decider_config.json`:
@@ -309,6 +333,7 @@ decider/systemone.py     Choice / Score / Noul with criteria -> prompt rows; typ
 decider/infer.py         Decider: system_one(), schema() (compiled, cached question sets), decide()
 decider/engine.py        CUDA graphs, torch.compile, shared-prefix scoring;  fp8.py, schema_engine.py, mps_ops.py
 decider/serve.py         HTTP server: /v1/systemone, /decide, continuous batching
+decider/serve_vllm.py    HTTP server on vLLM 0.29.0: /v1/systemone for large stock or chat-layout models;  vllm_worker.py
 decider/data/            ~95 public datasets, input-shape augmentations, the mixture, the 27B teacher data
 decider/train.py         cross-entropy fine-tune;  evaluate.py  accuracy / NLL / Brier / ECE / AURC per task
 decider/probes/          hand-written batteries, question independence, isolated levels
