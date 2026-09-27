@@ -28,12 +28,17 @@ local Qwen3.5-27B teacher (`teacher_data/`, `decider/data/mixture.py`). Nothing 
 
 ## What's new
 
+* **2026-09-27 — decider-ai 1.6.0: GGUF checkpoints in `Decider`.** `pip install "decider-ai[gguf]"`, then
+  `Decider("Mapika/decider-4b-GGUF", gguf_file="decider-4b-v2.1-Q4_K_M.gguf")`: `decide` and `system_one` scored by llama.cpp
+  (CPU, CUDA or Metal), with the per-type temperatures of the model's config ([GGUF](#gguf-llamacpp)). One row per llama.cpp
+  decode; the HTTP server and `schema()` still need the torch engine, and torch is still installed.
 * **2026-09-27 — GGUF files for llama.cpp** (issue #16): [Mapika/decider-4b-GGUF](https://huggingface.co/Mapika/decider-4b-GGUF)
   (v2.1) and [Mapika/decider-2b-GGUF](https://huggingface.co/Mapika/decider-2b-GGUF) (v11), each in Q4_K_M, Q8_0 and BF16.
   They are not chat models: loading one in `llama-cli` or Ollama gives a text model, not decisions. `decide_gguf.py` in each
   repository reads the answer from the option-letter logits with llama-cpp-python and decider-ai 1.5.0. On the 4B's regression
   set (95 tasks, 144,226 questions) Q8_0 equals the bf16 weights and Q4_K_M (2.7 GB) is 0.2 points lower on in-task accuracy
-  with unchanged held-out accuracy; the 2B measurement is on its card. No package change.
+  with unchanged held-out accuracy; on the 2B, Q8_0 equals bf16 and Q4_K_M is 0.3 points lower in-task and 0.5 held-out. No package
+  change.
 * **2026-09-25 — decider-ai 1.5.0: `decider.serve_vllm`.** The `/v1/systemone` readout served by vLLM 0.29.0, for large stock
   checkpoints read in the chat layout, such as Qwen/Qwen3.6-27B at temperature 1.943 (the Decision Index entry "Decider chat ·
   Qwen3.6-27B"). Same prompt rows, same answer slot, softmax of the option-letter logits over T. On one idle B300, one request
@@ -137,7 +142,7 @@ two are not comparable to each other, and the NVFP4 row is measured against the 
 | decider-4b **v2.1** | Qwen3.5-4B-Base | 4.2B | 32k tokens | 0.784 (regression set) | [Mapika/decider-4b](https://huggingface.co/Mapika/decider-4b) |
 | decider-35b-a3b **v1** | Qwen3.5-35B-A3B-Base | 34.7B total, 3B active | 32k tokens | 0.810 (regression set) | [Mapika/decider-35b-a3b](https://huggingface.co/Mapika/decider-35b-a3b) |
 | decider-4b-GGUF | decider-4b v2.1 in Q4_K_M (2.7 GB), Q8_0, BF16 | 4.2B | 32k tokens | Q4_K_M 0.783, Q8_0 0.783 against 0.784 (regression set) | [Mapika/decider-4b-GGUF](https://huggingface.co/Mapika/decider-4b-GGUF) |
-| decider-2b-GGUF | decider-2b v11 in Q4_K_M (1.3 GB), Q8_0, BF16 | 1.9B | 32k tokens | see the model card | [Mapika/decider-2b-GGUF](https://huggingface.co/Mapika/decider-2b-GGUF) |
+| decider-2b-GGUF | decider-2b v11 in Q4_K_M (1.3 GB), Q8_0 (2.0 GB), BF16 | 1.9B | 32k tokens | Q8_0 0.752, Q4_K_M 0.747 against 0.752 (regression set) | [Mapika/decider-2b-GGUF](https://huggingface.co/Mapika/decider-2b-GGUF) |
 | decider-35b-a3b-nvfp4 | the 35B in NVFP4, 19.6 GB | 34.7B total, 3B active | 32k tokens | 1.0 to 1.5 points under bf16 in vLLM | [Mapika/decider-35b-a3b-nvfp4](https://huggingface.co/Mapika/decider-35b-a3b-nvfp4) |
 | decider-0.8b | Qwen3.5-0.8B-Base | 0.8B | 32k tokens | 0.71 (94-task set) | [Mapika/decider-0.8b](https://huggingface.co/Mapika/decider-0.8b) |
 | decider-2b-vision | Qwen3.5-2B vision-language, v5 text weights | 1.9B | 32k tokens | Visual7W 0.89 (see MODEL_CARD_VISION.md) | [Mapika/decider-2b-vision](https://huggingface.co/Mapika/decider-2b-vision) |
@@ -156,9 +161,10 @@ yet in this package, `scripts/train.sh full` reproduces the public 60% of its da
   three 2B smoke-test workloads, the median request is 133 ms with the patch and 171 ms without it; on the held-out MASSIVE
   Scenario set (1,500 examples, temperature 1.30) the MPS path scores accuracy 0.7553 and ECE 0.0438 against the published
   bf16 row's 0.756 and 0.041. Conditions: `docs/benchmarks/mps-full-model.md`, `docs/benchmarks/mps-heldout.md`.
-* **llama.cpp (GGUF).** The 4B and 2B GGUF repositories carry `decide_gguf.py`, the `decide()` readout on llama-cpp-python
-  (CPU, CUDA or Metal build). On 8 server CPU threads a request of 40 to 120 tokens takes 0.3 to 0.7 s with the 4B in Q4_K_M
-  and 0.12 to 0.31 s with the 2B. `system_one` and the HTTP server do not run on GGUF files yet.
+* **llama.cpp (GGUF).** Since decider-ai 1.6.0, `Decider` loads the GGUF files of the 4B and 2B
+  ([GGUF](#gguf-llamacpp)) and scores them with llama-cpp-python (CPU, CUDA or Metal build). On 8 server CPU threads a request of
+  40 to 120 tokens takes 0.3 to 0.7 s with the 4B in Q4_K_M and 0.12 to 0.31 s with the 2B. The HTTP server does not serve GGUF
+  files, and torch is still installed (decider-ai depends on it).
 * **CPU.** The library and the HTTP server run on CPU in bfloat16, eager; the unit tests run without a GPU: `python -m pytest tests`.
 
 ## Quick start
@@ -187,6 +193,25 @@ d.system_one(
 d.decide("My card was charged twice.", [{"question": "Which team?", "options": ["billing", "technical", "sales"]}])
 # [{"choice": "billing", "confidence": 0.77, "probs": {"billing": 0.77, "technical": 0.19, "sales": 0.04}}]      the plain form
 ```
+
+### GGUF (llama.cpp)
+
+```bash
+pip install "decider-ai[gguf]"          # llama-cpp-python; for a GPU: CMAKE_ARGS="-DGGML_CUDA=on" (or -DGGML_METAL=on) pip install ...
+```
+
+```python
+from decider.infer import Decider
+d = Decider("Mapika/decider-4b-GGUF", gguf_file="decider-4b-v2.1-Q4_K_M.gguf")      # 2.7 GB; or a local path to a .gguf file
+d.decide("My card was charged twice.", [{"question": "Which team?", "options": ["billing", "technical", "sales"]}])
+d.system_one(state, questions)                                                       # as above
+```
+
+The tokenizer and `decider_config.json` come from the same repository or folder as the `.gguf` file. `gguf_options` passes
+`n_ctx`, `n_gpu_layers` (-1, the default, offloads every layer when the build has a GPU; 0 is CPU only) and `n_threads` to
+llama.cpp. Rows are scored one per llama.cpp decode: packing several rows into one decode (`n_seq_max`) is faster but moves
+the probabilities with the other rows in the batch, by up to 0.16 in Q4_K_M. `schema()` (the questions-first cache) needs the
+torch engine. Measured quality per file is on the model cards (decider-4b Q8_0 equal to bf16, Q4_K_M 0.2 points lower in-task).
 
 `confidence` on a Choice or Score answer follows TypeSafe's definition since decider-ai 1.3.0. For a Choice with n options it is
 `(n·p_max − 1)/(n − 1)`, where p_max is the largest probability: 0 when the probabilities are uniform, 1 when one option has all

@@ -3,7 +3,30 @@
 Newest first. Every entry names the weights it applies to; the Hub repositories keep earlier weights under tags where noted.
 `HISTORY.md` is the long form: how each stage was trained and what was measured.
 
-## GGUF files for decider-4b v2.1 and decider-2b v11 (2026-09-27)
+## 1.6.0 (2026-09-27): GGUF checkpoints in `Decider`
+
+* **`decider.engine_gguf.GGUFEngine`**: the one-pass readout on llama.cpp through llama-cpp-python's low-level API. The prompt
+  rows are built by `decider.prompt` with the checkpoint's HF tokenizer, llama.cpp decodes each row with logits requested only
+  at the answer slots, and the option-letter columns of those logits go through the same temperatures (`decider.temperature`)
+  as the torch engine. `score_items` returns what `Engine.score_items` returns; `score_shared` scores every row in full (no
+  prefix cache). One row per decode by default: with several rows in one decode as separate sequences, llama.cpp gives
+  probabilities that move with the other rows (up to 0.016 in BF16 and 0.16 in Q4_K_M on decider-4b v2.1), so `n_seq_max > 1`
+  is opt-in.
+* **`Decider(path)`** with `path` a local `.gguf` file, or `Decider(repo_or_folder, gguf_file=...)`, loads the GGUF engine; the
+  tokenizer and `decider_config.json` are read from the file's folder or the repository. `gguf_options` go to `GGUFEngine`.
+  `decide`, `decide_batch`, `system_one` and the per-type temperatures work as on the torch engine; `schema()` raises
+  `NotImplementedError`. Nothing changes for non-GGUF checkpoints.
+* **Extra `gguf`**: `llama-cpp-python>=0.3.35,<0.4` (0.3.35 is the first version measured).
+* Measured through the shipped engine on decider-2b v11 Q4_K_M over the regression set (95 tasks, 144,226 questions): the same
+  answer as the research readout of the same file on every question, largest probability difference 1.8e-7; in-task / held-out
+  accuracy 0.7984 / 0.7472 against 0.8016 / 0.7518 for the bf16 weights in PyTorch (T 1.145). On one 32,794-token
+  `system_one` state, BF16 and Q8_0 gave the PyTorch answer and Q4_K_M did not; the regression set's prompts are at most 1,536
+  tokens, so it does not show how quantization error grows with the length of the state.
+* The llama.cpp context takes a whole `n_ctx` row in one decode (llama.cpp aborts the process, rather than returning an error,
+  when a decode is longer than the context's `n_batch`); `n_batch` is only the budget for packing rows. The default `n_ctx` is
+  40,960, because `system_one` cuts the state to 32,768 tokens and puts the question after it. Both found in review.
+* `tests/test_engine_gguf.py` runs the engine against a fake `llama_cpp` (no build, no model file).
+ and decider-2b v11 (2026-09-27)
 
 [Mapika/decider-4b-GGUF](https://huggingface.co/Mapika/decider-4b-GGUF) and
 [Mapika/decider-2b-GGUF](https://huggingface.co/Mapika/decider-2b-GGUF): Q4_K_M, Q8_0 and BF16 of the current Hub weights,

@@ -72,7 +72,8 @@ class Decider:
     the optional MPS patch; CPU defaults to bfloat16. Set ``use_graphs=False``
     for eager execution or debugging.
     """
-    def __init__(self, path, device=None, dtype=None, temperature=None, abstain_below=0.0, use_graphs=None, temperature_by_type=None):
+    def __init__(self, path, device=None, dtype=None, temperature=None, abstain_below=0.0, use_graphs=None, temperature_by_type=None,
+                 gguf_file=None, gguf_options=None):
         """The prompt layout comes from decider_config.json: "layout": "chat" (chat-trained checkpoints) wraps every prompt in the
         tokenizer's chat template (decider.prompt.build_chat); no "layout" key is the plain layout of every earlier model.
         An unknown layout raises ValueError before the weights are loaded.
@@ -80,17 +81,32 @@ class Decider:
         Temperatures (decider.temperature): decider_config.json "temperature" and the optional "temperature_by_type"
         {"choice": T, "noul": T, "score": T}.  temperature= overrides "temperature" and switches the config's by-type map off;
         temperature_by_type= sets the map explicitly.  An invalid temperature or map key raises ValueError before the weights
-        are loaded."""
+        are loaded.
+
+        GGUF (decider.engine_gguf, llama.cpp): path is a local .gguf file whose folder holds the tokenizer and
+        decider_config.json, or path is a folder or Hub repo and gguf_file names the .gguf in it.  gguf_options go to
+        GGUFEngine (n_ctx, n_seq_max, n_batch, n_gpu_layers, n_threads); device, dtype and use_graphs are not used.  The
+        schema cache (schema(), schema-first system_one) needs the torch engine."""
+        import json, os
+        gguf_path, src = None, path
+        if gguf_file is not None or str(path).endswith(".gguf"):
+            if gguf_file is None:
+                gguf_path, src = str(path), os.path.dirname(os.path.abspath(str(path)))
+            elif os.path.isdir(path):
+                gguf_path = os.path.join(path, gguf_file)
+            else:
+                from huggingface_hub import hf_hub_download
+                gguf_path = hf_hub_download(path, gguf_file)
+        self.gguf = gguf_path is not None
         if device is None:
             device = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
         if dtype is None:
             dtype = torch.float16 if str(device).startswith("mps") else torch.bfloat16
         logger.info("Decider device=%s dtype=%s", device, dtype)
-        import json, os
         cfg = {}
         try:                                          # model folder may carry decider_config.json (temperature, flags)
             from huggingface_hub import hf_hub_download
-            cfg_path = os.path.join(path, "decider_config.json") if os.path.isdir(path) else hf_hub_download(path, "decider_config.json")
+            cfg_path = os.path.join(src, "decider_config.json") if os.path.isdir(src) else hf_hub_download(src, "decider_config.json")
             cfg = json.load(open(cfg_path))
         except Exception:
             pass
@@ -99,7 +115,10 @@ class Decider:
         self.neutralize_none = bool(cfg.get("neutralize_none", True))   # v4 and earlier learned the literal string as an abstain signal
         if use_graphs is None:
             use_graphs = str(device).startswith("cuda")
-        if use_graphs:
+        if self.gguf:
+            from decider.engine_gguf import GGUFEngine
+            self.eng = GGUFEngine(gguf_path, src, **(gguf_options or {})); self.m = self.eng.m; device = "gguf"
+        elif use_graphs:
             from decider.engine import Engine
             self.eng = Engine(path, device=device, dtype=dtype); self.m = self.eng.m
         else:
@@ -110,7 +129,7 @@ class Decider:
         self.chat = chat_template(self.m.tok) if self.layout == "chat" else None      # None: plain layout, prompts as in 1.1.x
         self.dev = device; self.T = temperature; self.abstain_below = abstain_below
         self.name = "decider-" + str(cfg.get("version", "dev"))
-        self.schema_first = bool(cfg.get("schema_first", False)) and self.eng is not None      # default layout. Questions-first (the cacheable one) costs accuracy
+        self.schema_first = bool(cfg.get("schema_first", False)) and self.eng is not None and not self.gguf      # default layout. Questions-first (the cacheable one) costs accuracy
         self.T_schema = T_schema                                              # (about 1.5 points on fixed label sets, more elsewhere): opt in with schema()
         self.isolated_levels = bool(cfg.get("isolated_levels", False))      # Score levels judged one per row (v8+)
         self._se = None; self._schemas = {}
@@ -161,6 +180,8 @@ class Decider:
     def schema(self, questions, independent=True, isolated=None, compile=False):
         """Compile a fixed set of Jev-shaped questions: schema(state) -> answers; schema.batch([state, ...]) -> [answers]."""
         import json
+        if self.gguf:
+            raise NotImplementedError("schema() needs the torch engine; GGUF checkpoints score with decide() and system_one()")
         from decider.schema_engine import SchemaEngine
         from decider.systemone import render_question
         isolated = self.isolated_levels if isolated is None else isolated
@@ -180,7 +201,7 @@ class Decider:
     def system_one(self, state, questions, independent=True, max_state_tokens=32768, max_fwd_tokens=65536, layout=None, isolated=None):
         layout = layout or ("schema_first" if self.schema_first else "state_first")
         isolated = (self.isolated_levels if isolated is None else isolated) and independent
-        if layout == "schema_first" and self.eng is not None:
+        if layout == "schema_first" and self.eng is not None and not self.gguf:
             return self.schema(questions, independent, isolated)(state, max_state_tokens)
         """independent=True scores every question in its own row (state + that question only), so adding, removing or
         reordering questions cannot change any other answer; the state is run once and its cache forked to every
