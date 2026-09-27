@@ -12,7 +12,8 @@ checkpoints do not have and writes a file llama.cpp cannot load), with the token
 (the `decide()` readout on llama-cpp-python, one prompt per decode). decider-4b regression set at T 1.099, in-task / held-out
 accuracy: bf16 0.8308 / 0.7838, Q8_0 0.8310 / 0.7829, Q4_K_M 0.8288 / 0.7834; answers equal to the bf16 PyTorch readout on
 99.31% (Q8_0) and 97.06% (Q4_K_M) of 144,226 questions. Asked for in issue #16. No package change; the weights are unchanged.
-: `decider.serve_vllm` and `DECIDER_LAYOUT`
+
+## 1.5.0 (2026-09-25): `decider.serve_vllm` and `DECIDER_LAYOUT`
 
 * **`decider.serve_vllm`**: the `/v1/systemone` readout on vLLM 0.29.0 for large stock or chat-layout checkpoints. Same rows
   (`decider.serve.prepare`), same slot, `softmax(letter logits / T)` read from vLLM's raw log-softmax values of the option
