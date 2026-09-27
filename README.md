@@ -28,6 +28,12 @@ local Qwen3.5-27B teacher (`teacher_data/`, `decider/data/mixture.py`). Nothing 
 
 ## What's new
 
+* **2026-09-27 — GGUF files for llama.cpp** (issue #16): [Mapika/decider-4b-GGUF](https://huggingface.co/Mapika/decider-4b-GGUF)
+  (v2.1) and [Mapika/decider-2b-GGUF](https://huggingface.co/Mapika/decider-2b-GGUF) (v11), each in Q4_K_M, Q8_0 and BF16.
+  They are not chat models: loading one in `llama-cli` or Ollama gives a text model, not decisions. `decide_gguf.py` in each
+  repository reads the answer from the option-letter logits with llama-cpp-python and decider-ai 1.5.0. On the 4B's regression
+  set (95 tasks, 144,226 questions) Q8_0 equals the bf16 weights and Q4_K_M (2.7 GB) is 0.2 points lower on in-task accuracy
+  with unchanged held-out accuracy; the 2B measurement is on its card. No package change.
 * **2026-09-25 — decider-ai 1.5.0: `decider.serve_vllm`.** The `/v1/systemone` readout served by vLLM 0.29.0, for large stock
   checkpoints read in the chat layout, such as Qwen/Qwen3.6-27B at temperature 1.943 (the Decision Index entry "Decider chat ·
   Qwen3.6-27B"). Same prompt rows, same answer slot, softmax of the option-letter logits over T. On one idle B300, one request
@@ -130,6 +136,8 @@ two are not comparable to each other, and the NVFP4 row is measured against the 
 | decider-2b **v11** | Qwen3.5-2B-Base | 1.9B | 32k tokens | 0.752 (regression set) | [Mapika/decider-2b](https://huggingface.co/Mapika/decider-2b) |
 | decider-4b **v2.1** | Qwen3.5-4B-Base | 4.2B | 32k tokens | 0.784 (regression set) | [Mapika/decider-4b](https://huggingface.co/Mapika/decider-4b) |
 | decider-35b-a3b **v1** | Qwen3.5-35B-A3B-Base | 34.7B total, 3B active | 32k tokens | 0.810 (regression set) | [Mapika/decider-35b-a3b](https://huggingface.co/Mapika/decider-35b-a3b) |
+| decider-4b-GGUF | decider-4b v2.1 in Q4_K_M (2.7 GB), Q8_0, BF16 | 4.2B | 32k tokens | Q4_K_M 0.783, Q8_0 0.783 against 0.784 (regression set) | [Mapika/decider-4b-GGUF](https://huggingface.co/Mapika/decider-4b-GGUF) |
+| decider-2b-GGUF | decider-2b v11 in Q4_K_M (1.3 GB), Q8_0, BF16 | 1.9B | 32k tokens | see the model card | [Mapika/decider-2b-GGUF](https://huggingface.co/Mapika/decider-2b-GGUF) |
 | decider-35b-a3b-nvfp4 | the 35B in NVFP4, 19.6 GB | 34.7B total, 3B active | 32k tokens | 1.0 to 1.5 points under bf16 in vLLM | [Mapika/decider-35b-a3b-nvfp4](https://huggingface.co/Mapika/decider-35b-a3b-nvfp4) |
 | decider-0.8b | Qwen3.5-0.8B-Base | 0.8B | 32k tokens | 0.71 (94-task set) | [Mapika/decider-0.8b](https://huggingface.co/Mapika/decider-0.8b) |
 | decider-2b-vision | Qwen3.5-2B vision-language, v5 text weights | 1.9B | 32k tokens | Visual7W 0.89 (see MODEL_CARD_VISION.md) | [Mapika/decider-2b-vision](https://huggingface.co/Mapika/decider-2b-vision) |
@@ -148,6 +156,9 @@ yet in this package, `scripts/train.sh full` reproduces the public 60% of its da
   three 2B smoke-test workloads, the median request is 133 ms with the patch and 171 ms without it; on the held-out MASSIVE
   Scenario set (1,500 examples, temperature 1.30) the MPS path scores accuracy 0.7553 and ECE 0.0438 against the published
   bf16 row's 0.756 and 0.041. Conditions: `docs/benchmarks/mps-full-model.md`, `docs/benchmarks/mps-heldout.md`.
+* **llama.cpp (GGUF).** The 4B and 2B GGUF repositories carry `decide_gguf.py`, the `decide()` readout on llama-cpp-python
+  (CPU, CUDA or Metal build). On 8 server CPU threads a request of 40 to 120 tokens takes 0.3 to 0.7 s with the 4B in Q4_K_M
+  and 0.12 to 0.31 s with the 2B. `system_one` and the HTTP server do not run on GGUF files yet.
 * **CPU.** The library and the HTTP server run on CPU in bfloat16, eager; the unit tests run without a GPU: `python -m pytest tests`.
 
 ## Quick start
