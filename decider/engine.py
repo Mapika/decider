@@ -5,7 +5,7 @@ mask is needed and every (B, T) bucket can be captured once and replayed.  The g
 option-letter logits for all positions [B, T, K]; slots are gathered outside.
 """
 import time, torch, torch._dynamo, torch.nn.functional as F
-from decider.model import DecisionModel, collate
+from decider.model import DecisionModel, collate, cap_logits
 from decider.prompt import build, MAX_OPTIONS
 from decider.temperature import scaled_softmax, slot_temperatures
 
@@ -106,7 +106,7 @@ class Engine:
 
     def _fwd_eager(self, ids):
         h = self.core(input_ids=ids, use_cache=False).last_hidden_state
-        return F.linear(h, self.W).float()                          # [B, T, K]
+        return cap_logits(self.m, F.linear(h, self.W).float())              # [B, T, K]
 
     @torch.no_grad()
     def _fwd(self, ids):

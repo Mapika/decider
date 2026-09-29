@@ -14,6 +14,11 @@ class DecisionModel(nn.Module):
         if grad_ckpt:
             self.lm.gradient_checkpointing_enable()
         self.register_buffer("letters", torch.tensor(letter_ids(self.tok)), persistent=False)
+        self.softcap = softcap_value(self.lm.config)                   # Gemma: final_logit_softcapping; None elsewhere
+
+    def cap(self, logits):
+        """The model's final-logit softcapping (cap * tanh(x / cap)) on the letter logits, as its own LM head output has it."""
+        return cap_logits(self, logits)
 
     def slot_logits(self, input_ids, attention_mask, slot_idx, slot_batch, nopts):
         """input_ids [B,T]; slot_idx/slot_batch [N] flat slot positions; nopts [N].
@@ -21,13 +26,28 @@ class DecisionModel(nn.Module):
         h = self.lm.model(input_ids=input_ids, attention_mask=attention_mask).last_hidden_state
         hs = h[slot_batch, slot_idx]                                   # [N,H]
         W = self.lm.lm_head.weight[self.letters]                       # [K,H]
-        logits = F.linear(hs, W).float()                               # [N,K]
+        logits = cap_logits(self, F.linear(hs, W).float())                   # [N,K]
         ar = torch.arange(MAX_OPTIONS, device=logits.device)[None, :]
         logits = logits.masked_fill(ar >= nopts[:, None], float("-inf"))
         return logits
 
     def forward(self, batch):
         return self.slot_logits(batch["input_ids"], batch["attention_mask"], batch["slot_idx"], batch["slot_batch"], batch["nopts"])
+
+
+def cap_logits(model, logits):
+    """model.softcap applied to logits (identity when the model has none, including test doubles without the attribute)."""
+    c = getattr(model, "softcap", None)
+    return torch.tanh(logits / c) * c if c else logits
+
+
+def softcap_value(config):
+    """final_logit_softcapping of a config or its text_config (Gemma 2-4), else None."""
+    for c in (config, getattr(config, "text_config", None)):
+        v = getattr(c, "final_logit_softcapping", None) if c is not None else None
+        if v:
+            return float(v)
+    return None
 
 
 def collate(items, pad_id):

@@ -3,6 +3,18 @@
 Newest first. Every entry names the weights it applies to; the Hub repositories keep earlier weights under tags where noted.
 `HISTORY.md` is the long form: how each stage was trained and what was measured.
 
+## 1.7.0 (2026-09-29): final-logit softcapping for Gemma checkpoints
+
+* **`DecisionModel.cap`**: when the checkpoint's config (or its `text_config`) sets `final_logit_softcapping` (Gemma 2-4),
+  the option-letter logits are passed through `cap * tanh(x / cap)` before the temperature, as the model's own LM head output
+  is. Every torch path applies it: `DecisionModel.slot_logits`, `Engine` (graphs and eager), `EngineV2`, the shared-prefix
+  path and the schema cache. Options past `nopts` are still masked to -inf after the cap. Checkpoints without the field
+  (every Qwen-based decider) are unchanged. llama.cpp applies the softcap itself, so `GGUFEngine` is unchanged.
+* Measured on stock Gemma-4-12B-it in the chat layout over 399 yes/no decisions: without the cap the package's probabilities
+  were far sharper than the model's (P(yes) 0.9999 where the capped readout gives 0.96). With the cap they match the research
+  server that applies it (median difference 0, largest 0.053, the same answer on 398 of 399).
+* `tests/test_softcap.py`.
+
 ## 1.6.0 (2026-09-27): GGUF checkpoints in `Decider`
 
 * **`decider.engine_gguf.GGUFEngine`**: the one-pass readout on llama.cpp through llama-cpp-python's low-level API. The prompt

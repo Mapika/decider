@@ -18,7 +18,7 @@ docs/CHANGELOG.md 1.0.2 and tests/test_engine_v2_cuda.py.
 import time, torch, torch.nn.functional as F
 from decider import shared_prefix
 from decider.engine import read_slots, fill_ids, patch_conv, set_attention_backend_policy
-from decider.model import DecisionModel
+from decider.model import DecisionModel, cap_logits
 from decider.temperature import item_slice, slot_temperatures
 
 T_BUCKETS = [64, 128, 192, 256, 320, 384, 512, 640, 768, 1024, 1280, 1536, 2048, 3072, 4096, 6144, 8192]
@@ -113,7 +113,7 @@ class EngineV2:
     # ---- forward -----------------------------------------------------------
     def _fwd_eager(self, ids):
         h = self.core(input_ids=ids, use_cache=False).last_hidden_state
-        return F.linear(h, self.W).float()                          # [B, T, K]
+        return cap_logits(self.m, F.linear(h, self.W).float())              # [B, T, K]
 
     @torch.no_grad()
     def _fwd(self, ids):

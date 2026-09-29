@@ -33,6 +33,7 @@ import torch
 import torch.nn.functional as F
 
 from decider.engine import fill_ids, read_slots
+from decider.model import cap_logits
 from decider.temperature import item_slice, slot_temperatures
 
 DEFAULT_FORK_GB = 8.0
@@ -193,7 +194,7 @@ def score_shared(engine, items, temperature=1.0, min_prefix=192, budget_bytes=No
         rows = [j for j, it in enumerate(part) for _ in it["slots"]]
         sl = [s - lcp for it in part for s in it["slots"]]
         idx = torch.tensor([rows, sl], device=dev)
-        out += read_slots(F.linear(h[idx[0], idx[1]], W).float()[:, None, :], list(range(len(rows))), [0] * len(rows),
+        out += read_slots(cap_logits(getattr(engine, "m", None), F.linear(h[idx[0], idx[1]], W).float())[:, None, :], list(range(len(rows))), [0] * len(rows),
                           [k for it in part for k in it["nopts"]],
                           slot_temperatures(item_slice(temperature, i, i + b), part), [len(it["slots"]) for it in part])
         del fork, h, suf                                  # drop this chunk's fork before the next one is built

@@ -13,6 +13,7 @@ every batch and every graph.
 import time, types, torch, torch.nn.functional as F
 from decider.prompt import schema_prefix_ids, schema_suffix_ids, MAX_OPTIONS
 from decider.engine import read_slots, fill_ids
+from decider.model import cap_logits
 
 TS_BUCKETS = [32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024]
 B_BUCKETS = [1, 2, 4, 8, 16, 32, 64]
@@ -78,7 +79,7 @@ class SchemaEngine:
 
     def _fwd(self, ids, cache, mask, pos):
         hs = self.core(input_ids=ids, past_key_values=cache, attention_mask={"full_attention": mask, "linear_attention": None}, position_ids=pos, use_cache=True).last_hidden_state
-        return F.linear(hs, self.W).float()
+        return cap_logits(self.e.m, F.linear(hs, self.W).float())
 
     def _static(self, h, R, Ts):
         """R request slots -> R * P rows.  Mask: a row sees its own prefix (not the padding up to tpmax) and the causal suffix."""
