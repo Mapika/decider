@@ -51,7 +51,7 @@ local Qwen3.5-27B teacher (`teacher_data/`, `decider/data/mixture.py`). Nothing 
   checkpoints read in the chat layout, such as Qwen/Qwen3.6-27B at temperature 1.943 (the Decision Index entry "Decider chat ·
   Qwen3.6-27B"). Same prompt rows, same answer slot, softmax of the option-letter logits over T. On one idle B300, one request
   at a time over the Decision Index 0.2 sample: median 32.3 ms and p95 430 ms, against 40.1 / 712 ms for `decider.serve` 1.4.0;
-  99.6% argmax agreement with the submitted run. vLLM needs numpy 2, so it is installed in its own environment
+  99.6% argmax agreement with the submitted run. vLLM pins its own torch, so it is installed in its own environment
   ([Serving on vLLM](#serving-a-large-stock-model-on-vllm)). `DECIDER_LAYOUT=chat` also lets `decider.serve` read a stock
   checkpoint in the chat layout.
 * **2026-09-24 — decider-4b v2.1, decider-2b v11 and decider-ai 1.4.0.** Both models are their parent plus a LoRA stage on
@@ -174,7 +174,7 @@ yet in this package, `scripts/train.sh full` reproduces the public 60% of its da
   ([GGUF](#gguf-llamacpp)) and scores them with llama-cpp-python (CPU, CUDA or Metal build). On 8 server CPU threads a request of
   40 to 120 tokens takes 0.3 to 0.7 s with the 4B in Q4_K_M and 0.12 to 0.31 s with the 2B. The HTTP server does not serve GGUF
   files, and torch is still installed (decider-ai depends on it).
-* **CPU.** The library and the HTTP server run on CPU in bfloat16, eager; the unit tests run without a GPU: `python -m pytest tests`.
+* **CPU.** The library and the HTTP server run on CPU in float32 (since 1.7.1; bfloat16 was about 13 times slower on a Windows ARM64 CPU, issue #18), eager; the unit tests run without a GPU: `python -m pytest tests`.
 
 ## Quick start
 
@@ -235,7 +235,7 @@ probabilities.
 ### HTTP server
 
 ```bash
-scripts/serve.sh Mapika/decider-2b 8000
+scripts/serve.sh Mapika/decider-2b 8000          # listens on 127.0.0.1; DECIDER_HOST=0.0.0.0 opens it to the network (no authentication)
 ```
 
 `POST /v1/systemone` is TypeSafe's wire format, so their SDKs work unchanged with `TYPESAFE_BASE_URL=http://localhost:8000`;
@@ -249,8 +249,7 @@ and its own graphs, captured the first time that schema is used) is on only for 
 ### Serving a large stock model on vLLM
 
 `decider.serve_vllm` (1.5.0) serves the same `/v1/systemone` readout on vLLM 0.29.0, for large checkpoints such as a stock
-instruct model read in the chat layout. vLLM 0.29.0 needs numpy 2 and its own torch, and decider-ai pins numpy < 2, so it goes
-in its own environment:
+instruct model read in the chat layout. vLLM 0.29.0 pins its own torch, so it goes in its own environment:
 
 ```bash
 python -m venv decider-vllm && . decider-vllm/bin/activate

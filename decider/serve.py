@@ -374,7 +374,7 @@ def start_workers(loop=None):
 
 def resolve_device(requested=None):
     """The device and dtype the server runs on.  `auto` picks as decider.infer.Decider does: CUDA, else MPS, else CPU; float16
-    on MPS, bfloat16 elsewhere.  An explicit device that is not available, or FP8 / torch.compile off CUDA, is a start-up error
+    on MPS, float32 on CPU, bfloat16 on CUDA.  An explicit device that is not available, or FP8 / torch.compile off CUDA, is a start-up error
     that says so, instead of the torch assertion a CUDA call raises on a build without CUDA."""
     import torch
     req = (DEVICE if requested is None else requested).strip().lower()
@@ -392,7 +392,8 @@ def resolve_device(requested=None):
             raise RuntimeError(f"DECIDER_DEVICE={req}: expected auto, cuda, cuda:<index>, mps or cpu.")
     if not dev.startswith("cuda") and (FP8 or COMPILE):
         raise RuntimeError(f"DECIDER_FP8 and DECIDER_COMPILE need CUDA; the server is starting on {dev}. Unset them.")
-    return dev, (torch.float16 if dev.startswith("mps") else torch.bfloat16)
+    from decider.infer import default_dtype
+    return dev, default_dtype(dev)
 
 
 async def _start():

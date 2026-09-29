@@ -427,7 +427,7 @@ Qwen3.6-27B"). `decider.serve` also reads a stock checkpoint in the chat layout 
   only after they have stopped, also when the handler is cancelled again while it waits. The start-up warm-up skips rows that
   do not fit `DECIDER_VLLM_MAX_MODEL_LEN`. Only independent `/v1/systemone` requests are served; `/decide` and the schema cache stay
   `decider.serve` features.
-* **Install** in its own environment (vLLM 0.29.0 needs numpy 2 and pins torch 2.13; decider-ai pins numpy < 2):
+* **Install** in its own environment (vLLM 0.29.0 pins torch 2.13):
   `pip install vllm==0.29.0 fastapi "uvicorn[standard]" jinja2 huggingface_hub && pip install --no-deps decider-ai`.
 
 ```bash

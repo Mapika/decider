@@ -15,12 +15,12 @@ def test_auto_follows_decider(monkeypatch, cuda, mps, want):
     _avail(monkeypatch, cuda, mps)
     dev, dtype = serve.resolve_device("auto")
     assert dev == want
-    assert dtype == (torch.float16 if want == "mps" else torch.bfloat16)
+    assert dtype == (torch.float16 if want == "mps" else torch.float32 if want == "cpu" else torch.bfloat16)
 
 
 def test_explicit_cpu_on_a_cuda_machine(monkeypatch):
     _avail(monkeypatch, True, False)
-    assert serve.resolve_device("cpu") == ("cpu", torch.bfloat16)
+    assert serve.resolve_device("cpu") == ("cpu", torch.float32)
 
 
 @pytest.mark.parametrize("req,msg", [("cuda", "torch.cuda.is_available"), ("cuda:1", "torch.cuda.is_available"),

@@ -65,11 +65,18 @@ class CompiledSchema:
         return self.batch([state], max_state_tokens)[0]
 
 
+
+def default_dtype(device):
+    """float16 on MPS, float32 on CPU (bfloat16 matmuls are about 13x slower than float32 on some CPUs, e.g. Windows on ARM,
+    issue #18), bfloat16 on CUDA."""
+    d = str(device)
+    return torch.float16 if d.startswith("mps") else (torch.float32 if d.startswith("cpu") else torch.bfloat16)
+
 class Decider:
     """One-pass decisions with automatic CUDA, MPS, or CPU device selection.
 
     CUDA uses shape-bucketed graphs by default. MPS defaults to float16 and uses
-    the optional MPS patch; CPU defaults to bfloat16. Set ``use_graphs=False``
+    the optional MPS patch; CPU defaults to float32 (bfloat16 has no fast CPU kernels on many machines). Set ``use_graphs=False``
     for eager execution or debugging.
     """
     def __init__(self, path, device=None, dtype=None, temperature=None, abstain_below=0.0, use_graphs=None, temperature_by_type=None,
@@ -101,7 +108,7 @@ class Decider:
         if device is None:
             device = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
         if dtype is None:
-            dtype = torch.float16 if str(device).startswith("mps") else torch.bfloat16
+            dtype = default_dtype(device)
         logger.info("Decider device=%s dtype=%s", device, dtype)
         cfg = {}
         try:                                          # model folder may carry decider_config.json (temperature, flags)

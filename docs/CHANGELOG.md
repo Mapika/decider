@@ -3,6 +3,17 @@
 Newest first. Every entry names the weights it applies to; the Hub repositories keep earlier weights under tags where noted.
 `HISTORY.md` is the long form: how each stage was trained and what was measured.
 
+## 1.7.1 (2026-09-29): install and CPU fixes from issue #18
+
+These three changes come from issue #18 (thanks to @esterhuizen for the Windows-on-ARM report):
+* **numpy 2:** the `numpy<2` pin is removed. numpy 1.26 has no Windows ARM64 wheel for CPython 3.12, so the pin made the install
+  fail there. The package's numpy use works on numpy 2, and our own runs have used numpy 2.5.
+* **float32 on CPU:** `Decider` and `decider.serve` now default to float32 on CPU. Before, the default was bfloat16, which ran
+  about 13 times slower on a Snapdragon X Elite CPU (137 s against 11 s for one 3-question request with decider-2b). The
+  defaults are unchanged elsewhere: float16 on MPS, bfloat16 on CUDA. `dtype=` still overrides the default.
+* **`scripts/serve.sh` binds 127.0.0.1:** the server has no authentication, so it no longer listens on every interface by
+  default. `DECIDER_HOST=0.0.0.0` restores the old behaviour.
+
 ## 1.7.0 (2026-09-29): final-logit softcapping for Gemma checkpoints
 
 * **`DecisionModel.cap`**: when the checkpoint's config (or its `text_config`) sets `final_logit_softcapping` (Gemma 2-4),
