@@ -10,6 +10,13 @@ forward pass, a probability distribution for every question.
 A typed decision is a question with a fixed answer set: **Choice** over 2 to 255 options, **Score** over 2 to 10 described
 levels, or **Noul**, the probability of yes. There is no decoding, no parsing, and no output outside the options you defined.
 
+![decider playing Tetris, Breakout, Pong, Snake and Connect Four; each tile shows the three most probable options and the decision time](https://raw.githubusercontent.com/Mapika/decider/main/media/showcase.gif)
+
+*Recorded episodes; every move is one forward pass, and the bars are the served probabilities. Tetris: the harness shortlists
+8 placements with a hand-tuned heuristic and states their consequences, and the model picks one (20 lines per game, against
+0.6 for a random pick from the same 8). Pong uses an unreleased games-RL overlay. Sources, seeds and windows:
+[docs/DEMOS.md](https://github.com/Mapika/decider/blob/main/docs/DEMOS.md).*
+
 ```bash
 pip install decider-ai                  # the import name is decider
 ```
@@ -28,18 +35,12 @@ The typed form (`system_one`), the HTTP server and GGUF loading are in [Quick st
 | if you have | use | why |
 |---|---|---|
 | a GPU, and hard decisions (long policy texts, multi-hop reasoning) | [decider-12b](https://huggingface.co/Mapika/decider-12b) | 24 GB in bf16; highest of these models on the JevBench public hard tier (0.730); stock Gemma-4-12B-it with no training, not measured on the regression set |
+| a large GPU (62.5 GB of bf16 weights), and broad knowledge and reasoning | [decider-chat-gemma4-31b](https://huggingface.co/Mapika/decider-chat-gemma4-31b) | stock Gemma-4-31B-it with an option-count temperature; #2 of 70 on the Decision Index (57.33, ECE 0.047) |
 | a smaller GPU | [decider-4b](https://huggingface.co/Mapika/decider-4b) | 8.4 GB in bf16; held-out accuracy 0.784 on the regression set, JevBench public hard tier 0.649 |
 | a CPU or a laptop | [decider-2b-GGUF](https://huggingface.co/Mapika/decider-2b-GGUF) or [decider-4b-GGUF](https://huggingface.co/Mapika/decider-4b-GGUF) through llama.cpp, or [decider-2b](https://huggingface.co/Mapika/decider-2b) in PyTorch | Q4_K_M files of 1.3 GB (2B) and 2.7 GB (4B); on 8 server CPU threads a request of 40 to 120 tokens takes 0.12 to 0.31 s with the 2B and 0.3 to 0.7 s with the 4B |
 | 65 GB of GPU memory, or 19.6 GB with NVFP4 in vLLM | [decider-35b-a3b](https://huggingface.co/Mapika/decider-35b-a3b) | held-out accuracy 0.810 on the regression set, JevBench public hard tier 0.676 |
 
 Every model and its measurements: [Models](#models).
-
-![decider playing Tetris, Breakout, Pong, Snake and Connect Four; each tile shows the three most probable options and the decision time](https://raw.githubusercontent.com/Mapika/decider/main/media/showcase.gif)
-
-*Recorded episodes; every move is one forward pass, and the bars are the served probabilities. Tetris: the harness shortlists
-8 placements with a hand-tuned heuristic and states their consequences, and the model picks one (20 lines per game, against
-0.6 for a random pick from the same 8). Pong uses an unreleased games-RL overlay. Sources, seeds and windows:
-[docs/DEMOS.md](https://github.com/Mapika/decider/blob/main/docs/DEMOS.md).*
 
 **Independence.** This is an independent project. It is not affiliated with or endorsed by TypeSafe AI. It is an open
 reproduction of the "System One" model class (TypeSafe AI's *Jev*): a 2B model built on `Qwen/Qwen3.5-2B-Base`, a 4B model built on
@@ -52,6 +53,11 @@ local Qwen3.5-27B teacher (`teacher_data/`, `decider/data/mixture.py`). Nothing 
 
 ## What's new
 
+* **2026-09-29 — decider-ai 1.8.0 and two `decider-chat` model repositories.** `temperature_by_options` in
+  `decider_config.json` sets T(n) = max(min, a + b ln n) for a question with n options. [Mapika/decider-chat-gemma4-31b](https://huggingface.co/Mapika/decider-chat-gemma4-31b)
+  (#2 of 70 on the Decision Index, 57.33) uses it. [Mapika/decider-chat-qwen3.6-27b](https://huggingface.co/Mapika/decider-chat-qwen3.6-27b) (#8, 51.35) uses one temperature.
+  Both are stock checkpoints plus a config. Replaying 300 stored index rows through `decider.serve` gives the stored answers on
+  1,412 of 1,412 (Gemma) and 1,431 of 1,438 (Qwen) questions.
 * **2026-09-29 — decider-ai 1.7.1** (issue #18). The `numpy<2` pin is removed (it made the install fail on Windows ARM64).
   `Decider` and `decider.serve` default to float32 on CPU instead of bfloat16, which was about 13 times slower on a Snapdragon
   X Elite CPU. `scripts/serve.sh` listens on 127.0.0.1; `DECIDER_HOST=0.0.0.0` restores the old behaviour.
@@ -74,36 +80,46 @@ Earlier entries (decider-ai 1.0.2 to 1.5.0, decider-4b v1 to v2.1, decider-2b v1
 
 ## Standing
 
-Two third-party leaderboards rank this model class. Both were read on the dates given; we did not run them.
+Two third-party leaderboards rank this model class. Both were read on 2026-09-29; we did not run them.
 
-**JevBench**, read 2026-09-21 ([Benchmark Heaven](https://benchmarkheaven.com/jev-models), harness at
-[fstandhartinger/jevbench](https://github.com/fstandhartinger/jevbench)). 36 entries; the total score combines four axes, and
-speed and cost are measured from the operator's server.
+**JevBench** v1.5.2 ([Benchmark Heaven](https://benchmarkheaven.com/jev-models), harness at
+[fstandhartinger/jevbench](https://github.com/fstandhartinger/jevbench)). 99 ranked systems. The score is a harmonic mean of
+four axes, with a penalty on an axis below 50. Half of Intelligence comes from 720 sealed decisions. Speed and cost are
+measured from the operator's server.
 
 | system | score | intelligence | calibration | speed | cost |
 |---|---|---|---|---|---|
-| Jev 1.13.0 (TypeSafe AI, #1) | 75.4 | 90.4 | 82.7 | 83.3 | 52.0 |
-| SemIf (Qwen3.5-4B, #2) | 74.7 | 85.9 | 72.6 | 83.7 | 59.5 |
-| **decider-35b-a3b** (#10 of 36) | 68.9 | 86.3 | 71.5 | 80.8 | 45.3 |
-| **decider-2b** (#21 of 36) | 64.6 | 73.8 | 46.6 | 83.2 | 61.0 |
+| Cygnet (stock Gemma-4-12B-it, #1) | 73.7 | 71.1 | 87.0 | 91.0 | 56.4 |
+| Winnow-12B Q8 (#2) | 73.2 | 74.4 | 84.1 | 86.1 | 56.6 |
+| Jev 1.13.0 (#3) | 72.1 | 72.0 | 88.0 | 83.8 | 54.7 |
+| **decider-4b v2** (#7) | 71.3 | 55.8 | 85.6 | 90.9 | 64.5 |
+| **decider-2b** (#28) | 45.1 | 42.3 | 71.5 | 94.4 | 64.9 |
+| **decider-35b-a3b** (#41) | 27.5 | 60.5 | 82.0 | 91.0 | 34.4 |
 
-Our 35B is pulled down by cost (45.3, priced as a 35B), the 2B by calibration (46.6).
+- decider-4b v2 is held back by Intelligence on the sealed yes/no (Noul) items: 43 open against 19 sealed, chance-corrected.
+- The 35B is gated by cost: it is priced at the base model's hosted price.
+- [decider-12b](https://huggingface.co/Mapika/decider-12b) is submitted
+  ([jevbench #155](https://github.com/fstandhartinger/jevbench/issues/155)) and not yet measured. It uses the same base as
+  Cygnet.
 
-**Decision Index**, edition v0.1 dated 2026-09-22
-([leaderboard](https://multimodalart-jev-decision-index.static.hf.space), kit at
-[apolinario/decision-index](https://github.com/apolinario/decision-index)). 32 entries, 132,422 requests, 37 benchmarks,
-scored on a 19-benchmark panel.
+**Decision Index** edition v0.2.1, 2026-09-28 ([leaderboard](https://multimodalart-jev-decision-index.static.hf.space), kit at
+[apolinario/decision-index](https://github.com/apolinario/decision-index)). 70 entries, 43 benchmarks. The score is
+chance-corrected (0 is random guessing).
 
-| system | score | rank |
-|---|---|---|
-| Jev | 59.5 | 1 |
-| jevfire (zero-training wrapper on a stock 27B-class model) | 55.7 | 2 |
-| joshua-diffusion (zero-training wrapper on a stock 27B-class model) | 55.6 | 3 |
-| **decider-35b-a3b (NVFP4)** | 54.3 | 4 |
-| **decider-2b** | 44.0 | 14 |
+| system | score | rank | ECE |
+|---|---|---|---|
+| Jev 1.13.0 (listed separately) | 57.91 | | |
+| Surogate Rune 26B-A4B v3 (full fine-tune) | 57.44 | 1 | 0.120 |
+| **[decider-chat-gemma4-31b](https://huggingface.co/Mapika/decider-chat-gemma4-31b)** (stock Gemma-4-31B-it, our readout) | 57.33 | 2 | 0.047 |
+| AutoJev-27B (full fine-tune) | 56.40 | 3 | 0.018 |
+| **[decider-chat-qwen3.6-27b](https://huggingface.co/Mapika/decider-chat-qwen3.6-27b)** (stock Qwen3.6-27B, our readout) | 51.35 | 8 | 0.021 |
+| **decider-35b-a3b (NVFP4)** | 47.11 | 12 | 0.023 |
+| **decider-4b** | 40.70 | 19 | 0.084 |
+| **decider-2b** | 28.97 | 37 | 0.077 |
 
-decider-35b-a3b is fourth of 32 and the highest-scoring trained model on this edition; the two entries above it are
-zero-training wrappers.
+The two `decider-chat` rows are stock instruct models read through this package's chat layout with a temperature fitted on our
+own rows. The index lists them as inference techniques. On the index the base model sets most of the score: our trained 35B,
+4B and 2B are below these two stock models read the same way.
 
 ### Where Jev leads
 
@@ -119,7 +135,7 @@ The gap to Jev is the knowledge area. Per-area scores on the Decision Index pane
 
 Language, retrieval, tools and arts are within 0.03. Knowledge is 0.18 behind, on GPQA, GSM8K, CRUXEval and MMLU. The same
 weakness shows on JevBench's 111 public hard items, which are long policy texts, multi-hop and temporal-numeric reasoning:
-decider-35b-a3b 0.676, decider-4b v2.1 0.649 and decider-2b v11 0.577 against Jev's 0.730 (our runner and the harness's own per-task file, same items). The other axis we lose there is calibration on hard items; see
+decider-35b-a3b 0.676, decider-4b v2.1 0.649 and decider-2b v11 0.577 against Jev's 0.730; decider-12b (stock Gemma-4-12B-it) reaches 0.730 (our runner and the harness's own per-task file, same items). The other axis we lose there is calibration on hard items; see
 [Limits](#limits-stated-plainly).
 
 ## Models
@@ -133,6 +149,8 @@ two are not comparable to each other, and the NVFP4 row is measured against the 
 | decider-2b **v11** | Qwen3.5-2B-Base | 1.9B | 32k tokens | 0.752 (regression set) | [Mapika/decider-2b](https://huggingface.co/Mapika/decider-2b) |
 | decider-4b **v2.1** | Qwen3.5-4B-Base | 4.2B | 32k tokens | 0.784 (regression set) | [Mapika/decider-4b](https://huggingface.co/Mapika/decider-4b) |
 | decider-12b **v1** | Gemma-4-12B-it (unchanged weights) | 12B | 32k tokens | not measured on the regression set; JevBench public hard 0.730 | [Mapika/decider-12b](https://huggingface.co/Mapika/decider-12b) |
+| decider-chat-gemma4-31b | Gemma-4-31B-it (unchanged weights), T(n) = max(0.05, 10.124 − 1.633 ln n) | 31B | 32k tokens | Decision Index v0.2.1: 57.33, #2 of 70 | [Mapika/decider-chat-gemma4-31b](https://huggingface.co/Mapika/decider-chat-gemma4-31b) |
+| decider-chat-qwen3.6-27b | Qwen3.6-27B (unchanged weights), T 1.943 | 27B | 32k tokens | Decision Index v0.2.1: 51.35, #8 of 70 | [Mapika/decider-chat-qwen3.6-27b](https://huggingface.co/Mapika/decider-chat-qwen3.6-27b) |
 | decider-35b-a3b **v1** | Qwen3.5-35B-A3B-Base | 34.7B total, 3B active | 32k tokens | 0.810 (regression set) | [Mapika/decider-35b-a3b](https://huggingface.co/Mapika/decider-35b-a3b) |
 | decider-4b-GGUF | decider-4b v2.1 in Q4_K_M (2.7 GB), Q8_0, BF16 | 4.2B | 32k tokens | Q4_K_M 0.783, Q8_0 0.783 against 0.784 (regression set) | [Mapika/decider-4b-GGUF](https://huggingface.co/Mapika/decider-4b-GGUF) |
 | decider-2b-GGUF | decider-2b v11 in Q4_K_M (1.3 GB), Q8_0 (2.0 GB), BF16 | 1.9B | 32k tokens | Q8_0 0.752, Q4_K_M 0.747 against 0.752 (regression set) | [Mapika/decider-2b-GGUF](https://huggingface.co/Mapika/decider-2b-GGUF) |
@@ -269,7 +287,7 @@ The keys of the maps are the `/v1/systemone` question types. A `/decide` field o
 yes/no row per level) uses the `score` temperature on each of its level rows, because the rows form one Score answer.
 Every value must be a finite number > 0, and any other key in a map is refused when the model is loaded.
 `Decider(path, temperature=T)` and `DECIDER_TEMPERATURE` replace `temperature` and switch `temperature_by_type` off.
-decider-4b v2.1, decider-2b v11 and decider-12b have a map; the other released models have one `temperature`. decider-ai 1.3.0 and earlier
+decider-4b v2.1, decider-2b v11 and decider-12b have a map. decider-chat-gemma4-31b has `temperature_by_options`: `{"a": 10.124, "b": -1.633, "min": 0.05}` gives T(n) = max(min, a + b ln n) for a question with n options, and replaces `temperature` and the map on the state-first layout (1.8.0). The other released models have one `temperature`. decider-ai 1.3.0 and earlier
 ignore the map and use `temperature` for every answer. `python -m decider.calibrate records.jsonl` fits the map by NLL
 from answers read at temperature 1 (record format in `decider/calibrate.py`). `/health` reports the temperature each type gets.
 

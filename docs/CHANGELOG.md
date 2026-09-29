@@ -3,6 +3,26 @@
 Newest first. Every entry names the weights it applies to; the Hub repositories keep earlier weights under tags where noted.
 `HISTORY.md` is the long form: how each stage was trained and what was measured.
 
+## 1.8.0 (2026-09-29): option-count temperatures; decider-chat model repositories
+
+* **`temperature_by_options`** in `decider_config.json`: `{"a": .., "b": .., "min": ..}` gives each question
+  T(n) = max(min, a + b ln n), where n is its number of options (n below 2 is read as 2; min defaults to 0.05).
+  * It replaces `temperature` and `temperature_by_type` on the state-first layout. Setting both keys is an error.
+  * An explicit `Decider(temperature=...)` or `DECIDER_TEMPERATURE` switches it off.
+  * The schema cache keeps the scalar temperature.
+  * `/health` reports the rule.
+  * `decider.temperature.for_items` computes it from each item's option counts, so `Decider`, `decider.serve`,
+    `serve_vllm` and the GGUF engine all apply it.
+* **New model repositories.** Both hold stock checkpoints plus a `decider_config.json`, and both are the configurations listed
+  on the Decision Index:
+  * [Mapika/decider-chat-gemma4-31b](https://huggingface.co/Mapika/decider-chat-gemma4-31b): Gemma-4-31B-it,
+    T(n) = max(0.05, 10.124 − 1.633 ln n); edition v0.2.1 57.33, #2 of 70.
+  * [Mapika/decider-chat-qwen3.6-27b](https://huggingface.co/Mapika/decider-chat-qwen3.6-27b): Qwen3.6-27B, T 1.943;
+    51.35, #8.
+  * Replaying 300 stored rows of each index run through `decider.serve` 1.8.0 gives the same answer on 1,412 of 1,412 and
+    1,431 of 1,438 questions, with median probability differences of 0.0001 and 0.0003.
+* `tests/test_temperature_options.py`.
+
 ## 1.7.1 (2026-09-29): install and CPU fixes from issue #18
 
 These three changes come from issue #18 (thanks to @esterhuizen for the Windows-on-ARM report):

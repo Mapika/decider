@@ -5,6 +5,10 @@ Every answer is softmax(logits / T) over its option letters.  decider_config.jso
     "temperature": 1.3                                   one value for every answer (the only form before 1.4.0)
     "temperature_by_type": {"choice": 1.48, "noul": 2.22, "score": 1.38}
                                                          optional; one value per answer type, a missing type uses "temperature"
+    "temperature_by_options": {"a": 10.12, "b": -1.63, "min": 0.05}
+                                                         optional (1.8.0); T(n) = max(min, a + b ln n) for a question with n options
+                                                         (n >= 2; min defaults to 0.05); replaces "temperature" and the by-type map
+                                                         on the state-first layout; not applied on the schema cache
     "temperature_schema_first": 1.18                     optional; the schema cache (questions-first layout), as before
     "temperature_schema_first_by_type": {...}            optional; per answer type on the schema cache
 
@@ -61,6 +65,27 @@ def by_type(m, where):
     return out
 
 
+def by_options(spec, where):
+    """Validate {"a": .., "b": .., "min": ..} -> (a, b, min).  None -> None."""
+    if spec is None:
+        return None
+    if not isinstance(spec, dict) or set(spec) - {"a", "b", "min"} or not {"a", "b"} <= set(spec):
+        raise ValueError(f'{where} must be {{"a": number, "b": number, "min": number > 0 (optional)}}, got {spec!r}')
+    ab = []
+    for k in ("a", "b"):
+        v = spec[k]
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+            raise ValueError(f"{where}[{k!r}] must be a finite number, got {v!r}")
+        ab.append(float(v))
+    return ab[0], ab[1], positive(spec.get("min", 0.05), f"{where}['min']")
+
+
+def T_of_options(spec, n):
+    """T(n) = max(min, a + b ln n) for a question with n options (n below 2 is read as 2)."""
+    a, b, lo = spec
+    return max(lo, a + b * math.log(max(int(n), 2)))
+
+
 def from_config(cfg, temperature=None, temperature_by_type=None):
     """-> ((T, by_type) for the state-first layout, (T, by_type) for the schema cache).
 
@@ -76,15 +101,23 @@ def from_config(cfg, temperature=None, temperature_by_type=None):
         m = (by_type(temperature_by_type, "temperature_by_type") if temperature_by_type is not None
              else by_type(cfg.get("temperature_by_type"), f'{where} "temperature_by_type"'))
     ms = by_type(cfg.get("temperature_schema_first_by_type"), f'{where} "temperature_schema_first_by_type"')
+    opt = by_options(cfg.get("temperature_by_options"), f'{where} "temperature_by_options"')
+    if opt is not None and temperature is None:
+        if m:
+            raise ValueError(f'{where}: "temperature_by_options" and "temperature_by_type" cannot both be set')
+        m = {"by_options": opt}                 # state-first answers only; the schema cache below keeps T and its own map
     if "temperature_schema_first" in cfg:
         schema = (positive(cfg["temperature_schema_first"], f'{where} "temperature_schema_first"'), ms)
     else:
-        schema = (T, {**m, **ms})
+        schema = (T, {**{k: v for k, v in m.items() if k != "by_options"}, **ms})
     return (T, m), schema
 
 
 def effective(T, m):
     """{answer type: the temperature it gets} for reporting (/health, the ready line)."""
+    if "by_options" in m:
+        a, b, lo = m["by_options"]
+        return {t: f"max({lo:g}, {a:g} + {b:g} ln n_options)" for t in TYPES}
     return {t: m.get(t, T) for t in TYPES}
 
 
@@ -106,6 +139,8 @@ def for_items(T, m, items):
     else one list of per-slot temperatures per item."""
     if not m:
         return T
+    if "by_options" in m:
+        return [[T_of_options(m["by_options"], n) for n in it["nopts"]] for it in items]
     return [[m.get(t, T) for t in item_types(it)] for it in items]
 
 
