@@ -28,6 +28,14 @@ local Qwen3.5-27B teacher (`teacher_data/`, `decider/data/mixture.py`). Nothing 
 
 ## What's new
 
+* **2026-09-29 — decider-12b and decider-ai 1.7.0.** [Mapika/decider-12b](https://huggingface.co/Mapika/decider-12b)
+  is stock Gemma-4-12B-it read through the decider chat readout, with no training and per-type temperatures (Choice 4.0,
+  Noul 1.0, Score 3.5). Results:
+  - JevBench public items: 0.730 on the hard tier (decider-4b v2 0.676).
+  - Fresh held-out yes/no set, v1.5 chance-corrected score: 61 (decider-4b v2 1).
+
+  decider-ai 1.7.0 applies Gemma's final-logit softcapping to the letter logits. Earlier versions read Gemma checkpoints too
+  sharply.
 * **2026-09-27 — decider-ai 1.6.0: GGUF checkpoints in `Decider`.** `pip install "decider-ai[gguf]"`, then
   `Decider("Mapika/decider-4b-GGUF", gguf_file="decider-4b-v2.1-Q4_K_M.gguf")`: `decide` and `system_one` scored by llama.cpp
   (CPU, CUDA or Metal), with the per-type temperatures of the model's config ([GGUF](#gguf-llamacpp)). One row per llama.cpp
@@ -140,6 +148,7 @@ two are not comparable to each other, and the NVFP4 row is measured against the 
 |---|---|---|---|---|---|
 | decider-2b **v11** | Qwen3.5-2B-Base | 1.9B | 32k tokens | 0.752 (regression set) | [Mapika/decider-2b](https://huggingface.co/Mapika/decider-2b) |
 | decider-4b **v2.1** | Qwen3.5-4B-Base | 4.2B | 32k tokens | 0.784 (regression set) | [Mapika/decider-4b](https://huggingface.co/Mapika/decider-4b) |
+| decider-12b **v1** | Gemma-4-12B-it (unchanged weights) | 12B | 32k tokens | not measured on the regression set; JevBench public hard 0.730 | [Mapika/decider-12b](https://huggingface.co/Mapika/decider-12b) |
 | decider-35b-a3b **v1** | Qwen3.5-35B-A3B-Base | 34.7B total, 3B active | 32k tokens | 0.810 (regression set) | [Mapika/decider-35b-a3b](https://huggingface.co/Mapika/decider-35b-a3b) |
 | decider-4b-GGUF | decider-4b v2.1 in Q4_K_M (2.7 GB), Q8_0, BF16 | 4.2B | 32k tokens | Q4_K_M 0.783, Q8_0 0.783 against 0.784 (regression set) | [Mapika/decider-4b-GGUF](https://huggingface.co/Mapika/decider-4b-GGUF) |
 | decider-2b-GGUF | decider-2b v11 in Q4_K_M (1.3 GB), Q8_0 (2.0 GB), BF16 | 1.9B | 32k tokens | Q8_0 0.752, Q4_K_M 0.747 against 0.752 (regression set) | [Mapika/decider-2b-GGUF](https://huggingface.co/Mapika/decider-2b-GGUF) |
