@@ -3,6 +3,22 @@
 Newest first. Every entry names the weights it applies to; the Hub repositories keep earlier weights under tags where noted.
 `HISTORY.md` is the long form: how each stage was trained and what was measured.
 
+## Model update (2026-09-29): decider-12b v2, no package change
+
+* [Mapika/decider-12b](https://huggingface.co/Mapika/decider-12b) main is v2: Gemma-4-12B-it with a merged LoRA.
+  * The LoRA is rank 32, alpha 64, on the attention and MLP projections. It was trained for one epoch on 10,000 items: 6,000
+    generated state-tracking decisions with computed golds, and 4,000 replayed rows of our earlier training data.
+  * No JevBench or Decision Index item was used for training or selection.
+  * Temperatures: Choice 1.5, Noul 0.05, Score 1.0.
+  * The stock-weights v1 (Choice 4.0, Noul 1.0, Score 3.5) is kept under the tag `v1`.
+* Measured with decider-ai 1.8.0, v2 against v1:
+  * Fresh 399-item yes/no set, test half: v1.5 chance-corrected score 71.6 (58.8).
+  * Its 80 generated state-tracking logs: argmax 0.750 (0.675).
+  * Held-out generated and teacher rows: Choice 0.615 (0.588), Noul 0.790 (0.740).
+  * Human-labelled Choice rows: 0.847 (0.845).
+  * JevBench public items: 1.000 / 0.986 / 0.712 (1.000 / 0.986 / 0.730). Hard-tier top-label ECE 0.147 (0.098).
+* Needs decider-ai >= 1.7.0, as v1 did.
+
 ## 1.8.0 (2026-09-29): option-count temperatures; decider-chat model repositories
 
 * **`temperature_by_options`** in `decider_config.json`: `{"a": .., "b": .., "min": ..}` gives each question

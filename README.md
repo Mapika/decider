@@ -34,7 +34,7 @@ The typed form (`system_one`), the HTTP server and GGUF loading are in [Quick st
 
 | if you have | use | why |
 |---|---|---|
-| a GPU, and hard decisions (long policy texts, multi-hop reasoning) | [decider-12b](https://huggingface.co/Mapika/decider-12b) | 24 GB in bf16; highest of these models on the JevBench public hard tier (0.730); stock Gemma-4-12B-it with no training, not measured on the regression set |
+| a GPU, and hard decisions (long policy texts, multi-hop reasoning) | [decider-12b](https://huggingface.co/Mapika/decider-12b) | 24 GB in bf16; JevBench public hard tier 0.712 (v1 0.730); Gemma-4-12B-it with a state-tracking LoRA merged in (v2), not measured on the regression set |
 | a large GPU (62.5 GB of bf16 weights), and broad knowledge and reasoning | [decider-chat-gemma4-31b](https://huggingface.co/Mapika/decider-chat-gemma4-31b) | stock Gemma-4-31B-it with an option-count temperature; #2 of 70 on the Decision Index (57.33, ECE 0.047) |
 | a smaller GPU | [decider-4b](https://huggingface.co/Mapika/decider-4b) | 8.4 GB in bf16; held-out accuracy 0.784 on the regression set, JevBench public hard tier 0.649 |
 | a CPU or a laptop | [decider-2b-GGUF](https://huggingface.co/Mapika/decider-2b-GGUF) or [decider-4b-GGUF](https://huggingface.co/Mapika/decider-4b-GGUF) through llama.cpp, or [decider-2b](https://huggingface.co/Mapika/decider-2b) in PyTorch | Q4_K_M files of 1.3 GB (2B) and 2.7 GB (4B); on 8 server CPU threads a request of 40 to 120 tokens takes 0.12 to 0.31 s with the 2B and 0.3 to 0.7 s with the 4B |
@@ -58,6 +58,13 @@ local Qwen3.5-27B teacher (`teacher_data/`, `decider/data/mixture.py`). Nothing 
   (#2 of 70 on the Decision Index, 57.33) uses it. [Mapika/decider-chat-qwen3.6-27b](https://huggingface.co/Mapika/decider-chat-qwen3.6-27b) (#8, 51.35) uses one temperature.
   Both are stock checkpoints plus a config. Replaying 300 stored index rows through `decider.serve` gives the stored answers on
   1,412 of 1,412 (Gemma) and 1,431 of 1,438 (Qwen) questions.
+* **2026-09-29 — decider-12b v2.** [Mapika/decider-12b](https://huggingface.co/Mapika/decider-12b) now holds
+  Gemma-4-12B-it with a merged LoRA (rank 32) trained on 6,000 generated state-tracking decisions and 4,000 replayed rows of
+  our earlier data. New temperatures: Choice 1.5, Noul 0.05, Score 1.0. The stock-weights v1 stays under the tag `v1`.
+  Results, v2 against v1:
+  - Fresh held-out yes/no set, test half: v1.5 chance-corrected score 71.6 (58.8).
+  - Held-out Choice accuracy on our generated and teacher rows: 0.615 (0.588).
+  - JevBench public hard tier: 0.712 (0.730), 79 against 81 of 111 items; top-label ECE 0.147 (0.098).
 * **2026-09-29 — decider-ai 1.7.1** (issue #18). The `numpy<2` pin is removed (it made the install fail on Windows ARM64).
   `Decider` and `decider.serve` default to float32 on CPU instead of bfloat16, which was about 13 times slower on a Snapdragon
   X Elite CPU. `scripts/serve.sh` listens on 127.0.0.1; `DECIDER_HOST=0.0.0.0` restores the old behaviour.
@@ -100,7 +107,7 @@ measured from the operator's server.
 - The 35B is gated by cost: it is priced at the base model's hosted price.
 - [decider-12b](https://huggingface.co/Mapika/decider-12b) is submitted
   ([jevbench #155](https://github.com/fstandhartinger/jevbench/issues/155)) and not yet measured. It uses the same base as
-  Cygnet.
+  Cygnet. The weights were updated to v2 (state-tracking LoRA) after submission.
 
 **Decision Index** edition v0.2.1, 2026-09-28 ([leaderboard](https://multimodalart-jev-decision-index.static.hf.space), kit at
 [apolinario/decision-index](https://github.com/apolinario/decision-index)). 70 entries, 43 benchmarks. The score is
@@ -135,7 +142,7 @@ The gap to Jev is the knowledge area. Per-area scores on the Decision Index pane
 
 Language, retrieval, tools and arts are within 0.03. Knowledge is 0.18 behind, on GPQA, GSM8K, CRUXEval and MMLU. The same
 weakness shows on JevBench's 111 public hard items, which are long policy texts, multi-hop and temporal-numeric reasoning:
-decider-35b-a3b 0.676, decider-4b v2.1 0.649 and decider-2b v11 0.577 against Jev's 0.730; decider-12b (stock Gemma-4-12B-it) reaches 0.730 (our runner and the harness's own per-task file, same items). The other axis we lose there is calibration on hard items; see
+decider-35b-a3b 0.676, decider-4b v2.1 0.649 and decider-2b v11 0.577 against Jev's 0.730; decider-12b v1 (stock Gemma-4-12B-it) reaches 0.730 and v2 0.712 (our runner and the harness's own per-task file, same items). The other axis we lose there is calibration on hard items; see
 [Limits](#limits-stated-plainly).
 
 ## Models
@@ -148,7 +155,7 @@ two are not comparable to each other, and the NVFP4 row is measured against the 
 |---|---|---|---|---|---|
 | decider-2b **v11** | Qwen3.5-2B-Base | 1.9B | 32k tokens | 0.752 (regression set) | [Mapika/decider-2b](https://huggingface.co/Mapika/decider-2b) |
 | decider-4b **v2.1** | Qwen3.5-4B-Base | 4.2B | 32k tokens | 0.784 (regression set) | [Mapika/decider-4b](https://huggingface.co/Mapika/decider-4b) |
-| decider-12b **v1** | Gemma-4-12B-it (unchanged weights) | 12B | 32k tokens | not measured on the regression set; JevBench public hard 0.730 | [Mapika/decider-12b](https://huggingface.co/Mapika/decider-12b) |
+| decider-12b **v2** | Gemma-4-12B-it + merged state-tracking LoRA (rank 32) | 12B | 32k tokens | not measured on the regression set; JevBench public hard 0.712 | [Mapika/decider-12b](https://huggingface.co/Mapika/decider-12b) |
 | decider-chat-gemma4-31b | Gemma-4-31B-it (unchanged weights), T(n) = max(0.05, 10.124 − 1.633 ln n) | 31B | 32k tokens | Decision Index v0.2.1: 57.33, #2 of 70 | [Mapika/decider-chat-gemma4-31b](https://huggingface.co/Mapika/decider-chat-gemma4-31b) |
 | decider-chat-qwen3.6-27b | Qwen3.6-27B (unchanged weights), T 1.943 | 27B | 32k tokens | Decision Index v0.2.1: 51.35, #8 of 70 | [Mapika/decider-chat-qwen3.6-27b](https://huggingface.co/Mapika/decider-chat-qwen3.6-27b) |
 | decider-35b-a3b **v1** | Qwen3.5-35B-A3B-Base | 34.7B total, 3B active | 32k tokens | 0.810 (regression set) | [Mapika/decider-35b-a3b](https://huggingface.co/Mapika/decider-35b-a3b) |
