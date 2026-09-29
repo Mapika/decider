@@ -1,6 +1,8 @@
 """Final-logit softcapping (Gemma) on the letter logits: DecisionModel.cap and softcap_value, without loading a model."""
-import types, torch
-from decider.model import DecisionModel, softcap_value
+import types
+import pytest
+torch = pytest.importorskip("torch")
+from decider.model import DecisionModel, softcap_value  # noqa: E402
 
 
 def test_softcap_value_reads_config_or_text_config():
