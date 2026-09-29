@@ -49,7 +49,8 @@ These three changes come from issue #18 (thanks to @esterhuizen for the Windows-
   when a decode is longer than the context's `n_batch`); `n_batch` is only the budget for packing rows. The default `n_ctx` is
   40,960, because `system_one` cuts the state to 32,768 tokens and puts the question after it. Both found in review.
 * `tests/test_engine_gguf.py` runs the engine against a fake `llama_cpp` (no build, no model file).
- and decider-2b v11 (2026-09-27)
+
+## GGUF files for decider-4b v2.1 and decider-2b v11 (2026-09-27)
 
 [Mapika/decider-4b-GGUF](https://huggingface.co/Mapika/decider-4b-GGUF) and
 [Mapika/decider-2b-GGUF](https://huggingface.co/Mapika/decider-2b-GGUF): Q4_K_M, Q8_0 and BF16 of the current Hub weights,

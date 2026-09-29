@@ -10,6 +10,30 @@ forward pass, a probability distribution for every question.
 A typed decision is a question with a fixed answer set: **Choice** over 2 to 255 options, **Score** over 2 to 10 described
 levels, or **Noul**, the probability of yes. There is no decoding, no parsing, and no output outside the options you defined.
 
+```bash
+pip install decider-ai                  # the import name is decider
+```
+
+```python
+from decider.infer import Decider
+d = Decider("Mapika/decider-2b")        # downloads the weights on first use; CUDA, else MPS, else CPU
+d.decide("My card was charged twice.", [{"question": "Which team?", "options": ["billing", "technical", "sales"]}])
+# [{"choice": "billing", "confidence": 0.77, "probs": {"billing": 0.77, "technical": 0.19, "sales": 0.04}}]
+```
+
+The typed form (`system_one`), the HTTP server and GGUF loading are in [Quick start](#quick-start).
+
+### Which model to use
+
+| if you have | use | why |
+|---|---|---|
+| a GPU, and hard decisions (long policy texts, multi-hop reasoning) | [decider-12b](https://huggingface.co/Mapika/decider-12b) | 24 GB in bf16; highest of these models on the JevBench public hard tier (0.730); stock Gemma-4-12B-it with no training, not measured on the regression set |
+| a smaller GPU | [decider-4b](https://huggingface.co/Mapika/decider-4b) | 8.4 GB in bf16; held-out accuracy 0.784 on the regression set, JevBench public hard tier 0.649 |
+| a CPU or a laptop | [decider-2b-GGUF](https://huggingface.co/Mapika/decider-2b-GGUF) or [decider-4b-GGUF](https://huggingface.co/Mapika/decider-4b-GGUF) through llama.cpp, or [decider-2b](https://huggingface.co/Mapika/decider-2b) in PyTorch | Q4_K_M files of 1.3 GB (2B) and 2.7 GB (4B); on 8 server CPU threads a request of 40 to 120 tokens takes 0.12 to 0.31 s with the 2B and 0.3 to 0.7 s with the 4B |
+| 65 GB of GPU memory, or 19.6 GB with NVFP4 in vLLM | [decider-35b-a3b](https://huggingface.co/Mapika/decider-35b-a3b) | held-out accuracy 0.810 on the regression set, JevBench public hard tier 0.676 |
+
+Every model and its measurements: [Models](#models).
+
 ![decider playing Tetris, Breakout, Pong, Snake and Connect Four; each tile shows the three most probable options and the decision time](https://raw.githubusercontent.com/Mapika/decider/main/media/showcase.gif)
 
 *Recorded episodes; every move is one forward pass, and the bars are the served probabilities. Tetris: the harness shortlists
@@ -22,12 +46,15 @@ reproduction of the "System One" model class (TypeSafe AI's *Jev*): a 2B model b
 `Qwen/Qwen3.5-4B-Base` and a 35B mixture-of-experts model built on `Qwen/Qwen3.5-35B-A3B-Base`. The training mixture is public datasets plus data labelled by a
 local Qwen3.5-27B teacher (`teacher_data/`, `decider/data/mixture.py`). Nothing was distilled from Jev.
 
-**Contents:** [What's new](#whats-new) · [Standing](#standing) · [Models](#models) · [Runs on](#runs-on) ·
-[Quick start](#quick-start) · [Train your own](#train-your-own) · [How it works](#how-it-works) ·
+**Contents:** [Which model to use](#which-model-to-use) · [What's new](#whats-new) · [Standing](#standing) · [Models](#models) ·
+[Runs on](#runs-on) · [Quick start](#quick-start) · [Train your own](#train-your-own) · [How it works](#how-it-works) ·
 [Limits](#limits-stated-plainly) · [Results](https://github.com/Mapika/decider/blob/main/docs/RESULTS.md)
 
 ## What's new
 
+* **2026-09-29 — decider-ai 1.7.1** (issue #18). The `numpy<2` pin is removed (it made the install fail on Windows ARM64).
+  `Decider` and `decider.serve` default to float32 on CPU instead of bfloat16, which was about 13 times slower on a Snapdragon
+  X Elite CPU. `scripts/serve.sh` listens on 127.0.0.1; `DECIDER_HOST=0.0.0.0` restores the old behaviour.
 * **2026-09-29 — decider-12b and decider-ai 1.7.0.** [Mapika/decider-12b](https://huggingface.co/Mapika/decider-12b)
   is stock Gemma-4-12B-it read through the decider chat readout, with no training and per-type temperatures (Choice 4.0,
   Noul 1.0, Score 3.5). Results:
@@ -38,54 +65,11 @@ local Qwen3.5-27B teacher (`teacher_data/`, `decider/data/mixture.py`). Nothing 
   sharply.
 * **2026-09-27 — decider-ai 1.6.0: GGUF checkpoints in `Decider`.** `pip install "decider-ai[gguf]"`, then
   `Decider("Mapika/decider-4b-GGUF", gguf_file="decider-4b-v2.1-Q4_K_M.gguf")`: `decide` and `system_one` scored by llama.cpp
-  (CPU, CUDA or Metal), with the per-type temperatures of the model's config ([GGUF](#gguf-llamacpp)). One row per llama.cpp
-  decode; the HTTP server and `schema()` still need the torch engine, and torch is still installed.
-* **2026-09-27 — GGUF files for llama.cpp** (issue #16): [Mapika/decider-4b-GGUF](https://huggingface.co/Mapika/decider-4b-GGUF)
-  (v2.1) and [Mapika/decider-2b-GGUF](https://huggingface.co/Mapika/decider-2b-GGUF) (v11), each in Q4_K_M, Q8_0 and BF16.
-  They are not chat models: loading one in `llama-cli` or Ollama gives a text model, not decisions. `decide_gguf.py` in each
-  repository reads the answer from the option-letter logits with llama-cpp-python and decider-ai 1.5.0. On the 4B's regression
-  set (95 tasks, 144,226 questions) Q8_0 equals the bf16 weights and Q4_K_M (2.7 GB) is 0.2 points lower on in-task accuracy
-  with unchanged held-out accuracy; on the 2B, Q8_0 equals bf16 and Q4_K_M is 0.3 points lower in-task and 0.5 held-out. No package
-  change.
-* **2026-09-25 — decider-ai 1.5.0: `decider.serve_vllm`.** The `/v1/systemone` readout served by vLLM 0.29.0, for large stock
-  checkpoints read in the chat layout, such as Qwen/Qwen3.6-27B at temperature 1.943 (the Decision Index entry "Decider chat ·
-  Qwen3.6-27B"). Same prompt rows, same answer slot, softmax of the option-letter logits over T. On one idle B300, one request
-  at a time over the Decision Index 0.2 sample: median 32.3 ms and p95 430 ms, against 40.1 / 712 ms for `decider.serve` 1.4.0;
-  99.6% argmax agreement with the submitted run. vLLM pins its own torch, so it is installed in its own environment
-  ([Serving on vLLM](#serving-a-large-stock-model-on-vllm)). `DECIDER_LAYOUT=chat` also lets `decider.serve` read a stock
-  checkpoint in the chat layout.
-* **2026-09-24 — decider-4b v2.1, decider-2b v11 and decider-ai 1.4.0.** Both models are their parent plus a LoRA stage on
-  harder decisions whose replay rows are trained toward the parent's own answers, and both configs set one temperature per
-  answer type (`temperature_by_type`, read by decider-ai 1.4.0; older versions use the single `temperature`). decider-4b v2.1
-  gets back most of the sampled play v2 lost (bag-draw games 52% against 38% wins, live browser 93% against 88%) at v2's level
-  on hard sets (JevBench public hard tier 0.649 against 0.676), and is less well calibrated on hard items than v2. decider-2b
-  v11 is 10 to 11 points above v10 on our held-out hard sets and at 0.577 against 0.459 on the JevBench public hard tier, and
-  2.2 points lower on human-labelled public sets. Neither passed its pre-registered release rules; the model cards list every
-  failure. v2 and v10 stay under the Hub tags `v2` and `v10`. 1.4.0 also adds `python -m decider.calibrate`, which fits the
-  per-type map from your own labelled answers.
-* **2026-09-24 — decider-4b v2.** v1 plus a LoRA stage on harder decisions (generated decision families, document questions
-  written by Qwen3.6-27B and kept when two independent answers agreed, human-labelled sets, replay of v1's data). JevBench
-  public hard tier 0.676 against v1's 0.550 with hard-tier ECE 0.071 against 0.288 (recomputed at the release temperature from stored probabilities; 6 Score items kept at the candidate temperature), OpenJev +2.8 points, Bespoke's suite 0.773;
-  about 1 point lower on the regression set (0.824 / 0.779) and worse in sampled play (bag-draw games 38% against 57% wins).
-  v1 stays under the Hub tag `v1`; the model card says who should keep it. Same size and prompt layout, so no package change.
-* **2026-09-22 — decider-4b v1.** Qwen3.5-4B-Base, one pass over mixture v2 (the public mixture plus 26 further public
-  datasets and ten programmatic families), AdamW on bf16 parameters, no RL stage. Above decider-2b v10 on 87 of 95 regression
-  tasks (0.834 / 0.788 against 0.805 / 0.755), JevBench hard tier 0.541, Bespoke's suite 0.757; level with the 2B on TypeSafe
-  and OpenJev and 17 points below it on the held-out browser tasks. 8.4 GB bf16.
-* **2026-09-22 — 1.1.0: the HTTP server captures its CUDA graphs at start-up.** On the default path no request compiles or
-  captures a graph (the opt-in schema cache still captures one graph set per schema the first time it is used); request-size
-  and queue limits; `DECIDER_COMPILE` and `DECIDER_FP8` default off. Details in docs/CHANGELOG.md.
-* **2026-09-22 — 1.0.2 fixes wrong answers from the cached shared-state path** on Blackwell (a cuDNN attention backend fault; the
-  engine now turns that backend off). Upgrade if you serve long shared-state requests; details in docs/CHANGELOG.md.
-* **2026-09-22 — On PyPI as `decider-ai`** (the import name stays `decider`).
-* **2026-09-22 — Apple Silicon.** MPS acceleration for the dense models (0.8B, 2B, 2B vision), merged from pull request #2 by
-  **@simply-sunny**. See [Runs on](#runs-on).
-* **2026-09-20 — decider-35b-a3b v1**, and its NVFP4 build. The supervised recipe on Qwen3.5-35B-A3B-Base, routed experts
-  frozen, Muon on the block matrices; above decider-2b v10 on 93 of 95 regression tasks; no RL stage.
-* **2026-09-19 — decider-2b v10.** The v8 weights plus 384 steps of calibration-aware RL on live browser tasks and exact
-  games: sampled browser play 83% to 93%, belief 0.47 to 0.22 nats above the exact laws, everything else unchanged.
+  (CPU, CUDA or Metal), with the per-type temperatures of the model's config ([GGUF](#gguf-llamacpp)). The GGUF files of the
+  4B (v2.1) and the 2B (v11), each in Q4_K_M, Q8_0 and BF16, were published the same day (issue #16).
 
-Earlier versions, v1 to v9, are in [docs/CHANGELOG.md](https://github.com/Mapika/decider/blob/main/docs/CHANGELOG.md), with the per-stage measurements in
+Earlier entries (decider-ai 1.0.2 to 1.5.0, decider-4b v1 to v2.1, decider-2b v1 to v11, decider-35b-a3b v1) are in
+[docs/CHANGELOG.md](https://github.com/Mapika/decider/blob/main/docs/CHANGELOG.md), with the per-stage measurements in
 [docs/HISTORY.md](https://github.com/Mapika/decider/blob/main/docs/HISTORY.md).
 
 ## Standing
@@ -166,7 +150,8 @@ yet in this package, `scripts/train.sh full` reproduces the public 60% of its da
 
 * **CUDA.** bf16, `torch.compile`, shape-bucketed CUDA graphs, optional FP8 (e4m3) linears. The 2B needs about 4 GB, the 4B 8.4 GB, the 35B
   65 GB in bf16 or 19.6 GB in NVFP4.
-* **Apple Silicon, MPS.** Merged 2026-09-22 from pull request #2 by **@simply-sunny**. On an M1 Pro in float16, across the
+* **Apple Silicon, MPS.** Acceleration for the dense models (0.8B, 2B, 2B vision), merged 2026-09-22 from pull request #2 by
+  **@simply-sunny**. On an M1 Pro in float16, across the
   three 2B smoke-test workloads, the median request is 133 ms with the patch and 171 ms without it; on the held-out MASSIVE
   Scenario set (1,500 examples, temperature 1.30) the MPS path scores accuracy 0.7553 and ECE 0.0438 against the published
   bf16 row's 0.756 and 0.041. Conditions: `docs/benchmarks/mps-full-model.md`, `docs/benchmarks/mps-heldout.md`.
@@ -186,7 +171,7 @@ On Apple Silicon, `pip install "decider-ai[metal]"` adds the optional MLX/Metal 
 
 ```python
 from decider.infer import Decider
-d = Decider("Mapika/decider-2b")                             # one CUDA GPU, bf16, about 4 GB; downloads the weights on first use
+d = Decider("Mapika/decider-2b")                             # bf16 on CUDA (about 4 GB), float16 on MPS, float32 on CPU
 d.system_one(
     {"ticket": {"messages": [{"from": "customer", "text": "I was charged twice for order A-104. Please refund the duplicate."}]},
      "refund_policy": "Duplicate charges are eligible for a refund."},
@@ -209,6 +194,11 @@ d.decide("My card was charged twice.", [{"question": "Which team?", "options": [
 pip install "decider-ai[gguf]"          # llama-cpp-python; for a GPU: CMAKE_ARGS="-DGGML_CUDA=on" (or -DGGML_METAL=on) pip install ...
 ```
 
+On Windows on ARM (Snapdragon X), llama-cpp-python does not build with MSVC. Install the Visual Studio Build Tools component
+"C++ Clang tools for Windows" and build with clang, `-DGGML_OPENMP=OFF` and no GPU backend. On a Snapdragon X Elite this build
+ran decider-2b v11 Q8_0 at about 220 ms per 3-question request on 8 threads. The build recipe and measurements are in
+[esterhuizen/system-one-on-snapdragon](https://github.com/esterhuizen/system-one-on-snapdragon) (docs/FINDINGS.md), from issue #18.
+
 ```python
 from decider.infer import Decider
 d = Decider("Mapika/decider-4b-GGUF", gguf_file="decider-4b-v2.1-Q4_K_M.gguf")      # 2.7 GB; or a local path to a .gguf file
@@ -216,7 +206,8 @@ d.decide("My card was charged twice.", [{"question": "Which team?", "options": [
 d.system_one(state, questions)                                                       # as above
 ```
 
-The tokenizer and `decider_config.json` come from the same repository or folder as the `.gguf` file. `gguf_options` passes
+The GGUF files are not chat models: loading one in `llama-cli` or Ollama gives a text model, not decisions. The tokenizer and
+`decider_config.json` come from the same repository or folder as the `.gguf` file. `gguf_options` passes
 `n_ctx`, `n_gpu_layers` (-1, the default, offloads every layer when the build has a GPU; 0 is CPU only) and `n_threads` to
 llama.cpp. Rows are scored one per llama.cpp decode: packing several rows into one decode (`n_seq_max`) is faster but moves
 the probabilities with the other rows in the batch, by up to 0.16 in Q4_K_M. `schema()` (the questions-first cache) needs the
@@ -278,7 +269,7 @@ The keys of the maps are the `/v1/systemone` question types. A `/decide` field o
 yes/no row per level) uses the `score` temperature on each of its level rows, because the rows form one Score answer.
 Every value must be a finite number > 0, and any other key in a map is refused when the model is loaded.
 `Decider(path, temperature=T)` and `DECIDER_TEMPERATURE` replace `temperature` and switch `temperature_by_type` off.
-decider-4b v2.1 and decider-2b v11 have a map; the other released models have one `temperature`. decider-ai 1.3.0 and earlier
+decider-4b v2.1, decider-2b v11 and decider-12b have a map; the other released models have one `temperature`. decider-ai 1.3.0 and earlier
 ignore the map and use `temperature` for every answer. `python -m decider.calibrate records.jsonl` fits the map by NLL
 from answers read at temperature 1 (record format in `decider/calibrate.py`). `/health` reports the temperature each type gets.
 
@@ -375,7 +366,9 @@ decider/prompt.py        the two prompt layouts, label table, answer slots
 decider/model.py         DecisionModel: backbone -> slot hidden states -> option logits
 decider/systemone.py     Choice / Score / Noul with criteria -> prompt rows; typed answers; isolated levels
 decider/infer.py         Decider: system_one(), schema() (compiled, cached question sets), decide()
-decider/engine.py        CUDA graphs, torch.compile, shared-prefix scoring;  fp8.py, schema_engine.py, mps_ops.py
+decider/engine.py        CUDA graphs, torch.compile, shared-prefix scoring;  fp8.py, schema_engine.py, mps_ops.py, mps_moe.py
+decider/engine_gguf.py   GGUFEngine: the same readout on llama.cpp through llama-cpp-python
+decider/calibrate.py     fits the per-type temperatures from labelled answers
 decider/serve.py         HTTP server: /v1/systemone, /decide, continuous batching
 decider/serve_vllm.py    HTTP server on vLLM 0.29.0: /v1/systemone for large stock or chat-layout models;  vllm_worker.py
 decider/data/            ~95 public datasets, input-shape augmentations, the mixture, the 27B teacher data
@@ -386,7 +379,7 @@ decider/games/           ten text games + Super Mario Bros behind the same inter
 decider/vision/          the vision-language variant (decisions from pixels)
 moe/                     frozen-expert Muon training, evaluation and NVFP4 quantization for decider-35b-a3b
 scripts/  examples/  tests/  teacher_data/  media/
-docs/                    RESULTS.md (every measurement), CHANGELOG.md, HISTORY.md, RL.md, benchmarks/ (MPS)
+docs/                    RESULTS.md (every measurement), CHANGELOG.md, HISTORY.md, RL.md, SERVING.md, DEMOS.md, benchmarks/ (MPS)
 ```
 
 ## Citation
