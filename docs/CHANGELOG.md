@@ -3,6 +3,23 @@
 Newest first. Every entry names the weights it applies to; the Hub repositories keep earlier weights under tags where noted.
 `HISTORY.md` is the long form: how each stage was trained and what was measured.
 
+## 1.8.1 (2026-09-30): shared-prefix memory bound for Gemma-4 and long suffixes
+
+* **Gemma-4 requests are chunked again on the shared-prefix path.** Gemma-4's sliding-window cache layers hold the window
+  size as a 0-dim tensor (`_sliding_window_tensor`). The fork took it for an unknown per-row state, so every long-state
+  Gemma-4 request ran one unbounded fork of all its questions. A 0-dim tensor has no batch dimension and is now shared by
+  every row.
+* **The suffixes of one shared-prefix forward are bounded.** A new setting, `DECIDER_SHARED_SUFFIX_TOKENS` (65,536), limits
+  rows × longest suffix in one forward. Before, only the copies of the prefix cache were bounded.
+  * Retrieval requests pair a short shared prefix with a long document per question. On Decision Index ToolRet and BRIGHT
+    chunks (32 suffixes of about 26k tokens), the attention mask of one 32-row forward alone was about 24 GB.
+  * Requests with short questions are far below the limit, and their batches are unchanged.
+* **Measured** on decider-12b v2 in `decider.serve` on one B300:
+  * The 7 Decision Index requests that ran out of memory in 1.8.0, even alone on 268 GB, now read at 68.5 GB peak.
+  * Those 7 agree with `decider.serve_vllm` on 222 of 222 questions.
+  * Replaying 340 other index requests gives the 1.8.0 argmax on every one of their 1,679 questions (largest probability
+    change 0.028, from batching round-off).
+
 ## Model update (2026-09-29): decider-12b v2, no package change
 
 * [Mapika/decider-12b](https://huggingface.co/Mapika/decider-12b) main is v2: Gemma-4-12B-it with a merged LoRA.

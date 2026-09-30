@@ -7,7 +7,13 @@ costs n times the prefix cache, which is 133 GB on a 31B model and is wasteful o
 forked in chunks of m rows, m chosen so that one fork fits a byte budget, and the rows are scored chunk by chunk.
 
 The budget is `DECIDER_SHARED_FORK_GB` (8 GB), capped at half of the memory currently free on the device (device-free
-plus the caching allocator's reserved-but-unused blocks); `m = clamp(budget // prefix_bytes, 1, n)`.  Chunking changes
+plus the caching allocator's reserved-but-unused blocks); `m = clamp(budget // prefix_bytes, 1, n)`.
+
+The suffixes are bounded too (1.8.1).  A chunk of b rows runs b x Ts padded suffix tokens against the prefix, and its
+attention mask alone is b x Ts x (prefix + Ts).  A request whose questions each carry a long document (a retrieval chunk:
+a short shared prefix, 32 suffixes of 26k tokens) needed about 24 GB for the mask of one 32-row forward.  So a chunk also
+keeps b x Ts within `DECIDER_SHARED_SUFFIX_TOKENS` (65,536 padded tokens), at least one row per chunk; `plan_chunks`
+cuts the rows in order.  Requests with short questions have b x Ts far below that, and their chunks are as before.  Chunking changes
 which rows share a forward and how far each chunk's suffixes are padded, so answers can move by the usual bf16
 reduction-order amount; they do not depend on it mathematically (right padding, causal layers).
 
@@ -37,6 +43,7 @@ from decider.model import cap_logits
 from decider.temperature import item_slice, slot_temperatures
 
 DEFAULT_FORK_GB = 8.0
+DEFAULT_SUFFIX_TOKENS = 65536
 STATE_NAMES = ("keys", "values", "indexer_keys", "conv_states", "recurrent_states")
 
 
@@ -89,13 +96,17 @@ def unknown_state_names(cache):
     """Attribute names the cache's layers hold that carry tensors and are not in `STATE_NAMES`.
 
     A tensor outside the enumerated set may or may not have a batch dimension, and `fork_cache` would leave it at one
-    row.  When this is not empty the caller must not chunk."""
+    row.  When this is not empty the caller must not chunk.  A 0-dim tensor has no batch dimension and is shared by every
+    row as it is: Gemma-4's sliding-window layers hold the window size as `_sliding_window_tensor` (1.8.1; before, every
+    Gemma-4 request took the unchunked fork)."""
+    def batched(t):
+        return isinstance(t, torch.Tensor) and t.dim() > 0
     out = set()
     for layer in getattr(cache, "layers", None) or []:
         for name, v in vars(layer).items():
             if name in STATE_NAMES:
                 continue
-            if isinstance(v, torch.Tensor) or (isinstance(v, dict) and any(isinstance(t, torch.Tensor) for t in v.values())):
+            if batched(v) or (isinstance(v, dict) and any(batched(t) for t in v.values())):
                 out.add(name)
     return out
 
@@ -124,6 +135,23 @@ def chunk_rows(prefix_bytes, n, budget_bytes=None, device=None):
     if prefix_bytes <= 0:
         return max(1, int(n))
     return max(1, min(int(n), int(budget_bytes // prefix_bytes)))
+
+
+def suffix_token_budget(tokens=None):
+    """DECIDER_SHARED_SUFFIX_TOKENS: padded suffix tokens (rows x longest suffix) in one suffix forward."""
+    return max(1, int(os.environ.get("DECIDER_SHARED_SUFFIX_TOKENS", DEFAULT_SUFFIX_TOKENS) if tokens is None else tokens))
+
+
+def plan_chunks(suffix_lens, m, tokens):
+    """Contiguous (start, end) chunks of the rows: at most m rows each, and rows x the chunk's longest suffix within
+    `tokens`, but always at least one row."""
+    out, i, n = [], 0, len(suffix_lens)
+    while i < n:
+        j, longest = i + 1, suffix_lens[i]
+        while j < n and j - i < m and (j - i + 1) * max(longest, suffix_lens[j]) <= tokens:
+            longest = max(longest, suffix_lens[j]); j += 1
+        out.append((i, j)); i = j
+    return out
 
 
 def fork_cache(cache, m, row=0):
@@ -156,13 +184,15 @@ def _count(engine, key):
 
 
 @torch.no_grad()
-def score_shared(engine, items, temperature=1.0, min_prefix=192, budget_bytes=None, rows_per_fork=None):
+def score_shared(engine, items, temperature=1.0, min_prefix=192, budget_bytes=None, rows_per_fork=None, suffix_tokens=None):
     """Score `items` through the shared prefix.  -> one probability tensor per item, in item order, or None when the
     request does not qualify (fewer than two rows, or a common prefix below `min_prefix`) and the caller should use
     `score_items`.
 
     `temperature`: a number, or one entry per item (decider.temperature.slot_temperatures).
-    `rows_per_fork` forces the chunk size; it exists for the tests that compare chunked against unchunked answers."""
+    `rows_per_fork` forces the chunk size; it exists for the tests that compare chunked against unchunked answers.
+    `suffix_tokens` bounds rows x longest suffix per chunk (DECIDER_SHARED_SUFFIX_TOKENS); an unknown cache layout keeps
+    its single fork of all rows."""
     ids = [it["ids"] for it in items]
     n = len(ids)
     if n < 2:
@@ -183,9 +213,13 @@ def score_shared(engine, items, temperature=1.0, min_prefix=192, budget_bytes=No
     else:
         m = chunk_rows(cache_row_bytes(cache), n, budget_bytes, dev)
     m = max(1, min(m, n))
+    if unknown:
+        chunks = [(0, n)]
+    else:
+        chunks = plan_chunks([len(x) - lcp for x in ids], m, suffix_token_budget(suffix_tokens))
     out = []
-    for i in range(0, n, m):
-        part = items[i:i + m]
+    for i, j in chunks:
+        part = items[i:j]
         b = len(part)
         fork = fork_cache(cache, b)
         Ts = max(len(it["ids"]) for it in part) - lcp

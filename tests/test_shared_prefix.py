@@ -118,7 +118,7 @@ in-place recurrent state and changes the next chunk's answers; a wrong slot offs
 import torch.nn.functional as F
 
 from decider.prompt import MAX_OPTIONS
-from decider.shared_prefix import fork_budget_bytes, score_shared
+from decider.shared_prefix import fork_budget_bytes, plan_chunks, score_shared
 
 H = 8
 PAD = 7
@@ -303,3 +303,51 @@ def test_an_unknown_cache_layout_is_not_chunked():
     plain = _Eng()
     assert _same(_cat(got), _cat(score_shared(plain, items, rows_per_fork=len(items))))
     assert "shared_unchunked_layout" not in plain.stats
+
+
+def test_plan_chunks_bounds_rows_and_suffix_tokens():
+    assert plan_chunks([10] * 5, 2, 10 ** 6) == [(0, 2), (2, 4), (4, 5)]          # the row cap alone
+    assert plan_chunks([100, 100, 100, 100], 32, 250) == [(0, 2), (2, 4)]          # 2 x 100 fits, 3 x 100 does not
+    assert plan_chunks([10, 10, 300, 10], 32, 250) == [(0, 2), (2, 3), (3, 4)]     # a long row over the budget runs alone
+    assert plan_chunks([], 4, 100) == []
+
+
+def test_long_suffixes_are_split_by_the_suffix_budget():
+    """Retrieval-style requests: a short shared prefix and a long suffix per question.  The suffix budget splits the
+    forward that the fork budget alone would run as one batch, and the answers match the single fork."""
+    eng = _Eng()
+    items = _items([40, 44, 38, 41])
+    ref = _cat(score_shared(eng, items, rows_per_fork=len(items), suffix_tokens=10 ** 6))
+    eng.core.calls.clear()
+    got = _cat(score_shared(eng, items, rows_per_fork=len(items), suffix_tokens=90))
+    assert eng.core.calls == [1, 2, 2]                                   # the prefix once, then 2 x 44 and 2 x 41
+    assert _same(got, ref)
+
+
+def test_the_suffix_budget_reads_the_environment(monkeypatch):
+    eng = _Eng()
+    items = _items([40, 44, 38, 41])
+    monkeypatch.setenv("DECIDER_SHARED_SUFFIX_TOKENS", "45")
+    eng.core.calls.clear()
+    score_shared(eng, items, rows_per_fork=len(items))
+    assert eng.core.calls == [1, 1, 1, 1, 1]
+
+
+def test_an_unknown_layout_keeps_one_fork_under_the_suffix_budget():
+    eng = _Eng(extra_state=True)
+    items = _items([40, 44, 38])
+    eng.core.calls.clear()
+    score_shared(eng, items, suffix_tokens=10)
+    assert eng.core.calls == [1, 3]
+
+
+def test_a_scalar_tensor_is_not_an_unknown_state():
+    """Gemma-4's sliding-window cache layers hold the window as a 0-dim tensor; it has no batch dimension."""
+    class _Sliding(_AttnLayer):
+        def __init__(self):
+            super().__init__()
+            self._sliding_window_tensor = torch.tensor(1024)
+            self.cumulative_length = 0
+    assert unknown_state_names(_Cache([_AttnLayer(), _Sliding()])) == set()
+    f = fork_cache(_Cache([_Sliding()]), 3)
+    assert int(f.layers[0]._sliding_window_tensor) == 1024

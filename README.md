@@ -53,6 +53,9 @@ local Qwen3.5-27B teacher (`teacher_data/`, `decider/data/mixture.py`). Nothing 
 
 ## What's new
 
+* **2026-09-30 — decider-ai 1.8.1.** `decider.serve` bounds the shared-prefix forward for Gemma-4 and for long per-question
+  suffixes. Decision Index retrieval requests with 32 documents of about 26k tokens ran out of memory in 1.8.0 even on a 268 GB
+  GPU; they now read at 68.5 GB peak. New setting: `DECIDER_SHARED_SUFFIX_TOKENS` (65,536).
 * **2026-09-29 — decider-ai 1.8.0 and two `decider-chat` model repositories.** `temperature_by_options` in
   `decider_config.json` sets T(n) = max(min, a + b ln n) for a question with n options. [Mapika/decider-chat-gemma4-31b](https://huggingface.co/Mapika/decider-chat-gemma4-31b)
   (#2 of 70 on the Decision Index, 57.33) uses it. [Mapika/decider-chat-qwen3.6-27b](https://huggingface.co/Mapika/decider-chat-qwen3.6-27b) (#8, 51.35) uses one temperature.
