@@ -188,6 +188,12 @@ yet in this package, `scripts/train.sh full` reproduces the public 60% of its da
   40 to 120 tokens takes 0.3 to 0.7 s with the 4B in Q4_K_M and 0.12 to 0.31 s with the 2B. The HTTP server does not serve GGUF
   files, and torch is still installed (decider-ai depends on it).
 * **CPU.** The library and the HTTP server run on CPU in float32 (since 1.7.1; bfloat16 was about 13 times slower on a Windows ARM64 CPU, issue #18), eager; the unit tests run without a GPU: `python -m pytest tests`.
+* **Snapdragon X Elite NPU (community port).** **@esterhuizen** runs decider-12b v2 entirely on the Hexagon NPU through
+  ONNX Runtime QNN, with 4-bit LPBQ weights and the decider-ai 1.8.1 prompt and readout (issue #18). Their measurements, on one
+  X Elite (HTP v73): about 2.2 s per request, 576 tokens per pass, the same answer as a PyTorch fp32 reference on 6 of 6 rows,
+  and JevBench public items easy 1.000, standard 0.986, hard 0.717 on the 53 hard items that fit in 576 tokens. Code and write-up:
+  [esterhuizen/system-one-on-snapdragon](https://github.com/esterhuizen/system-one-on-snapdragon) (`decider-npu/`,
+  docs/WINNOW-NPU.md); NPU files: [tielmane/decider-12b-NPU-LPBQ-X-Elite](https://huggingface.co/tielmane/decider-12b-NPU-LPBQ-X-Elite).
 
 ## Quick start
 
