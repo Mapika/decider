@@ -7,7 +7,7 @@ Newest first. Every entry names the weights it applies to; the Hub repositories 
 
 * **New model: [Mapika/decider-31b](https://huggingface.co/Mapika/decider-31b).** Gemma-4-31B-it with a merged fine-tune,
   NVFP4 (MLP) / bf16 (attention) / FP8 KV cache, served by `decider.serve_vllm`. Decision Index 0.3 public suite, our run:
-  64.23, ECE_bw 0.035 (stock Gemma-4-31B-it readout, our previous entry: 57.79 public on the board). One request at a
+  64.27, ECE_bw 0.039 (run with this release) (stock Gemma-4-31B-it readout, our previous entry: 57.79 public on the board). One request at a
   time on a B300: median 39 ms, mean 116 ms, p80 203 ms.
 * **Second reading** (`decider_config.json` `"second_reading"`, off unless a model sets it): a question whose top probability
   after the first reading is below `"below"` is read again with its options reversed; the two letter log-softmaxes are
