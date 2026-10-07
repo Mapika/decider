@@ -647,3 +647,14 @@ def test_calibrate_collect_reads_temperature_one(tc):
     for bad in ({"queue": "refunds"}, {"flag": "yes"}, {"sev": 3}, {"sev": 1.5}):
         with pytest.raises(ValueError, match="gold of"):
             collect(d, [(tc.STATE, tc.QUESTIONS, bad)])
+
+
+def test_scaled_softmax_per_row_temperature_on_mps_matches_cpu():
+    torch = pytest.importorskip("torch")
+    if not torch.backends.mps.is_available():
+        pytest.skip("MPS only (issue #21)")
+    lg = torch.full((1, 16), float("-inf")); lg[0, :3] = torch.tensor([14.622, 10.072, 8.722])
+    want = TT.scaled_softmax(lg, [1.164])
+    for _ in range(200):
+        got = TT.scaled_softmax(lg.to("mps"), [1.164]).cpu()
+        assert torch.allclose(got, want, atol=1e-6)

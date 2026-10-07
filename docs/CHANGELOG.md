@@ -3,6 +3,17 @@
 Newest first. Every entry names the weights it applies to; the Hub repositories keep earlier weights under tags where noted.
 `HISTORY.md` is the long form: how each stage was trained and what was measured.
 
+## 1.8.2 (2026-10-07): per-type temperatures on Apple Silicon (issue #21)
+
+* **Fixed NaN probabilities on MPS with a per-type temperature map** (decider-ai 1.4.0 to 1.8.1; reported with diagnosis and
+  repro by @bharathvbcr). `scaled_softmax` built the per-row temperature tensor on the host and copied it with
+  `non_blocking=True`. On MPS that copy can read the temporary host buffer after it is freed, so the temperature arrived as
+  garbage and every answer of a model with `temperature_by_type` (such as decider-2b v11) was NaN. The tensor is now
+  built on the device. The same pattern in `read_slots` (slot indices) is fixed the same way, and the token-id copies to the
+  device are asynchronous only on CUDA.
+* **No change on CUDA or CPU:** the CPU test suite passes unchanged; the copies affected are a few hundred bytes per batch.
+* Weights: none changed.
+
 ## 1.8.1 (2026-09-30): shared-prefix memory bound for Gemma-4 and long suffixes
 
 * **Gemma-4 requests are chunked again on the shared-prefix path.** Gemma-4's sliding-window cache layers hold the window

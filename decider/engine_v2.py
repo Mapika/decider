@@ -168,7 +168,7 @@ class EngineV2:
         for B in plan:
             chunk = items[i:i + B]; i += len(chunk)
             ids = fill_ids([it["ids"] for it in chunk], B, T, self.tok.pad_token_id)
-            lg = self.logits_all(ids.to(self.dev, non_blocking=True))
+            lg = self.logits_all(ids.to(self.dev, non_blocking=str(self.dev).startswith("cuda")))     # async copies only on CUDA (issue #21)
             out += read_slots(lg, [b for b, it in enumerate(chunk) for _ in it["slots"]],
                               [s for it in chunk for s in it["slots"]], [n for it in chunk for n in it["nopts"]],
                               slot_temperatures(item_slice(temperature, i - len(chunk), i), chunk), [len(it["slots"]) for it in chunk])

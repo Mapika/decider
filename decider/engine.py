@@ -49,7 +49,7 @@ def read_slots(out, rows, slots, nopts, temperature, n_per_item):
     """One gather + one softmax + one device-to-host copy for the whole batch (was: three small kernels and a sync per item).
     out [B, T, K] logits; rows/slots/nopts: flat python lists, one entry per question; n_per_item: questions per item.
     temperature: a number for every question, or a flat list with one temperature per question (decider.temperature)."""
-    dev = out.device; idx = torch.tensor([rows, slots, nopts], dtype=torch.long).to(dev, non_blocking=True)
+    dev = out.device; idx = torch.tensor([rows, slots, nopts], dtype=torch.long, device=dev)     # on the device (issue #21)
     lg = out[idx[0], idx[1]]                                                                  # [N, K]
     lg = lg.masked_fill(torch.arange(lg.shape[1], device=dev)[None, :] >= idx[2][:, None], float("-inf"))
     p = scaled_softmax(lg, temperature).cpu()
@@ -148,7 +148,7 @@ class Engine:
         T = _bucket(Tmax, T_BUCKETS) or -(-Tmax // LONG_STEP) * LONG_STEP
         B = (_bucket(len(items), B_BUCKETS) or len(items)) if T <= GRAPH_MAX_T else len(items)
         ids = fill_ids([it["ids"] for it in items], B, T, self.tok.pad_token_id)
-        out = self.logits_all(ids.to(self.dev, non_blocking=True))
+        out = self.logits_all(ids.to(self.dev, non_blocking=str(self.dev).startswith("cuda")))     # async copies only on CUDA (issue #21)
         return read_slots(out, [b for b, it in enumerate(items) for _ in it["slots"]], [s for it in items for s in it["slots"]],
                           [n for it in items for n in it["nopts"]], slot_temperatures(temperature, items), [len(it["slots"]) for it in items])
 

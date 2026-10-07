@@ -174,6 +174,7 @@ def scaled_softmax(lg, temperature):
     if isinstance(temperature, (list, tuple)):
         if len(temperature) != lg.shape[0]:
             raise ValueError(f"temperature: {len(temperature)} values for {lg.shape[0]} slots")
-        t = torch.tensor(temperature, dtype=lg.dtype).to(lg.device, non_blocking=True)[:, None]
+        t = torch.tensor(temperature, dtype=lg.dtype, device=lg.device)[:, None]     # built on the device: an async copy from a
+        # temporary host tensor reads freed memory on MPS (issue #21)
         return torch.softmax(lg / t, -1)
     return torch.softmax(lg / temperature, -1)

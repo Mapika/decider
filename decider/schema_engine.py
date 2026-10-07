@@ -136,7 +136,8 @@ class SchemaEngine:
             raise ValueError(f"temperature: {len(temperature)} values for a schema with {h.nq} rows")
         Tmax = max(len(r[0]) for r in rows); Ts = next((t for t in TS_BUCKETS if t >= Tmax), None); n = len(rows)
         R = next((b for b in B_BUCKETS if b >= n), n) if Ts else n; Ts = Ts or -(-Tmax // 256) * 256
-        ids = fill_ids([x for x, _ in rows for _ in range(h.P)], R * h.P, Ts, self.tok.pad_token_id).to(self.dev, non_blocking=True)
+        ids = fill_ids([x for x, _ in rows for _ in range(h.P)], R * h.P, Ts, self.tok.pad_token_id)
+        ids = ids.to(self.dev, non_blocking=str(self.dev).startswith("cuda"))     # async copies only on CUDA (issue #21)
         if self.use_graphs and Ts <= TS_BUCKETS[-1]:
             key = (h.id, R, Ts)
             if key not in self.graphs: self.graphs[key] = self._capture(h, R, Ts)
