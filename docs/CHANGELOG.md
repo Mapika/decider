@@ -3,6 +3,22 @@
 Newest first. Every entry names the weights it applies to; the Hub repositories keep earlier weights under tags where noted.
 `HISTORY.md` is the long form: how each stage was trained and what was measured.
 
+## 1.9.0 (2026-10-07): decider-31b; second reading and attention backend in decider.serve_vllm
+
+* **New model: [Mapika/decider-31b](https://huggingface.co/Mapika/decider-31b).** Gemma-4-31B-it with a merged fine-tune,
+  NVFP4 (MLP) / bf16 (attention) / FP8 KV cache, served by `decider.serve_vllm`. Decision Index 0.3 public suite, our run:
+  64.23, ECE_bw 0.035 (stock Gemma-4-31B-it readout, our previous entry: 57.79 public on the board). One request at a
+  time on a B300: median 39 ms, mean 116 ms, p80 203 ms.
+* **Second reading** (`decider_config.json` `"second_reading"`, off unless a model sets it): a question whose top probability
+  after the first reading is below `"below"` is read again with its options reversed; the two letter log-softmaxes are
+  averaged and the softmax is taken at the second reading's own T(n). `DECIDER_SECOND_READING_BELOW` overrides the threshold
+  (0 = off).
+* **Attention backend** (`DECIDER_VLLM_ATTENTION`, or `decider_config.json` `"vllm_attention"`). decider-31b sets
+  `TRITON_ATTN`: with an FP8 KV cache, vLLM 0.29's FlashInfer backend returned NaN in batched readouts in our tests.
+* **Checked:** the 0.3 sample (4,500 requests) through this server agrees with our development server on 34,530 of 34,534
+  questions (sample score 62.49 vs 62.50). CPU test suite: 294 passed (two new tests for the second reading).
+* Models without these keys are served as in 1.8.2.
+
 ## 1.8.2 (2026-10-07): per-type temperatures on Apple Silicon (issue #21)
 
 * **Fixed NaN probabilities on MPS with a per-type temperature map** (decider-ai 1.4.0 to 1.8.1; reported with diagnosis and

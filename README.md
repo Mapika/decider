@@ -35,6 +35,7 @@ The typed form (`system_one`), the HTTP server and GGUF loading are in [Quick st
 | if you have | use | why |
 |---|---|---|
 | a GPU, and hard decisions (long policy texts, multi-hop reasoning) | [decider-12b](https://huggingface.co/Mapika/decider-12b) | 24 GB in bf16; JevBench public hard tier 0.712 (v1 0.730); Gemma-4-12B-it with a state-tracking LoRA merged in (v2), not measured on the regression set |
+| a Blackwell GPU (NVFP4, 31 GB) and vLLM, and the best Decision Index score | [decider-31b](https://huggingface.co/Mapika/decider-31b) | Decision Index 0.3 public suite 64.23 (our run), median 39 ms; `decider.serve_vllm` |
 | a large GPU (62.5 GB of bf16 weights), and broad knowledge and reasoning | [decider-chat-gemma4-31b](https://huggingface.co/Mapika/decider-chat-gemma4-31b) | stock Gemma-4-31B-it with an option-count temperature; #2 of 70 on the Decision Index (57.33, ECE 0.047) |
 | a smaller GPU | [decider-4b](https://huggingface.co/Mapika/decider-4b) | 8.4 GB in bf16; held-out accuracy 0.784 on the regression set, JevBench public hard tier 0.649 |
 | a CPU or a laptop | [decider-2b-GGUF](https://huggingface.co/Mapika/decider-2b-GGUF) or [decider-4b-GGUF](https://huggingface.co/Mapika/decider-4b-GGUF) through llama.cpp, or [decider-2b](https://huggingface.co/Mapika/decider-2b) in PyTorch | Q4_K_M files of 1.3 GB (2B) and 2.7 GB (4B); on 8 server CPU threads a request of 40 to 120 tokens takes 0.12 to 0.31 s with the 2B and 0.3 to 0.7 s with the 4B |
@@ -53,6 +54,12 @@ local Qwen3.5-27B teacher (`teacher_data/`, `decider/data/mixture.py`). Nothing 
 
 ## What's new
 
+* **2026-10-07 — decider-31b and decider-ai 1.9.0.** [Mapika/decider-31b](https://huggingface.co/Mapika/decider-31b):
+  Gemma-4-31B-it with a merged fine-tune, NVFP4, served by `decider.serve_vllm`. Decision Index 0.3 public suite (our run, all
+  140,178 requests): 64.23, ECE_bw 0.035; one request at a time on a B300, median 39 ms. New in `decider.serve_vllm`: an
+  optional second reading of unsure questions with the options reversed (`decider_config.json` `second_reading`) and the
+  attention backend setting (`vllm_attention`, `DECIDER_VLLM_ATTENTION`).
+* **2026-10-07 — decider-ai 1.8.2.** Per-type temperatures on Apple Silicon no longer return NaN (issue #21).
 * **2026-09-30 — decider-ai 1.8.1.** `decider.serve` bounds the shared-prefix forward for Gemma-4 and for long per-question
   suffixes. Decision Index retrieval requests with 32 documents of about 26k tokens ran out of memory in 1.8.0 even on a 268 GB
   GPU; they now read at 68.5 GB peak. New setting: `DECIDER_SHARED_SUFFIX_TOKENS` (65,536).

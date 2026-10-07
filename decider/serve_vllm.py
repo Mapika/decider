@@ -34,6 +34,12 @@ Variables (default):  DECIDER_MODEL  DECIDER_LAYOUT (from decider_config.json; "
   DECIDER_VLLM_MAX_BATCHED_TOKENS (16384)  DECIDER_VLLM_PREFILL_FIRST_TOKENS (512)  DECIDER_VLLM_QUANTIZATION (from the
   checkpoint)  DECIDER_VLLM_ENFORCE_EAGER (0)  DECIDER_VLLM_WIDE_LOGPROBS (1)  DECIDER_MAX_ROWS (1024)  DECIDER_MAX_ROW_TOKENS
   (DECIDER_MAX_STATE_TOKENS + 4096)  DECIDER_MAX_REQUEST_TOKENS (1048576)  DECIDER_MAX_QUEUE_ROWS (4096)  DECIDER_TOKENIZE_THREADS (8)
+  DECIDER_VLLM_ATTENTION (decider_config.json "vllm_attention", else vLLM's choice)  DECIDER_SECOND_READING_BELOW (decider_config.json
+  "second_reading"; 0 = one reading)
+
+Second reading (decider_config.json "second_reading", off by default).  A question whose top probability after the first
+reading is below "below" is read again with its options in reversed order; the two letter log-softmaxes are averaged and a
+softmax is taken at the second reading's own T(n) = max(min, a + b ln n).  Rows above the threshold keep the first reading.
 
 Install.  vLLM 0.29.0 needs numpy 2 and pins its own torch, while decider-ai's base requirements pin numpy < 2, so the two are
 not installed as one set of requirements.  Use a separate environment:
@@ -75,6 +81,8 @@ WIDE_LOGPROBS = os.environ.get("DECIDER_VLLM_WIDE_LOGPROBS", "1") == "1"
 LOGPROB_IDS_CAP = 128                      # letter ids per vLLM request; raised at start-up when every worker allows more
 
 MODEL_NAME = "decider"; TEMP = 1.0; TEMP_BY_TYPE = {}; LAYOUT = "plain"; CHAT = None; ISOLATED = False
+SECOND = None   # (below, a, b, min) from decider_config.json "second_reading", or None (one reading)
+ATTENTION = os.environ.get("DECIDER_VLLM_ATTENTION") or None   # vLLM attention backend; decider_config.json "vllm_attention" if unset
 engine = None; tok = None; LETTER_IDS = None; outstanding = 0; BLOCK = 16; cpu = None
 stats = dict(requests=0, decisions=0, rows=0, vllm_requests=0, prefill_first=0, errors=0, rejected_too_large=0,
              rejected_overloaded=0)
@@ -87,12 +95,68 @@ def load_config(path):
 
 def apply_config(cfg):
     """Layout, temperatures and name from decider_config.json, with DECIDER_LAYOUT / DECIDER_TEMPERATURE overrides."""
-    global MODEL_NAME, TEMP, TEMP_BY_TYPE, LAYOUT, ISOLATED
+    global MODEL_NAME, TEMP, TEMP_BY_TYPE, LAYOUT, ISOLATED, SECOND
     cfg = with_layout(cfg, LAYOUT_ENV)
+    SECOND = second_reading(cfg.get("second_reading"), os.environ.get("DECIDER_SECOND_READING_BELOW"))
+    global ATTENTION
+    ATTENTION = ATTENTION or cfg.get("vllm_attention") or None
     LAYOUT = resolve_layout(cfg)
     (TEMP, TEMP_BY_TYPE), _ = TT.from_config(cfg, os.environ.get("DECIDER_TEMPERATURE"))
     MODEL_NAME = "decider-" + str(cfg.get("version", "dev"))
     ISOLATED = bool(cfg.get("isolated_levels", False))
+
+
+def second_reading(spec, below_env=None):
+    """decider_config.json "second_reading": {"below": p, "temperature_by_options": {"a", "b", "min"}} -> (p, a, b, min).
+    A question whose top probability after the first reading is below p is read again with its options in reversed order;
+    the two letter log-softmaxes are averaged and the softmax is taken at max(min, a + b ln n).  DECIDER_SECOND_READING_BELOW
+    overrides p (0 = off).  Needs the first reading's temperature as "temperature_by_options" or a plain "temperature"."""
+    if not spec:
+        return None
+    below = float(below_env) if below_env not in (None, "") else float(spec.get("below", 0.0))
+    if below <= 0:
+        return None
+    t = spec.get("temperature_by_options") or {}
+    if not {"a", "b"} <= set(t):
+        raise ValueError('decider_config.json "second_reading" needs "temperature_by_options": {"a": .., "b": ..}')
+    return below, float(t["a"]), float(t["b"]), float(t.get("min", 0.05))
+
+
+def _lsm(v):
+    m = max(v); z = m + math.log(sum(math.exp(x - m) for x in v)); return [x - z for x in v]
+
+
+def _prepare_rev(state, questions):
+    """CPU pool: the rows of _prepare_s1 with every row's options in reversed order (the second reading)."""
+    from decider.prompt_fast import build_rows
+    rqs = {k: S1.render_question(v) for k, v in questions.items()}
+    flat, _ = S1.plan_rows(rqs, ISOLATED)
+    items, _ = build_rows(tok, S1.render_state(state), [[(f["question"], list(f["options"])[::-1])] for f in flat],
+                          max_ctx_tokens=MAX_STATE_TOKENS, chat=CHAT)
+    return items
+
+
+async def second_pass(state, questions, items, probs):
+    """Re-read the unsure rows in reversed option order (SECOND); returns the new probability list.  The first reading's
+    log-softmax is recovered from its probabilities (log p x T1 differs from it by a constant)."""
+    below, a, b, lo = SECOND
+    sel = [i for i, p in enumerate(probs) if max(p) < below]
+    if not sel:
+        return probs
+    rev = await asyncio.get_running_loop().run_in_executor(cpu, _prepare_rev, state, questions)
+    if [it["nopts"][0] for it in rev] != [it["nopts"][0] for it in items]:
+        return probs                                  # row plans differ (should not happen): keep the first reading
+    temps = TT.for_items(TEMP, TEMP_BY_TYPE, items)
+    async with asyncio.TaskGroup() as tg:
+        tasks = {i: tg.create_task(_logprobs(rev[i]["ids"], rev[i]["nopts"][0])) for i in sel}
+    out = list(probs)
+    for i, t in tasks.items():
+        T1 = temps[i][0] if isinstance(temps, list) else temps
+        first = _lsm([T1 * math.log(max(p, 1e-30)) for p in probs[i]])
+        n = len(first); T2 = max(lo, a + b * math.log(max(n, 2)))
+        out[i] = softmax_T([(x + y) / 2 for x, y in zip(first, _lsm(t.result()[::-1]))], T2)
+    stats["second_readings"] = stats.get("second_readings", 0) + len(sel)
+    return out
 
 
 def _engine_args():
@@ -103,7 +167,11 @@ def _engine_args():
               worker_extension_cls="decider.vllm_worker.WorkerExtension", seed=0)
     if QUANT:
         kw["quantization"] = QUANT
-    return AsyncEngineArgs(**kw)
+    a = AsyncEngineArgs(**kw)
+    if ATTENTION:                     # e.g. TRITON_ATTN for Gemma-4 with an FP8 KV cache (FlashInfer returns NaN there, batched)
+        from vllm.config import AttentionConfig
+        a.attention_config = AttentionConfig(backend=ATTENTION)
+    return a
 
 
 def softmax_T(lp, T):
@@ -215,7 +283,8 @@ async def _start():
     BLOCK = max(await engine.collective_rpc("cache_block_size"))
     print("[serve_vllm] worker cuDNN SDPA enabled:", sdp, "cache block size:", BLOCK, "letter ids per request:", LOGPROB_IDS_CAP, flush=True)
     await _warmup()
-    print("[serve_vllm] ready", json.dumps(dict(model=MODEL_NAME, path=MODEL, layout=LAYOUT, temperature=TEMP,
+    print("[serve_vllm] ready", json.dumps(dict(model=MODEL_NAME, path=MODEL, layout=LAYOUT, temperature=TEMP, second_reading=SECOND,
+                                                attention=ATTENTION,
                                                 temperature_by_type=TT.effective(TEMP, TEMP_BY_TYPE), max_model_len=MAX_MODEL_LEN,
                                                 gpu_memory_utilization=GPU_MEM, kv_cache_dtype=KV_DTYPE, quantization=QUANT,
                                                 vllm=VSP.__name__ and __import__("vllm").__version__)), flush=True)
@@ -331,6 +400,8 @@ async def systemone(r: S1Req, request: Request):
         # cancellation afterwards.
         await _finish(asyncio.ensure_future(_release([t for t in (gone, work) if t is not None], len(items))))
     probs = [p for ps in res for p in ps]
+    if SECOND is not None and items:
+        probs = await second_pass(r.state, r.questions, items, probs)
     stats["requests"] += 1; stats["decisions"] += len(rqs); stats["rows"] += len(items)
     return {"model": MODEL_NAME, "answers": S1.assemble(rqs, index, probs),
             "usage": {"input_tokens": unique_tokens(items, ctx_len), "output_tokens": 0}}
