@@ -314,6 +314,20 @@ decider-4b v2.1, decider-2b v11 and decider-12b have a map. decider-chat-gemma4-
 ignore the map and use `temperature` for every answer. `python -m decider.calibrate records.jsonl` fits the map by NLL
 from answers read at temperature 1 (record format in `decider/calibrate.py`). `/health` reports the temperature each type gets.
 
+**decider-12b v2 Noul temperature.** The config sets `"noul": 0.05`, chosen for JevBench, which counts a yes/no answer with a
+probability between 0.2 and 0.8 as wrong. At 0.05 most answers round to exactly 0 or 1 at 4 decimals, so the probabilities do
+not rank or calibrate. For calibrated yes/no probabilities use `"noul": 1.0`. On our fresh Noul set (399 items, bf16) the
+accuracy is 0.847 at every temperature:
+
+| Noul T | AUROC | ECE | log loss | exactly 0 or 1 | JevBench-style score |
+|---|---|---|---|---|---|
+| 0.05 (config) | 0.878 | 0.151 | 1.277 | 92% | 68.1 |
+| 1.0 | 0.934 | 0.038 | 0.326 | 5% | 32.2 |
+| 1.5 | 0.934 | 0.049 | 0.333 | 5% | 3.6 |
+
+`Decider("Mapika/decider-12b", temperature_by_type={"choice": 1.5, "noul": 1.0, "score": 1.0})` sets it in Python
+([issue #18](https://github.com/Mapika/decider/issues/18), where @esterhuizen measured the same effect on 2,975 items).
+
 ## Train your own
 
 ```bash
