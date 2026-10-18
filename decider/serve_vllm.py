@@ -78,12 +78,15 @@ MAX_ROW_TOKENS = _env_int("DECIDER_MAX_ROW_TOKENS", MAX_STATE_TOKENS + 4096)
 MAX_REQUEST_TOKENS = _env_int("DECIDER_MAX_REQUEST_TOKENS", 1 << 20)
 MAX_QUEUE_ROWS = _env_int("DECIDER_MAX_QUEUE_ROWS", 4096)
 WIDE_LOGPROBS = os.environ.get("DECIDER_VLLM_WIDE_LOGPROBS", "1") == "1"
+IMAGES = os.environ.get("DECIDER_IMAGES", "0") == "1"   # Jev-style image assets (needs an image-text checkpoint, e.g. Gemma-4)
+MAX_IMAGES = _env_int("DECIDER_MAX_IMAGES", 8)
+IMAGE_TOKEN = "<|image|>"; IMAGE_TOKENS_EST = 280        # Gemma-4: one placeholder per image, expanded by vLLM to <= 280 soft tokens
 LOGPROB_IDS_CAP = 128                      # letter ids per vLLM request; raised at start-up when every worker allows more
 
 MODEL_NAME = "decider"; TEMP = 1.0; TEMP_BY_TYPE = {}; LAYOUT = "plain"; CHAT = None; ISOLATED = False
 SECOND = None   # (below, a, b, min) from decider_config.json "second_reading", or None (one reading)
 ATTENTION = os.environ.get("DECIDER_VLLM_ATTENTION") or None   # vLLM attention backend; decider_config.json "vllm_attention" if unset
-engine = None; tok = None; LETTER_IDS = None; outstanding = 0; BLOCK = 16; cpu = None
+engine = None; tok = None; LETTER_IDS = None; IMAGE_ID = None; outstanding = 0; BLOCK = 16; cpu = None
 stats = dict(requests=0, decisions=0, rows=0, vllm_requests=0, prefill_first=0, errors=0, rejected_too_large=0,
              rejected_overloaded=0)
 
@@ -136,7 +139,7 @@ def _prepare_rev(state, questions):
     return items
 
 
-async def second_pass(state, questions, items, probs):
+async def second_pass(state, questions, items, probs, images=None):
     """Re-read the unsure rows in reversed option order (SECOND); returns the new probability list.  The first reading's
     log-softmax is recovered from its probabilities (log p x T1 differs from it by a constant)."""
     below, a, b, lo = SECOND
@@ -148,7 +151,7 @@ async def second_pass(state, questions, items, probs):
         return probs                                  # row plans differ (should not happen): keep the first reading
     temps = TT.for_items(TEMP, TEMP_BY_TYPE, items)
     async with asyncio.TaskGroup() as tg:
-        tasks = {i: tg.create_task(_logprobs(rev[i]["ids"], rev[i]["nopts"][0])) for i in sel}
+        tasks = {i: tg.create_task(_logprobs(rev[i]["ids"], rev[i]["nopts"][0], images)) for i in sel}
     out = list(probs)
     for i, t in tasks.items():
         T1 = temps[i][0] if isinstance(temps, list) else temps
@@ -163,7 +166,7 @@ def _engine_args():
     from vllm import AsyncEngineArgs
     kw = dict(model=MODEL, tokenizer=MODEL, dtype="bfloat16", max_model_len=MAX_MODEL_LEN, gpu_memory_utilization=GPU_MEM,
               enable_prefix_caching=True, max_num_seqs=MAX_NUM_SEQS, max_num_batched_tokens=MAX_BATCHED_TOKENS,
-              kv_cache_dtype=KV_DTYPE, enforce_eager=ENFORCE_EAGER, language_model_only=True, disable_log_stats=True,
+              kv_cache_dtype=KV_DTYPE, enforce_eager=ENFORCE_EAGER, language_model_only=not IMAGES, disable_log_stats=True,
               worker_extension_cls="decider.vllm_worker.WorkerExtension", seed=0)
     if QUANT:
         kw["quantization"] = QUANT
@@ -179,8 +182,60 @@ def softmax_T(lp, T):
     return [x / s for x in e]
 
 
-async def _logprobs(ids, n):
-    """Log-softmax values of the first n letter ids at the position after `ids` (the answer slot)."""
+def decode_assets(assets):
+    """Jev-style `assets` map {ref: {"type": "image", "format": "png"|"jpg"|"jpeg", "data_base64": ...}} -> {ref: PIL image}."""
+    import base64, binascii, io
+    from PIL import Image
+    if not IMAGES:
+        raise ValueError("this server was started without image support (DECIDER_IMAGES=1)")
+    if not isinstance(assets, dict) or not assets:
+        raise ValueError("assets: a non-empty map of reference -> image")
+    if len(assets) > MAX_IMAGES:
+        raise ValueError(f"too many assets: {len(assets)}, the limit is {MAX_IMAGES} (DECIDER_MAX_IMAGES)")
+    out = {}
+    for ref, a in assets.items():
+        if not isinstance(ref, str) or not ref or not isinstance(a, dict):
+            raise ValueError("assets: each entry is reference -> {type, format, data_base64}")
+        if a.get("type", "image") != "image" or str(a.get("format", "")).lower() not in ("png", "jpg", "jpeg"):
+            raise ValueError(f"asset {ref!r}: type must be image and format png, jpg or jpeg")
+        try:
+            im = Image.open(io.BytesIO(base64.b64decode(a.get("data_base64") or "", validate=True)))
+            im.load()
+        except (binascii.Error, ValueError, OSError) as e:
+            raise ValueError(f"asset {ref!r}: data_base64 is not a readable image ({e})")
+        out[ref] = im.convert("RGB")
+    return out
+
+
+def place_images(state, questions, images):
+    """Replace every occurrence of an asset reference in the rendered state by the image placeholder; returns (state text,
+    images in placeholder order).  References in questions are not supported; an asset the state never names is an error."""
+    text = S1.render_state(state)
+    qtext = json.dumps(questions, ensure_ascii=False)
+    refs = sorted(images, key=len, reverse=True)
+    hits, used, i = [], set(), 0
+    while i < len(text):
+        r = next((r for r in refs if text.startswith(r, i)), None)
+        if r is None:
+            i += 1; continue
+        hits.append((i, r)); used.add(r); i += len(r)
+    for r in images:
+        if r not in used:
+            if r in qtext:
+                raise ValueError(f"asset {r!r}: images can be referenced from the state only")
+            raise ValueError(f"asset {r!r} is not referenced in the state")
+    if len(hits) > MAX_IMAGES:
+        raise ValueError(f"too many image references: {len(hits)}, the limit is {MAX_IMAGES} (DECIDER_MAX_IMAGES)")
+    parts, last = [], 0
+    for pos, r in hits:
+        parts += [text[last:pos], IMAGE_TOKEN]; last = pos + len(r)
+    parts.append(text[last:])
+    return "".join(parts), [images[r] for _, r in hits]
+
+
+async def _logprobs(ids, n, images=None):
+    """Log-softmax values of the first n letter ids at the position after `ids` (the answer slot).  images: the PIL images of
+    the row's image placeholders, in order (vLLM expands each placeholder to the image's soft tokens)."""
     from vllm import SamplingParams
     from vllm.inputs import TokensPrompt
     parts = [LETTER_IDS[i:i + LOGPROB_IDS_CAP] for i in range(0, n, LOGPROB_IDS_CAP)]
@@ -190,7 +245,8 @@ async def _logprobs(ids, n):
         sp = SamplingParams(max_tokens=1, temperature=0.0, logprob_token_ids=list(tids), detokenize=False)
         stats["vllm_requests"] += 1
         final = None
-        async for out in engine.generate(TokensPrompt(prompt_token_ids=ids), sp, request_id=uuid.uuid4().hex):
+        prompt = TokensPrompt(prompt_token_ids=ids, multi_modal_data={"image": images}) if images else TokensPrompt(prompt_token_ids=ids)
+        async for out in engine.generate(prompt, sp, request_id=uuid.uuid4().hex):
             final = out
         lp = final.outputs[0].logprobs[0]
         return [lp[t].logprob for t in tids]
@@ -200,7 +256,7 @@ async def _logprobs(ids, n):
     return out
 
 
-async def score_rows(items, lcp=None):
+async def score_rows(items, lcp=None, images=None):
     """-> one probability list per row, request order.  Every row has one slot, its last token (independent rows).
     lcp: the rows' common prefix length when the caller has it (computed on the CPU pool in _prepare_s1), else computed here.
     The rows run as tasks of one TaskGroup: when one fails or the request is cancelled, the others are cancelled and
@@ -215,7 +271,7 @@ async def score_rows(items, lcp=None):
 
     async def run(job):
         ids, n, T = job
-        return [softmax_T(await _logprobs(ids, n), T)]
+        return [softmax_T(await _logprobs(ids, n, images), T)]
 
     async def run_all(js):
         async with asyncio.TaskGroup() as tg:
@@ -265,7 +321,7 @@ async def _warmup():
 
 
 async def _start():
-    global engine, tok, LETTER_IDS, CHAT, BLOCK, LOGPROB_IDS_CAP, cpu
+    global engine, tok, LETTER_IDS, CHAT, BLOCK, LOGPROB_IDS_CAP, cpu, IMAGE_ID
     cpu = ThreadPoolExecutor(max_workers=_env_int("DECIDER_TOKENIZE_THREADS", 8), thread_name_prefix="tok")
     import vllm.sampling_params as VSP
     from vllm.v1.engine.async_llm import AsyncLLM
@@ -273,6 +329,7 @@ async def _start():
     apply_config(load_config(MODEL))
     tok = AutoTokenizer.from_pretrained(MODEL)
     LETTER_IDS = label_table(tok)[1]
+    IMAGE_ID = tok.convert_tokens_to_ids(IMAGE_TOKEN) if IMAGE_TOKEN in tok.get_vocab() else -1
     CHAT = chat_template(tok) if LAYOUT == "chat" else None
     if WIDE_LOGPROBS:
         from decider.vllm_worker import raise_logprob_cap
@@ -306,6 +363,7 @@ app = FastAPI(title="decider-vllm", lifespan=lifespan)
 class S1Req(BaseModel):
     state: object
     questions: dict
+    assets: dict | None = None
     model: str | None = None
     independent: bool = True
     layout: str | None = None
@@ -368,17 +426,22 @@ async def systemone(r: S1Req, request: Request):
     global outstanding
     if not r.independent:
         raise HTTPException(422, "serve_vllm answers independent questions only (\"independent\": true)")
+    state, images = r.state, None
     try:                                            # render, tokenize and the prefix scan on a CPU thread, off the event loop
-        rqs, index, items, ctx_len, lcp = await asyncio.get_running_loop().run_in_executor(cpu, _prepare_s1, r.state, r.questions, True)
+        if r.assets:
+            state, images = place_images(r.state, r.questions, await asyncio.get_running_loop().run_in_executor(cpu, decode_assets, r.assets))
+        rqs, index, items, ctx_len, lcp = await asyncio.get_running_loop().run_in_executor(cpu, _prepare_s1, state, r.questions, True)
+        if IMAGES and any(sum(1 for t in it["ids"] if t == IMAGE_ID) != len(images or ()) for it in items):
+            raise ValueError("an image placeholder was cut or duplicated by the state truncation; shorten the state")
     except ValueError as e:
         stats["errors"] += 1
         raise HTTPException(422, str(e))
-    check_size([len(it["ids"]) for it in items])
+    check_size([len(it["ids"]) + IMAGE_TOKENS_EST * len(images or ()) for it in items])
     if outstanding + len(items) > MAX_QUEUE_ROWS:
         stats["rejected_overloaded"] += 1
         raise HTTPException(503, f"server busy: {outstanding} rows queued, the limit is {MAX_QUEUE_ROWS} (DECIDER_MAX_QUEUE_ROWS); retry later")
     outstanding += len(items)
-    work = asyncio.ensure_future(score_rows(items, lcp)) if items else None
+    work = asyncio.ensure_future(score_rows(items, lcp, images)) if items else None
     gone = asyncio.ensure_future(_disconnected(request))
     try:
         if work is not None:
@@ -401,7 +464,7 @@ async def systemone(r: S1Req, request: Request):
         await _finish(asyncio.ensure_future(_release([t for t in (gone, work) if t is not None], len(items))))
     probs = [p for ps in res for p in ps]
     if SECOND is not None and items:
-        probs = await second_pass(r.state, r.questions, items, probs)
+        probs = await second_pass(state, r.questions, items, probs, images)
     stats["requests"] += 1; stats["decisions"] += len(rqs); stats["rows"] += len(items)
     return {"model": MODEL_NAME, "answers": S1.assemble(rqs, index, probs),
             "usage": {"input_tokens": unique_tokens(items, ctx_len), "output_tokens": 0}}
