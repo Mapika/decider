@@ -78,7 +78,7 @@ MAX_ROW_TOKENS = _env_int("DECIDER_MAX_ROW_TOKENS", MAX_STATE_TOKENS + 4096)
 MAX_REQUEST_TOKENS = _env_int("DECIDER_MAX_REQUEST_TOKENS", 1 << 20)
 MAX_QUEUE_ROWS = _env_int("DECIDER_MAX_QUEUE_ROWS", 4096)
 WIDE_LOGPROBS = os.environ.get("DECIDER_VLLM_WIDE_LOGPROBS", "1") == "1"
-IMAGES = os.environ.get("DECIDER_IMAGES", "0") == "1"   # Jev-style image assets (needs an image-text checkpoint, e.g. Gemma-4)
+IMAGES = os.environ.get("DECIDER_IMAGES", "0") == "1"   # Jev-style image assets (needs an image-text checkpoint, e.g. Gemma-4); default from the config ("images")
 MAX_IMAGES = _env_int("DECIDER_MAX_IMAGES", 8)
 IMAGE_TOKEN = "<|image|>"; IMAGE_TOKENS_EST = 280        # Gemma-4: one placeholder per image, expanded by vLLM to <= 280 soft tokens
 LOGPROB_IDS_CAP = 128                      # letter ids per vLLM request; raised at start-up when every worker allows more
@@ -100,6 +100,9 @@ def apply_config(cfg):
     """Layout, temperatures and name from decider_config.json, with DECIDER_LAYOUT / DECIDER_TEMPERATURE overrides."""
     global MODEL_NAME, TEMP, TEMP_BY_TYPE, LAYOUT, ISOLATED, SECOND
     cfg = with_layout(cfg, LAYOUT_ENV)
+    global IMAGES
+    if "DECIDER_IMAGES" not in os.environ:          # the config's "images": true turns image assets on; DECIDER_IMAGES=0/1 overrides
+        IMAGES = bool(cfg.get("images", False))
     SECOND = second_reading(cfg.get("second_reading"), os.environ.get("DECIDER_SECOND_READING_BELOW"))
     global ATTENTION
     ATTENTION = ATTENTION or cfg.get("vllm_attention") or None

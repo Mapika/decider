@@ -353,6 +353,9 @@ async def schema_batcher():
 def apply_config(cfg):
     global MODEL_NAME, TEMP, TEMP_SCHEMA, TEMP_BY_TYPE, TEMP_SCHEMA_BY_TYPE, RELEASE_DATE, ISOLATED, NEUTRALIZE_NONE, SCHEMA_FIRST, LAYOUT
     cfg = with_layout(cfg, os.environ.get("DECIDER_LAYOUT"))   # DECIDER_LAYOUT=chat reads a stock checkpoint in the chat layout
+    global IMAGES
+    if "DECIDER_IMAGES" not in os.environ:          # the config's "images": true turns image assets on; DECIDER_IMAGES=0/1 overrides
+        IMAGES = bool(cfg.get("images", False))
     LAYOUT = resolve_layout(cfg)                    # ValueError for an unknown layout, before the engine is built
     NEUTRALIZE_NONE = bool(cfg.get("neutralize_none", True))
     MODEL_NAME = "decider-" + str(cfg.get("version", "dev"))
