@@ -42,6 +42,8 @@ Variables (default):  DECIDER_DEVICE (auto: cuda, else mps, else cpu)  DECIDER_C
   DECIDER_MAX_QUEUE_ROWS (4096)  DECIDER_TEMPERATURE  DECIDER_SCHEMA_CACHE (0)  DECIDER_SCHEMA_MIN_SEEN (2)  DECIDER_SCHEMAS
   DECIDER_LAYOUT (unset: the layout of decider_config.json; "chat" or "plain" replaces it, e.g. to read a stock instruct
   checkpoint, which has no decider_config.json, in the chat layout)
+  DECIDER_IMAGES (0; 1 = Jev-style image assets in /v1/systemone, needs the model's vision/ folder, decider.vision_reader)
+  DECIDER_MAX_IMAGES (4)
 
 Temperatures (1.4.0, decider.temperature): decider_config.json "temperature", and optionally "temperature_by_type"
 {"choice": T, "noul": T, "score": T} (a /decide "bool" field is "noul", a "scale" field is "score"; a missing type uses
@@ -85,10 +87,12 @@ MAX_ROWS = _env_int("DECIDER_MAX_ROWS", 1024)                               # sc
 MAX_ROW_TOKENS = _env_int("DECIDER_MAX_ROW_TOKENS", MAX_STATE_TOKENS + 4096)  # tokens in one row: truncated state + question block
 MAX_REQUEST_TOKENS = _env_int("DECIDER_MAX_REQUEST_TOKENS", 1 << 20)       # sum of row lengths of one request
 MAX_QUEUE_ROWS = _env_int("DECIDER_MAX_QUEUE_ROWS", 4096)                   # rows admitted and not yet scored, over all requests
+IMAGES = os.environ.get("DECIDER_IMAGES", "0") == "1"                      # Jev-style image assets (decider.vision_reader; needs vision/)
+MAX_IMAGES = _env_int("DECIDER_MAX_IMAGES", 4)
 DECIDE_MAX_CTX_TOKENS = 1536                                                # /decide context cap, unchanged from 1.0.x
 
 MODEL_NAME = "decider"; TEMP = 1.0; TEMP_SCHEMA = 1.0; TEMP_BY_TYPE = {}; TEMP_SCHEMA_BY_TYPE = {}; RELEASE_DATE = "2026-09-17"; ISOLATED = False; NEUTRALIZE_NONE = True
-SCHEMA_FIRST = False; LAYOUT = "plain"; CHAT = None; se = None; squeue = None; schemas = {}; seen = {}
+SCHEMA_FIRST = False; LAYOUT = "plain"; CHAT = None; se = None; squeue = None; schemas = {}; seen = {}; vr = None
 eng = None; queue = None; gpu = None; cpu = None; batcher_task = None; schema_task = None
 outstanding = 0; REQ_SEQ = 0
 stats = dict(requests=0, batches=0, decisions=0, rows=0, shared_prefix_requests=0, errors=0, rejected_too_large=0,
@@ -397,7 +401,7 @@ def resolve_device(requested=None):
 
 
 async def _start():
-    global eng, se, gpu, CHAT
+    global eng, se, gpu, CHAT, vr
     from decider.engine_v2 import EngineV2
     apply_config(load_config(MODEL))
     gpu = ThreadPoolExecutor(max_workers=1, thread_name_prefix="gpu")
@@ -407,6 +411,10 @@ async def _start():
         MODEL, device=dev, dtype=dtype, compile=COMPILE, fp8=FP8, max_ctx_tokens=MAX_STATE_TOKENS, t_buckets=_ints("DECIDER_T_BUCKETS"),
         b_buckets=_ints("DECIDER_B_BUCKETS"), token_budget=GRAPH_TOKEN_BUDGET))
     CHAT = chat_template(eng.tok) if LAYOUT == "chat" else None
+    if IMAGES:
+        from decider.vision_reader import VisionReader
+        vr = await loop.run_in_executor(gpu, lambda: VisionReader(eng, MODEL, dtype))
+        print(f"[serve] images on: vision tower {vr.bytes / 2**20:.0f} MiB, language model shared with the text engine", flush=True)
     print("[serve] engine", dict({k: v for k, v in eng.cfg.items() if k not in ("t_buckets", "b_buckets")}, device=dev, layout=LAYOUT), flush=True)
     if SCHEMA_FIRST:
         from decider.schema_engine import SchemaEngine
@@ -464,6 +472,7 @@ class S1Req(BaseModel):
     model: str | None = None
     independent: bool = True
     layout: str | None = None            # "state_first" forces the uncached layout on a schema-first model
+    assets: dict | None = None           # Jev-style images (DECIDER_IMAGES=1), referenced from the state
 
 
 def _alive():
@@ -502,9 +511,50 @@ async def decide(r: Req):
     return _format_decide(r.schema_, qs, probs)
 
 
+def _prepare_images(state, questions, independent, assets):
+    """CPU pool: decode the assets, turn the state's references into text, render the rows, put the image blocks in front."""
+    from decider.images import decode_assets, place_images
+    from decider.vision_reader import reference_text
+    images = decode_assets(assets, MAX_IMAGES)
+    text, imgs = place_images(S1.render_state(state), questions, images, MAX_IMAGES, reference_text)
+    rqs, index, items, ctx_len = _prepare_s1(text, questions, independent)
+    return rqs, index, items, ctx_len, vr.add_images(items, imgs)
+
+
+def _score_images(items, ii):
+    return vr.score(items, ii, TT.for_items(TEMP, TEMP_BY_TYPE, items))
+
+
+async def _systemone_images(r):
+    loop = asyncio.get_running_loop()
+    if vr is None:
+        stats["errors"] += 1
+        raise HTTPException(422, "this server was started without image support (DECIDER_IMAGES=1)")
+    try:
+        rqs, index, items, ctx_len, ii = await loop.run_in_executor(cpu, _prepare_images, r.state, r.questions, r.independent, r.assets)
+    except ValueError as e:
+        stats["errors"] += 1
+        raise HTTPException(422, str(e))
+    check_size([len(it["ids"]) for it in items])
+    _admit(len(items))
+    try:
+        res = await loop.run_in_executor(gpu, _score_images, items, ii)
+    except Exception:
+        stats["errors"] += 1; raise
+    finally:
+        _release(len(items))
+    probs = [p for ps in res for p in ps]
+    stats["requests"] += 1; stats["decisions"] += len(rqs); stats["rows"] += len(items)
+    stats["image_requests"] = stats.get("image_requests", 0) + 1
+    return {"model": MODEL_NAME, "answers": S1.assemble(rqs, index, [p.tolist() for p in probs]),
+            "usage": {"input_tokens": sum(len(it["ids"]) for it in items), "output_tokens": 0}}
+
+
 @app.post("/v1/systemone")
 async def systemone(r: S1Req):
     loop = asyncio.get_running_loop()
+    if r.assets:
+        return await _systemone_images(r)
     if SCHEMA_FIRST and r.questions and r.layout != "state_first" and _worth_caching(r.questions, r.independent):
         try:                                       # CPU: rows, prefix lengths, suffix ids -> the complete cost before any GPU work
             tps, row = await loop.run_in_executor(cpu, _plan_schema, r.questions, r.independent, r.state)

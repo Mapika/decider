@@ -151,7 +151,7 @@ async def second_pass(state, questions, items, probs, images=None):
         return probs                                  # row plans differ (should not happen): keep the first reading
     temps = TT.for_items(TEMP, TEMP_BY_TYPE, items)
     async with asyncio.TaskGroup() as tg:
-        tasks = {i: tg.create_task(_logprobs(rev[i]["ids"], rev[i]["nopts"][0], images)) for i in sel}
+        tasks = {i: tg.create_task(_logprobs(rev[i]["ids"], rev[i]["nopts"][0], *((images,) if images else ()))) for i in sel}
     out = list(probs)
     for i, t in tasks.items():
         T1 = temps[i][0] if isinstance(temps, list) else temps
@@ -183,54 +183,18 @@ def softmax_T(lp, T):
 
 
 def decode_assets(assets):
-    """Jev-style `assets` map {ref: {"type": "image", "format": "png"|"jpg"|"jpeg", "data_base64": ...}} -> {ref: PIL image}."""
-    import base64, binascii, io
-    from PIL import Image
+    """Jev-style `assets` map -> {ref: PIL image} (decider.images.decode_assets)."""
+    from decider.images import decode_assets as dec
     if not IMAGES:
         raise ValueError("this server was started without image support (DECIDER_IMAGES=1)")
-    if not isinstance(assets, dict) or not assets:
-        raise ValueError("assets: a non-empty map of reference -> image")
-    if len(assets) > MAX_IMAGES:
-        raise ValueError(f"too many assets: {len(assets)}, the limit is {MAX_IMAGES} (DECIDER_MAX_IMAGES)")
-    out = {}
-    for ref, a in assets.items():
-        if not isinstance(ref, str) or not ref or not isinstance(a, dict):
-            raise ValueError("assets: each entry is reference -> {type, format, data_base64}")
-        if a.get("type", "image") != "image" or str(a.get("format", "")).lower() not in ("png", "jpg", "jpeg"):
-            raise ValueError(f"asset {ref!r}: type must be image and format png, jpg or jpeg")
-        try:
-            im = Image.open(io.BytesIO(base64.b64decode(a.get("data_base64") or "", validate=True)))
-            im.load()
-        except (binascii.Error, ValueError, OSError) as e:
-            raise ValueError(f"asset {ref!r}: data_base64 is not a readable image ({e})")
-        out[ref] = im.convert("RGB")
-    return out
+    return dec(assets, MAX_IMAGES)
 
 
 def place_images(state, questions, images):
-    """Replace every occurrence of an asset reference in the rendered state by the image placeholder; returns (state text,
-    images in placeholder order).  References in questions are not supported; an asset the state never names is an error."""
-    text = S1.render_state(state)
-    qtext = json.dumps(questions, ensure_ascii=False)
-    refs = sorted(images, key=len, reverse=True)
-    hits, used, i = [], set(), 0
-    while i < len(text):
-        r = next((r for r in refs if text.startswith(r, i)), None)
-        if r is None:
-            i += 1; continue
-        hits.append((i, r)); used.add(r); i += len(r)
-    for r in images:
-        if r not in used:
-            if r in qtext:
-                raise ValueError(f"asset {r!r}: images can be referenced from the state only")
-            raise ValueError(f"asset {r!r} is not referenced in the state")
-    if len(hits) > MAX_IMAGES:
-        raise ValueError(f"too many image references: {len(hits)}, the limit is {MAX_IMAGES} (DECIDER_MAX_IMAGES)")
-    parts, last = [], 0
-    for pos, r in hits:
-        parts += [text[last:pos], IMAGE_TOKEN]; last = pos + len(r)
-    parts.append(text[last:])
-    return "".join(parts), [images[r] for _, r in hits]
+    """Every reference to an asset in the rendered state becomes the image placeholder (decider.images.place_images).
+    -> (state text, images in placeholder order)."""
+    from decider.images import place_images as place
+    return place(S1.render_state(state), questions, images, MAX_IMAGES, lambda k, n: IMAGE_TOKEN)
 
 
 async def _logprobs(ids, n, images=None):
@@ -271,7 +235,7 @@ async def score_rows(items, lcp=None, images=None):
 
     async def run(job):
         ids, n, T = job
-        return [softmax_T(await _logprobs(ids, n, images), T)]
+        return [softmax_T(await _logprobs(ids, n, *((images,) if images else ())), T)]
 
     async def run_all(js):
         async with asyncio.TaskGroup() as tg:
