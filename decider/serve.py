@@ -404,7 +404,7 @@ def resolve_device(requested=None):
 
 
 async def _start():
-    global eng, se, gpu, CHAT, vr
+    global eng, se, gpu, CHAT, vr, IMAGES
     from decider.engine_v2 import EngineV2
     apply_config(load_config(MODEL))
     gpu = ThreadPoolExecutor(max_workers=1, thread_name_prefix="gpu")
@@ -416,8 +416,15 @@ async def _start():
     CHAT = chat_template(eng.tok) if LAYOUT == "chat" else None
     if IMAGES:
         from decider.vision_reader import VisionReader
-        vr = await loop.run_in_executor(gpu, lambda: VisionReader(eng, MODEL, dtype))
-        print(f"[serve] images on: vision tower {vr.bytes / 2**20:.0f} MiB, language model shared with the text engine", flush=True)
+        try:
+            vr = await loop.run_in_executor(gpu, lambda: VisionReader(eng, MODEL, dtype))
+        except ValueError as e:
+            if "DECIDER_IMAGES" in os.environ:      # asked for explicitly: fail
+                raise
+            IMAGES = False                          # only the config's "images" flag (e.g. a Gemma checkpoint, served with serve_vllm): text only
+            print(f"[serve] images off: {e}", flush=True)
+        else:
+            print(f"[serve] images on: vision tower {vr.bytes / 2**20:.0f} MiB, language model shared with the text engine", flush=True)
     print("[serve] engine", dict({k: v for k, v in eng.cfg.items() if k not in ("t_buckets", "b_buckets")}, device=dev, layout=LAYOUT), flush=True)
     if SCHEMA_FIRST:
         from decider.schema_engine import SchemaEngine
