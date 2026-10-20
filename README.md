@@ -35,9 +35,10 @@ The typed form (`system_one`), the HTTP server and GGUF loading are in [Quick st
 | if you have | use | why |
 |---|---|---|
 | a GPU, and hard decisions (long policy texts, multi-hop reasoning) | [decider-12b](https://huggingface.co/Mapika/decider-12b) | 24 GB in bf16; JevBench public hard tier 0.712 (v1 0.730); Gemma-4-12B-it with a state-tracking LoRA merged in (v2), not measured on the regression set |
-| a Blackwell GPU (NVFP4, 31 GB) and vLLM, and the best Decision Index score | [decider-31b](https://huggingface.co/Mapika/decider-31b) | Decision Index 0.3 public suite 64.27 (our run), median 39 ms; `decider.serve_vllm` |
+| a Blackwell GPU (NVFP4, 31 GB) and vLLM, and the best Decision Index score | [decider-31b](https://huggingface.co/Mapika/decider-31b) v2 | Decision Index 0.3 public suite 63.90 (our run), ECE_bw 0.018; text and images; `decider.serve_vllm` |
+| a GPU with room for 23 GB of bf16 weights, vLLM, images, calibrated yes/no | [decider-12b-vision](https://huggingface.co/Mapika/decider-12b-vision) | 23 GB bf16; Decision Index 0.3 sample 56.74; images 0.870 |
 | a large GPU (62.5 GB of bf16 weights), and broad knowledge and reasoning | [decider-chat-gemma4-31b](https://huggingface.co/Mapika/decider-chat-gemma4-31b) | stock Gemma-4-31B-it with an option-count temperature; #2 of 70 on the Decision Index (57.33, ECE 0.047) |
-| a smaller GPU | [decider-4b](https://huggingface.co/Mapika/decider-4b) | 8.4 GB in bf16; held-out accuracy 0.784 on the regression set, JevBench public hard tier 0.649 |
+| a smaller GPU | [decider-4b](https://huggingface.co/Mapika/decider-4b) v3 | 8.4 GB in bf16; Decision Index 0.3 sample 51.02, JevBench public hard tier 0.640; text and images |
 | a CPU or a laptop | [decider-2b-GGUF](https://huggingface.co/Mapika/decider-2b-GGUF) or [decider-4b-GGUF](https://huggingface.co/Mapika/decider-4b-GGUF) through llama.cpp, or [decider-2b](https://huggingface.co/Mapika/decider-2b) in PyTorch | Q4_K_M files of 1.3 GB (2B) and 2.7 GB (4B); on 8 server CPU threads a request of 40 to 120 tokens takes 0.12 to 0.31 s with the 2B and 0.3 to 0.7 s with the 4B |
 | 65 GB of GPU memory, or 19.6 GB with NVFP4 in vLLM | [decider-35b-a3b](https://huggingface.co/Mapika/decider-35b-a3b) | held-out accuracy 0.810 on the regression set, JevBench public hard tier 0.676 |
 
@@ -54,6 +55,20 @@ local Qwen3.5-27B teacher (`teacher_data/`, `decider/data/mixture.py`). Nothing 
 
 ## What's new
 
+* **2026-10-20 — images, and four models trained on text and image decisions (decider-ai 1.10.0).** `/v1/systemone` accepts
+  Jev-style image `assets` referenced from the state ([Images](#images)).
+  - [decider-2b](https://huggingface.co/Mapika/decider-2b) v12 and [decider-4b](https://huggingface.co/Mapika/decider-4b) v3:
+    Decision Index 0.3 sample 38.17 and 51.02 (v11 28.05, v2.1 41.55); image questions 0.847 and 0.891.
+  - [decider-12b-vision](https://huggingface.co/Mapika/decider-12b-vision), new: sample 56.74; images 0.870. decider-12b v2
+    stays the JevBench model.
+  - [decider-31b](https://huggingface.co/Mapika/decider-31b) v2: public suite 63.90 (v1 64.23), ECE_bw 0.018 (v1 0.035);
+    images 0.882. v1 stays under the tag `v1`.
+
+  ![decider-4b v2.1 against v3 on the same requests: sarcasm, stance, smart-home rules, out-of-scope intent, trial eligibility, a ledger, a chart image](https://raw.githubusercontent.com/Mapika/decider/main/media/v1.10_whats_new.gif)
+
+  ![decider-31b v2 and decider-4b v3 on images we drew: a receipt against an expense policy, a sales chart, a UI, a shelf count, a form, a flowchart](https://raw.githubusercontent.com/Mapika/decider/main/media/v1.10_images.gif)
+
+  The examples were selected to show the capabilities; measured accuracy is on the model cards.
 * **2026-10-07 — decider-31b and decider-ai 1.9.0.** [Mapika/decider-31b](https://huggingface.co/Mapika/decider-31b):
   Gemma-4-31B-it with a merged fine-tune, NVFP4, served by `decider.serve_vllm`. Decision Index 0.3 public suite (our run, all
   140,178 requests): 64.27, ECE_bw 0.039; one request at a time on a B300, median 39 ms. New in `decider.serve_vllm`: an
@@ -163,20 +178,23 @@ two are not comparable to each other, and the NVFP4 row is measured against the 
 
 | model | base | parameters | context | held-out accuracy | weights |
 |---|---|---|---|---|---|
-| decider-2b **v11** | Qwen3.5-2B-Base | 1.9B | 32k tokens | 0.752 (regression set) | [Mapika/decider-2b](https://huggingface.co/Mapika/decider-2b) |
-| decider-4b **v2.1** | Qwen3.5-4B-Base | 4.2B | 32k tokens | 0.784 (regression set) | [Mapika/decider-4b](https://huggingface.co/Mapika/decider-4b) |
+| decider-2b **v12** | Qwen3.5-2B-Base, text and images | 1.9B | 32k tokens | Decision Index 0.3 sample 38.17; images 0.847 | [Mapika/decider-2b](https://huggingface.co/Mapika/decider-2b) |
+| decider-4b **v3** | Qwen3.5-4B-Base, text and images | 4.2B | 32k tokens | Decision Index 0.3 sample 51.02; images 0.891 | [Mapika/decider-4b](https://huggingface.co/Mapika/decider-4b) |
+| decider-12b-vision | Gemma-4-12B-it + merged LoRA (rank 32), text and images | 12B | 32k tokens | Decision Index 0.3 sample 56.74; images 0.870 | [Mapika/decider-12b-vision](https://huggingface.co/Mapika/decider-12b-vision) |
+| decider-31b **v2** | Gemma-4-31B-it + merged fine-tune, NVFP4, text and images | 31B | 40k tokens | Decision Index 0.3 public 63.90; images 0.882 | [Mapika/decider-31b](https://huggingface.co/Mapika/decider-31b) |
 | decider-12b **v2** | Gemma-4-12B-it + merged state-tracking LoRA (rank 32) | 12B | 32k tokens | not measured on the regression set; JevBench public hard 0.712 | [Mapika/decider-12b](https://huggingface.co/Mapika/decider-12b) |
 | decider-chat-gemma4-31b | Gemma-4-31B-it (unchanged weights), T(n) = max(0.05, 10.124 − 1.633 ln n) | 31B | 32k tokens | Decision Index v0.2.1: 57.33, #2 of 70 | [Mapika/decider-chat-gemma4-31b](https://huggingface.co/Mapika/decider-chat-gemma4-31b) |
 | decider-chat-qwen3.6-27b | Qwen3.6-27B (unchanged weights), T 1.943 | 27B | 32k tokens | Decision Index v0.2.1: 51.35, #8 of 70 | [Mapika/decider-chat-qwen3.6-27b](https://huggingface.co/Mapika/decider-chat-qwen3.6-27b) |
 | decider-35b-a3b **v1** | Qwen3.5-35B-A3B-Base | 34.7B total, 3B active | 32k tokens | 0.810 (regression set) | [Mapika/decider-35b-a3b](https://huggingface.co/Mapika/decider-35b-a3b) |
-| decider-4b-GGUF | decider-4b v2.1 in Q4_K_M (2.7 GB), Q8_0, BF16 | 4.2B | 32k tokens | Q4_K_M 0.783, Q8_0 0.783 against 0.784 (regression set) | [Mapika/decider-4b-GGUF](https://huggingface.co/Mapika/decider-4b-GGUF) |
-| decider-2b-GGUF | decider-2b v11 in Q4_K_M (1.3 GB), Q8_0 (2.0 GB), BF16 | 1.9B | 32k tokens | Q8_0 0.752, Q4_K_M 0.747 against 0.752 (regression set) | [Mapika/decider-2b-GGUF](https://huggingface.co/Mapika/decider-2b-GGUF) |
+| decider-4b-GGUF | decider-4b v3 in Q4_K_M (2.7 GB), Q8_0, BF16; text only | 4.2B | 32k tokens | held-out Q8_0 0.781, Q4_K_M 0.782 against 0.782 (regression set) | [Mapika/decider-4b-GGUF](https://huggingface.co/Mapika/decider-4b-GGUF) |
+| decider-2b-GGUF | decider-2b v12 in Q4_K_M (1.3 GB), Q8_0 (2.0 GB), BF16; text only | 1.9B | 32k tokens | held-out Q8_0 0.748, Q4_K_M 0.744 against 0.748 (regression set) | [Mapika/decider-2b-GGUF](https://huggingface.co/Mapika/decider-2b-GGUF) |
 | decider-35b-a3b-nvfp4 | the 35B in NVFP4, 19.6 GB | 34.7B total, 3B active | 32k tokens | 1.0 to 1.5 points under bf16 in vLLM | [Mapika/decider-35b-a3b-nvfp4](https://huggingface.co/Mapika/decider-35b-a3b-nvfp4) |
 | decider-0.8b | Qwen3.5-0.8B-Base | 0.8B | 32k tokens | 0.71 (94-task set) | [Mapika/decider-0.8b](https://huggingface.co/Mapika/decider-0.8b) |
 | decider-2b-vision | Qwen3.5-2B vision-language, v5 text weights | 1.9B | 32k tokens | Visual7W 0.89 (see MODEL_CARD_VISION.md) | [Mapika/decider-2b-vision](https://huggingface.co/Mapika/decider-2b-vision) |
 
-decider-2b v10 and v8 stay available under the Hub tags `v10` and `v8` of Mapika/decider-2b, and decider-4b v2 and v1 under the
-tags `v2` and `v1` of Mapika/decider-4b. decider-4b is the first model trained on mixture v2 (the public mixture
+decider-2b v11, v10 and v8 stay available under the Hub tags `v11`, `v10` and `v8` of Mapika/decider-2b, decider-4b v2.1, v2 and
+v1 under the tags `v2.1`, `v2` and `v1` of Mapika/decider-4b, and decider-31b v1 under the tag `v1`. The "images" figure is the
+mean accuracy on 11 image question sets from the_cauldron (300 items each); see the cards. decider-4b is the first model trained on mixture v2 (the public mixture
 plus 26 further public decision datasets and ten programmatic families with verifiable gold); the mixture-v2 builders are not
 yet in this package, `scripts/train.sh full` reproduces the public 60% of its data. decider-2b-vision has a
 [browser demo](https://huggingface.co/spaces/hugging-apps/decider-2b-vision-demo), a Space built by the Hugging Face team.
@@ -242,7 +260,7 @@ ran decider-2b v11 Q8_0 at about 220 ms per 3-question request on 8 threads. The
 
 ```python
 from decider.infer import Decider
-d = Decider("Mapika/decider-4b-GGUF", gguf_file="decider-4b-v2.1-Q4_K_M.gguf")      # 2.7 GB; or a local path to a .gguf file
+d = Decider("Mapika/decider-4b-GGUF", gguf_file="decider-4b-v3-Q4_K_M.gguf")      # 2.7 GB; or a local path to a .gguf file
 d.decide("My card was charged twice.", [{"question": "Which team?", "options": ["billing", "technical", "sales"]}])
 d.system_one(state, questions)                                                       # as above
 ```
@@ -277,6 +295,22 @@ request compiles or captures a graph; on MPS and CPU every request runs eager; r
 answers 503 (limits, defaults and measurements in `docs/SERVING.md`). The schema cache (a schema seen twice gets a cached prefix
 and its own graphs, captured the first time that schema is used) is on only for a model whose `decider_config.json` sets
 `schema_first`, or with `DECIDER_SCHEMA_CACHE=1`.
+
+### Images
+
+From decider-ai 1.10.0, models whose config sets `"images": true` (decider-2b v12, decider-4b v3, decider-12b-vision,
+decider-31b v2) accept images in `/v1/systemone`, in Jev's format: an `assets` map next to `state` and `questions`, keyed by a
+reference that the state names.
+
+```json
+{"state": {"photo": "shelf-photo", "note": "Restock when fewer than 3 boxes are left."},
+ "assets": {"shelf-photo": {"type": "image", "format": "jpg", "data_base64": "/9j/4AAQ..."}},
+ "questions": {"restock": {"type": "noul", "instructions": "Does the shelf in `photo` need restocking?",
+                           "criteria": {"true": "restock", "false": "enough boxes"}}}}
+```
+
+The Qwen models (2B, 4B) are served by `decider.serve` (`scripts/serve.sh`), the Gemma models (12B-vision, 31B) by
+`decider.serve_vllm`. PNG and JPEG only; references in question text and the `box` answer type are not supported.
 
 ### Serving a large stock model on vLLM
 

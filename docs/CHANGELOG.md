@@ -3,6 +3,36 @@
 Newest first. Every entry names the weights it applies to; the Hub repositories keep earlier weights under tags where noted.
 `HISTORY.md` is the long form: how each stage was trained and what was measured.
 
+## 1.10.0 (2026-10-20): images in /v1/systemone; decider-2b v12, decider-4b v3, decider-12b-vision, decider-31b v2
+
+* **Images.** `POST /v1/systemone` accepts Jev's `assets` map: `{"<ref>": {"type": "image", "format": "png" | "jpg" | "jpeg",
+  "data_base64": ...}}`. Every place the state names a reference becomes that image. On only for a model whose
+  `decider_config.json` sets `"images": true`, or with `DECIDER_IMAGES=1`; `DECIDER_IMAGES=0` turns it off. Up to
+  `DECIDER_MAX_IMAGES` images (4 in `decider.serve`, 8 in `decider.serve_vllm`). References in question text and Jev's `box`
+  answer type are not supported; an unreferenced asset is HTTP 422.
+  - `decider.serve_vllm` (Gemma-4 models): each reference becomes Gemma's image placeholder, which vLLM expands to the image's
+    soft tokens. vLLM is started with the vision tower only when images are on.
+  - `decider.serve` (Qwen3.5 models): the release keeps the text model at the repository root and adds a `vision/` folder (the
+    image-text config and the vision tower, about 0.6 GB). The image path reuses the text model's weights. Each reference
+    becomes "the image" and the image goes in front of the prompt, as in training. Image rows run one at a time, eager. A
+    config-only `"images"` flag on a model without `vision/` starts text-only with a warning.
+  - New modules `decider/images.py` (shared request handling) and `decider/vision_reader.py`.
+* **Models** (trained with text and image decisions; details on each card):
+  - [decider-2b](https://huggingface.co/Mapika/decider-2b) v12: Decision Index 0.3 sample 38.17 (v11 28.05); images 0.847.
+  - [decider-4b](https://huggingface.co/Mapika/decider-4b) v3: sample 51.02 (v2.1 41.55); images 0.891.
+  - [decider-12b-vision](https://huggingface.co/Mapika/decider-12b-vision), new: sample 56.74 (decider-12b v2 51.74); images
+    0.870. decider-12b v2 stays the JevBench model.
+  - [decider-31b](https://huggingface.co/Mapika/decider-31b) v2: public suite 63.90 (v1 64.23 on the same server), ECE_bw 0.018
+    (v1 0.035); images 0.882 (v1 0.843).
+  - [decider-2b-GGUF](https://huggingface.co/Mapika/decider-2b-GGUF) and [decider-4b-GGUF](https://huggingface.co/Mapika/decider-4b-GGUF)
+    hold the new text models (Q4_K_M, Q8_0, BF16; previous files under the tags `v11` and `v2.1`). Q8_0 matches the bf16 weights;
+    Q4_K_M is 0.1 to 0.4 points lower on the regression set.
+  - The 2B and 4B configs use temperature 0.05 for Noul answers (JevBench counts a yes/no probability between 0.2 and 0.8 as
+    wrong); the cards give the fitted values for calibrated yes/no probabilities.
+* **Checked:** each model through this release's server on the 4,500-request 0.3 sample (within 0.2 of our development runs)
+  and on two never-trained image sets (Visual7W, VSR; within one item of the training-time readout). Text requests give the
+  same probabilities with images on and off. CPU test suite: 310 passed (9 new tests for the image helpers).
+
 ## 1.9.0 (2026-10-07): decider-31b; second reading and attention backend in decider.serve_vllm
 
 * **New model: [Mapika/decider-31b](https://huggingface.co/Mapika/decider-31b).** Gemma-4-31B-it with a merged fine-tune,
