@@ -66,7 +66,7 @@ local Qwen3.5-27B teacher (`teacher_data/`, `decider/data/mixture.py`). Nothing 
 
   ![decider-4b v2.1 against v3 on the same requests: sarcasm, stance, smart-home rules, out-of-scope intent, trial eligibility, a ledger, a chart image](https://raw.githubusercontent.com/Mapika/decider/main/media/v1.10_whats_new.gif)
 
-  ![decider-31b v2 and decider-4b v3 on images we drew: a receipt against an expense policy, a sales chart, a UI, a shelf count, a form, a flowchart](https://raw.githubusercontent.com/Mapika/decider/main/media/v1.10_images.gif)
+  ![decider-31b v2 on images we drew: a web agent clicking through a shop, a live dashboard, a shelf camera, receipts, forms, a process chart](https://raw.githubusercontent.com/Mapika/decider/main/media/v1.10_images.gif)
 
   The examples were selected to show the capabilities; measured accuracy is on the model cards.
 * **2026-10-07 — decider-31b and decider-ai 1.9.0.** [Mapika/decider-31b](https://huggingface.co/Mapika/decider-31b):
